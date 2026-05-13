@@ -1,0 +1,257 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model MediaItem {
+  id              String       @id @default(cuid())
+  title           String
+  originalTitle   String?
+  mediaType       MediaType
+  status          MediaStatus  @default(UNTRACKED)
+  description     String?
+  releaseDate     DateTime?
+  upcomingDate    DateTime?
+  posterUrl       String?
+  externalUrl     String?
+  metadataJson    String?
+  personalRating  Float?
+  pairwiseScore   Float        @default(1000)
+  comparisonCount Int          @default(0)
+  isFavorite      Boolean      @default(false)
+  isArchived      Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  genres          MediaGenre[]
+  tags            MediaTag[]
+  comparisonsWon  PairwiseComparison[] @relation("Winner")
+  comparisonsLost PairwiseComparison[] @relation("Loser")
+  listItems       ListItem[]
+  friendRatings   FriendRating[]
+  notes           Note[]
+
+  @@index([mediaType])
+  @@index([status])
+  @@index([pairwiseScore])
+  @@unique([title, mediaType])
+}
+
+model ReleaseCandidate {
+  id                  String                 @id @default(cuid())
+  mediaType           MediaType
+  title               String
+  normalizedTitle     String
+  externalSource      ExternalReleaseSource
+  externalId          String
+  externalUrl         String?
+  description         String?
+  posterUrl           String?
+  releaseDate         DateTime?
+  upcomingDate        DateTime?
+  genresJson          String?
+  tagsJson            String?
+  companiesJson       String?
+  platformsJson       String?
+  metadataJson        String?
+  publicInterestScore Float                  @default(0)
+  localAffinityScore  Float                  @default(0)
+  indieSignalScore    Float                  @default(0)
+  qualityScore        Float                  @default(0)
+  confidenceScore     Float                  @default(0)
+  finalScore          Float                  @default(0)
+  reasonJson          String?
+  status              ReleaseCandidateStatus @default(PENDING)
+  fetchedAt           DateTime               @default(now())
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@unique([externalSource, externalId])
+  @@index([mediaType])
+  @@index([upcomingDate])
+  @@index([status])
+  @@index([finalScore])
+  @@index([normalizedTitle, mediaType])
+}
+
+model Genre {
+  id    String       @id @default(cuid())
+  name  String       @unique
+  media MediaGenre[]
+}
+
+model MediaGenre {
+  mediaId String
+  genreId String
+  media   MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  genre   Genre     @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([mediaId, genreId])
+}
+
+model Tag {
+  id    String     @id @default(cuid())
+  name  String     @unique
+  media MediaTag[]
+}
+
+model MediaTag {
+  mediaId String
+  tagId   String
+  media   MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  tag     Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([mediaId, tagId])
+}
+
+model PairwiseComparison {
+  id        String             @id @default(cuid())
+  winnerId  String
+  loserId   String
+  winner    MediaItem          @relation("Winner", fields: [winnerId], references: [id])
+  loser     MediaItem          @relation("Loser", fields: [loserId], references: [id])
+  context   ComparisonContext?
+  weight    Float              @default(1)
+  notes     String?
+  createdAt DateTime           @default(now())
+
+  @@index([winnerId])
+  @@index([loserId])
+}
+
+model CustomList {
+  id          String     @id @default(cuid())
+  name        String
+  kind        ListKind
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  items       ListItem[]
+
+  @@unique([name])
+}
+
+model ListItem {
+  id        String     @id @default(cuid())
+  listId    String
+  mediaId   String
+  rank      Int?
+  note      String?
+  createdAt DateTime   @default(now())
+  list      CustomList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  media     MediaItem  @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, mediaId])
+}
+
+model Friend {
+  id        String         @id @default(cuid())
+  name      String
+  notes     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  ratings   FriendRating[]
+}
+
+model FriendRating {
+  id        String       @id @default(cuid())
+  friendId  String
+  mediaId   String
+  rating    Float?
+  status    MediaStatus?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  friend    Friend       @relation(fields: [friendId], references: [id], onDelete: Cascade)
+  media     MediaItem    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([friendId, mediaId])
+}
+
+model Note {
+  id        String    @id @default(cuid())
+  mediaId   String
+  body      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  media     MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+}
+
+model ImportJob {
+  id            String           @id @default(cuid())
+  sourceType    ImportSourceType
+  fileName      String?
+  status        ImportStatus
+  importedCount Int              @default(0)
+  skippedCount  Int              @default(0)
+  errorJson     String?
+  createdAt     DateTime         @default(now())
+}
+
+enum MediaType {
+  MOVIE
+  TV_SHOW
+  VIDEO_GAME
+  BOOK
+  BOARD_GAME
+  MUSIC
+  MUSICAL
+}
+
+enum MediaStatus {
+  UNTRACKED
+  WATCHLIST
+  BACKLOG
+  IN_PROGRESS
+  COMPLETED
+  DROPPED
+  PAUSED
+}
+
+enum ComparisonContext {
+  OVERALL
+  REWATCHABILITY
+  STORY
+  GAMEPLAY
+  VISUALS
+  MUSIC
+  COMFORT
+  SOCIAL
+}
+
+enum ListKind {
+  WATCHLIST
+  FAVORITES
+  TOP_LIST
+  CUSTOM
+}
+
+enum ExternalReleaseSource {
+  TMDB
+  TVMAZE
+  IGDB
+  RAWG
+}
+
+enum ReleaseCandidateStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  IMPORTED
+  IGNORED
+}
+
+enum ImportSourceType {
+  JSON
+  CSV
+  XLSX
+}
+
+enum ImportStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}

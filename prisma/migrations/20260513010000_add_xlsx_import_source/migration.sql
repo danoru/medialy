@@ -1,0 +1,2 @@
+-- SQLite stores Prisma enums as TEXT, so this migration documents the new XLSX
+-- ImportSourceType without requiring a table change.
