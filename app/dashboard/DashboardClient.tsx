@@ -3,9 +3,13 @@
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
+import MovieIcon from "@mui/icons-material/Movie";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
+import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
+import TvIcon from "@mui/icons-material/Tv";
+import { useMemo, useState } from "react";
 import {
   Box,
   Button,
@@ -15,6 +19,8 @@ import {
   Grid,
   LinearProgress,
   Stack,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
@@ -45,10 +51,16 @@ type DashboardData = {
     needsData: boolean;
   }>;
   mediaTypeCounts: Array<{ mediaType: MediaType; count: number }>;
+  topItemsByMediaType: Array<{ mediaType: MediaType; items: MediaItemDTO[] }>;
   upcomingItems: MediaItemDTO[];
+  upcomingItemsByMediaType: Array<{
+    mediaType: MediaType;
+    items: MediaItemDTO[];
+  }>;
   watchlistItems: MediaItemDTO[];
   recentItems: MediaItemDTO[];
   friendCompatibility: FriendCompatibility[];
+  friendCount: number;
   health: {
     missingGenres: number;
     missingReleaseDates: number;
@@ -56,7 +68,28 @@ type DashboardData = {
   };
 };
 
+const dashboardMediaTypes: MediaType[] = ["MOVIE", "TV_SHOW", "VIDEO_GAME"];
+
 export function DashboardClient({ data }: { data: DashboardData }) {
+  const [topMediaType, setTopMediaType] = useState<MediaType>("MOVIE");
+  const [upcomingMediaType, setUpcomingMediaType] =
+    useState<MediaType>("MOVIE");
+
+  const topItemsForType = useMemo(
+    () =>
+      data.topItemsByMediaType.find((entry) => entry.mediaType === topMediaType)
+        ?.items ?? [],
+    [data.topItemsByMediaType, topMediaType],
+  );
+
+  const upcomingItemsForType = useMemo(
+    () =>
+      data.upcomingItemsByMediaType.find(
+        (entry) => entry.mediaType === upcomingMediaType,
+      )?.items ?? [],
+    [data.upcomingItemsByMediaType, upcomingMediaType],
+  );
+
   return (
     <Stack spacing={2}>
       <Grid container spacing={1.5}>
@@ -104,16 +137,29 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             }
             title="Recommended Next"
           >
-            <Stack spacing={1.25}>
+            <Box
+              sx={{
+                display: "grid",
+                gap: 1.25,
+                gridAutoColumns: {
+                  xs: "minmax(168px, 72vw)",
+                  sm: "minmax(180px, 1fr)",
+                },
+                gridAutoFlow: "column",
+                overflowX: "auto",
+                pb: 0.5,
+                scrollSnapType: "x proximity",
+              }}
+            >
               {data.recommendations.map((recommendation) => (
-                <MediaSignalRow
+                <RecommendationPosterCard
                   href={`/media/${recommendation.media.id}`}
                   item={recommendation.media}
                   key={recommendation.media.id}
                   score={recommendation.score}
                 />
               ))}
-            </Stack>
+            </Box>
           </DashboardCard>
         </Grid>
 
@@ -124,17 +170,51 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 Open lists
               </Button>
             }
-            title="Top Ranked"
+            title="Top 10 By Media Type"
           >
-            <Stack spacing={1}>
-              {data.topItems.slice(0, 6).map((item, index) => (
-                <TopRankedRow index={index} item={item} key={item.id} />
+            <MediaTypeTabs
+              counts={data.mediaTypeCounts}
+              onChange={setTopMediaType}
+              value={topMediaType}
+            />
+            {topItemsForType.length > 0 ? (
+              <Stack spacing={1} sx={{ mt: 1.5 }}>
+                {topItemsForType.map((item, index) => (
+                  <TopRankedRow index={index} item={item} key={item.id} />
+                ))}
+              </Stack>
+            ) : (
+              <EmptyPanel
+                icon={<PlaylistAddCheckIcon />}
+                label={`No completed ${formatMediaType(topMediaType).toLowerCase()} ranked yet.`}
+              />
+            )}
+          </DashboardCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6, lg: 4 }}>
+          <DashboardCard
+            action={
+              <Button href="/media" size="small">
+                Browse
+              </Button>
+            }
+            title="Collection Mix"
+          >
+            <Stack spacing={1.25}>
+              {data.mediaTypeCounts.map((entry) => (
+                <CollectionTypeRow
+                  count={entry.count}
+                  key={entry.mediaType}
+                  mediaType={entry.mediaType}
+                  total={data.totalItems}
+                />
               ))}
             </Stack>
           </DashboardCard>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Grid size={{ xs: 12, md: 6, lg: 4 }}>
           <DashboardCard
             action={
               <Button href="/insights" size="small">
@@ -166,7 +246,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </DashboardCard>
         </Grid>
 
-        <Grid size={{ xs: 12, md: 6 }}>
+        <Grid size={{ xs: 12, md: 6, lg: 4 }}>
           <DashboardCard
             action={
               <Button href="/data-health" size="small">
@@ -228,25 +308,218 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             }
             title="Upcoming Releases"
           >
-            {data.upcomingItems.length > 0 ? (
-              <Stack spacing={1.2}>
-                {data.upcomingItems.slice(0, 5).map((item) => (
+            <MediaTypeTabs
+              counts={data.upcomingItemsByMediaType.map((entry) => ({
+                mediaType: entry.mediaType,
+                count: entry.items.length,
+              }))}
+              onChange={setUpcomingMediaType}
+              value={upcomingMediaType}
+            />
+            {upcomingItemsForType.length > 0 ? (
+              <Stack spacing={1.2} sx={{ mt: 1.5 }}>
+                {upcomingItemsForType.map((item) => (
                   <UpcomingRow item={item} key={item.id} />
                 ))}
               </Stack>
             ) : (
-              <Stack
-                spacing={1}
-                sx={{ alignItems: "center", color: "text.secondary", py: 3 }}
-              >
-                <CalendarMonthIcon />
-                <Typography variant="body2">No upcoming dates yet.</Typography>
+              <EmptyPanel
+                icon={<CalendarMonthIcon />}
+                label={`No upcoming ${formatMediaType(upcomingMediaType).toLowerCase()} dates yet.`}
+              />
+            )}
+          </DashboardCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <DashboardCard
+            action={
+              <Button href="/friends" size="small">
+                Open friends
+              </Button>
+            }
+            title="Friend Compatibility"
+          >
+            {data.friendCompatibility.length > 0 ? (
+              <Stack spacing={1.2}>
+                {data.friendCompatibility.map((friend) => (
+                  <FriendCompatibilityRow
+                    friend={friend}
+                    key={friend.friendId}
+                  />
+                ))}
               </Stack>
+            ) : (
+              <EmptyPanel
+                icon={<CompareArrowsIcon />}
+                label={
+                  data.friendCount > 0
+                    ? "Add friend ratings to calculate compatibility."
+                    : "No friends imported yet."
+                }
+              />
             )}
           </DashboardCard>
         </Grid>
       </Grid>
     </Stack>
+  );
+}
+
+function MediaTypeTabs({
+  counts,
+  onChange,
+  value,
+}: {
+  counts: Array<{ mediaType: MediaType; count: number }>;
+  onChange: (value: MediaType) => void;
+  value: MediaType;
+}) {
+  const countByType = new Map(
+    counts.map((entry) => [entry.mediaType, entry.count]),
+  );
+
+  return (
+    <ToggleButtonGroup
+      exclusive
+      fullWidth
+      onChange={(_, nextValue: MediaType | null) => {
+        if (nextValue) onChange(nextValue);
+      }}
+      size="small"
+      sx={{
+        bgcolor: alpha("#07111d", 0.34),
+        border: `1px solid ${alpha("#9fb4d0", 0.12)}`,
+        borderRadius: 1.5,
+        p: 0.35,
+        "& .MuiToggleButton-root": {
+          border: 0,
+          borderRadius: 1.1,
+          color: "text.secondary",
+          gap: 0.6,
+          px: 1,
+          py: 0.7,
+          textTransform: "none",
+          whiteSpace: "nowrap",
+          "&.Mui-selected": {
+            bgcolor: alpha("#7c5cff", 0.28),
+            color: "text.primary",
+          },
+        },
+      }}
+      value={value}
+    >
+      {dashboardMediaTypes.map((mediaType) => (
+        <ToggleButton key={mediaType} value={mediaType}>
+          {mediaTypeIcon(mediaType)}
+          <Typography component="span" sx={{ fontSize: 12, fontWeight: 800 }}>
+            {shortMediaTypeLabel(mediaType)}
+          </Typography>
+          <Typography
+            color="text.secondary"
+            component="span"
+            sx={{ fontSize: 11 }}
+          >
+            {countByType.get(mediaType) ?? 0}
+          </Typography>
+        </ToggleButton>
+      ))}
+    </ToggleButtonGroup>
+  );
+}
+
+function RecommendationPosterCard({
+  href,
+  item,
+  score,
+}: {
+  href: string;
+  item: MediaItemDTO;
+  score: number;
+}) {
+  return (
+    <Link
+      href={href}
+      style={{ color: "inherit", display: "block", textDecoration: "none" }}
+    >
+      <Box
+        sx={{
+          border: `1px solid ${alpha("#9fb4d0", 0.14)}`,
+          borderRadius: 1.5,
+          height: "100%",
+          overflow: "hidden",
+          scrollSnapAlign: "start",
+          transition: "border-color 140ms ease, background-color 140ms ease",
+          "&:hover": {
+            bgcolor: alpha("#9fb4d0", 0.06),
+            borderColor: alpha("#7c5cff", 0.42),
+          },
+        }}
+      >
+        <Box
+          sx={{
+            aspectRatio: "16 / 10",
+            bgcolor: alpha(mediaTypeColor(item.mediaType), 0.16),
+            backgroundImage: item.posterUrl
+              ? `linear-gradient(180deg, transparent 40%, rgba(7, 17, 29, 0.82)), url(${item.posterUrl})`
+              : `linear-gradient(135deg, ${alpha(mediaTypeColor(item.mediaType), 0.34)}, ${alpha("#07111d", 0.92)})`,
+            backgroundPosition: "center",
+            backgroundSize: "cover",
+            borderBottom: `1px solid ${alpha("#9fb4d0", 0.12)}`,
+            position: "relative",
+          }}
+        >
+          <Box
+            sx={{
+              alignItems: "center",
+              bgcolor: alpha("#07111d", 0.76),
+              border: `1px solid ${alpha("#55d66b", 0.44)}`,
+              borderRadius: 999,
+              bottom: 10,
+              color: "#7df08e",
+              display: "flex",
+              fontSize: 13,
+              fontWeight: 900,
+              height: 34,
+              justifyContent: "center",
+              left: 10,
+              width: 34,
+            }}
+          >
+            {Math.round(score)}
+          </Box>
+          {!item.posterUrl ? (
+            <Box
+              sx={{
+                alignItems: "center",
+                color: mediaTypeColor(item.mediaType),
+                display: "flex",
+                height: "100%",
+                justifyContent: "center",
+              }}
+            >
+              {mediaTypeIcon(item.mediaType)}
+            </Box>
+          ) : null}
+        </Box>
+        <Box sx={{ p: 1.15 }}>
+          <Typography noWrap sx={{ fontWeight: 900 }} variant="body2">
+            {item.title}
+          </Typography>
+          <Typography color="text.secondary" noWrap variant="caption">
+            {formatMediaType(item.mediaType)} · {formatStatus(item.status)}
+          </Typography>
+          <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.55, mt: 1 }}>
+            {item.genres.slice(0, 2).map((genre) => (
+              <Chip key={genre} label={genre} size="small" variant="outlined" />
+            ))}
+            {item.genres.length === 0 ? (
+              <Chip label="Needs genre" size="small" variant="outlined" />
+            ) : null}
+          </Stack>
+        </Box>
+      </Box>
+    </Link>
   );
 }
 
@@ -313,6 +586,93 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
         ) : null}
       </Box>
     </Stack>
+  );
+}
+
+function CollectionTypeRow({
+  count,
+  mediaType,
+  total,
+}: {
+  count: number;
+  mediaType: MediaType;
+  total: number;
+}) {
+  const share = total > 0 ? Math.round((count / total) * 100) : 0;
+
+  return (
+    <Box>
+      <Stack direction="row" sx={{ alignItems: "center", mb: 0.65 }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          sx={{ alignItems: "center", flex: 1, minWidth: 0 }}
+        >
+          <Box
+            sx={{
+              alignItems: "center",
+              bgcolor: alpha(mediaTypeColor(mediaType), 0.14),
+              border: `1px solid ${alpha(mediaTypeColor(mediaType), 0.28)}`,
+              borderRadius: 1.25,
+              color: mediaTypeColor(mediaType),
+              display: "flex",
+              flexShrink: 0,
+              height: 30,
+              justifyContent: "center",
+              width: 30,
+            }}
+          >
+            {mediaTypeIcon(mediaType)}
+          </Box>
+          <Typography noWrap sx={{ fontWeight: 800 }} variant="body2">
+            {formatMediaType(mediaType)}
+          </Typography>
+        </Stack>
+        <Typography color="text.secondary" variant="body2">
+          {count.toLocaleString()} items
+        </Typography>
+      </Stack>
+      <LinearProgress
+        sx={{
+          "& .MuiLinearProgress-bar": {
+            bgcolor: mediaTypeColor(mediaType),
+          },
+        }}
+        value={share}
+        variant="determinate"
+      />
+    </Box>
+  );
+}
+
+function FriendCompatibilityRow({ friend }: { friend: FriendCompatibility }) {
+  return (
+    <Box>
+      <Stack direction="row" sx={{ alignItems: "center", mb: 0.6 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography noWrap sx={{ fontWeight: 800 }} variant="body2">
+            {friend.friendName}
+          </Typography>
+          <Typography color="text.secondary" variant="caption">
+            {friend.overlapCount} shared ratings
+          </Typography>
+        </Box>
+        <Typography sx={{ fontWeight: 900 }} variant="body2">
+          {Math.round(friend.compatibilityScore)}%
+        </Typography>
+      </Stack>
+      <LinearProgress
+        color={
+          friend.compatibilityScore >= 80
+            ? "success"
+            : friend.compatibilityScore >= 65
+              ? "warning"
+              : "primary"
+        }
+        value={Math.max(0, Math.min(100, friend.compatibilityScore))}
+        variant="determinate"
+      />
+    </Box>
   );
 }
 
@@ -390,6 +750,25 @@ function DashboardCard({
         {children}
       </CardContent>
     </Card>
+  );
+}
+
+function EmptyPanel({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <Stack
+      spacing={1}
+      sx={{
+        alignItems: "center",
+        border: `1px dashed ${alpha("#9fb4d0", 0.18)}`,
+        borderRadius: 1.5,
+        color: "text.secondary",
+        mt: 1.5,
+        py: 3,
+      }}
+    >
+      {icon}
+      <Typography variant="body2">{label}</Typography>
+    </Stack>
   );
 }
 
@@ -498,4 +877,22 @@ function HealthRow({ label, value }: { label: string; value: number }) {
       />
     </Stack>
   );
+}
+
+function mediaTypeIcon(mediaType: MediaType) {
+  if (mediaType === "TV_SHOW") return <TvIcon fontSize="small" />;
+  if (mediaType === "VIDEO_GAME") return <SportsEsportsIcon fontSize="small" />;
+  return <MovieIcon fontSize="small" />;
+}
+
+function mediaTypeColor(mediaType: MediaType) {
+  if (mediaType === "TV_SHOW") return "#25d0b2";
+  if (mediaType === "VIDEO_GAME") return "#ffb13d";
+  return "#7c5cff";
+}
+
+function shortMediaTypeLabel(mediaType: MediaType) {
+  if (mediaType === "TV_SHOW") return "TV";
+  if (mediaType === "VIDEO_GAME") return "Games";
+  return "Movies";
 }

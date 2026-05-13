@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getDataHealthReport, getGenreInsights } from "@/lib/insights";
 import { getFriendCompatibility } from "@/lib/insights";
 import { toMediaItemDTO } from "@/lib/media";
-import { visibleMediaTypeFilter } from "@/lib/media-types";
+import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
 import { getRecommendations } from "@/lib/recommendations";
 import { startOfToday } from "@/lib/upcoming";
 
@@ -39,6 +39,8 @@ export async function getDashboardData() {
     recentItems,
     friendCompatibility,
     friendCount,
+    topItemsByMediaType,
+    upcomingItemsByMediaType,
   ] = await Promise.all([
     prisma.mediaItem.count({
       where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
@@ -108,6 +110,41 @@ export async function getDashboardData() {
     }),
     getFriendCompatibility(),
     prisma.friend.count(),
+    Promise.all(
+      VISIBLE_MEDIA_TYPES.map(async (mediaType) => ({
+        mediaType,
+        items: await prisma.mediaItem.findMany({
+          where: {
+            isArchived: false,
+            mediaType,
+            status: "COMPLETED",
+          },
+          include: {
+            genres: { include: { genre: true } },
+            tags: { include: { tag: true } },
+          },
+          orderBy: [{ pairwiseScore: "desc" }],
+          take: 10,
+        }),
+      })),
+    ),
+    Promise.all(
+      VISIBLE_MEDIA_TYPES.map(async (mediaType) => ({
+        mediaType,
+        items: await prisma.mediaItem.findMany({
+          where: {
+            ...getDashboardUpcomingWhere(today),
+            mediaType,
+          },
+          include: {
+            genres: { include: { genre: true } },
+            tags: { include: { tag: true } },
+          },
+          orderBy: dashboardUpcomingOrderBy,
+          take: 5,
+        }),
+      })),
+    ),
   ]);
 
   return {
@@ -118,6 +155,10 @@ export async function getDashboardData() {
       healthReport.missingGenres.length + healthReport.missingDates.length,
     duplicateCount: healthReport.duplicateCandidates.length,
     topItems: topItems.map(toMediaItemDTO),
+    topItemsByMediaType: topItemsByMediaType.map((entry) => ({
+      mediaType: entry.mediaType,
+      items: entry.items.map(toMediaItemDTO),
+    })),
     recommendations,
     genreInsights: genreInsights.slice(0, 8),
     mediaTypeCounts: mediaTypeCounts.map((entry) => ({
@@ -125,6 +166,10 @@ export async function getDashboardData() {
       count: entry._count._all,
     })),
     upcomingItems: upcomingItems.map(toMediaItemDTO),
+    upcomingItemsByMediaType: upcomingItemsByMediaType.map((entry) => ({
+      mediaType: entry.mediaType,
+      items: entry.items.map(toMediaItemDTO),
+    })),
     watchlistItems: watchlistItems.map(toMediaItemDTO),
     recentItems: recentItems.map(toMediaItemDTO),
     friendCompatibility: friendCompatibility.slice(0, 5),
