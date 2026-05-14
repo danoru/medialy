@@ -47,14 +47,6 @@ export default async function DataHealthPage({
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          Data Health
-        </Typography>
-        <Typography color="text.secondary">
-          Missing metadata, low comparison coverage, and duplicate candidates.
-        </Typography>
-      </Box>
       <Card variant="outlined">
         <CardContent>
           <Tabs

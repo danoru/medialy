@@ -5,13 +5,16 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "vercel-build": "prisma migrate deploy && prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:setup": "node scripts/setup-db.mjs",
     "db:seed": "prisma db seed",
+    "db:import:sqlite": "node scripts/import-sqlite-to-postgres.mjs",
     "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:migrate": "prisma migrate dev",
     "upcoming:fetch": "tsx scripts/fetch-upcoming.ts",
     "test": "vitest run"
@@ -39,6 +42,7 @@
     "eslint-config-next": "16.2.6",
     "prettier": "3.8.3",
     "prisma": "6.19.3",
+    "sql.js": "1.13.0",
     "tsx": "4.21.0",
     "typescript": "6.0.3",
     "vitest": "4.1.6"

@@ -9,16 +9,11 @@ export function PlaceholderPage({
 }) {
   return (
     <Stack spacing={3}>
-      <div>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          {title}
-        </Typography>
-        <Typography color="text.secondary" variant="body1">
-          {description}
-        </Typography>
-      </div>
-      <Card variant="outlined">
+      <Card aria-label={title} variant="outlined">
         <CardContent>
+          <Typography color="text.secondary" sx={{ mb: 2 }} variant="body1">
+            {description}
+          </Typography>
           <Typography color="text.secondary">
             This area is scaffolded for the MVP workflow and ready for
             implementation.

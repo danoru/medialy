@@ -105,17 +105,6 @@ export default async function ComparePage({
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          Compare
-        </Typography>
-        <Typography color="text.secondary">
-          Choose pairwise winners within the same media type. Shared-genre
-          matchups are preferred when enough items exist. Watchlist and backlog
-          items are skipped until you mark them as played or watched.
-        </Typography>
-      </Box>
-
       <Card variant="outlined">
         <CardContent>
           <Stack

@@ -28,14 +28,6 @@ export default async function InsightsPage() {
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          Insights
-        </Typography>
-        <Typography color="text.secondary">
-          Genre distribution, strengths, low-data areas, and media mix.
-        </Typography>
-      </Box>
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 7 }}>
           <Card variant="outlined">

@@ -32,30 +32,84 @@ import { usePathname } from "next/navigation";
 const drawerWidth = 248;
 
 const navItems = [
-  { label: "Dashboard", href: "/dashboard", icon: <DashboardIcon /> },
-  { label: "Media", href: "/media", icon: <MovieIcon /> },
-  { label: "Compare", href: "/compare", icon: <CompareArrowsIcon /> },
+  {
+    label: "Dashboard",
+    href: "/dashboard",
+    icon: <DashboardIcon />,
+    description: "Your library, recommendations, watchlist, and health signals.",
+  },
+  {
+    label: "Media",
+    href: "/media",
+    icon: <MovieIcon />,
+    description: "Browse, filter, add, and edit your local media.",
+  },
+  {
+    label: "Compare",
+    href: "/compare",
+    icon: <CompareArrowsIcon />,
+    description: "Make pairwise picks that sharpen your rankings.",
+  },
   {
     label: "Recommendations",
     href: "/recommendations",
     icon: <AutoAwesomeIcon />,
+    description: "Ranked local picks with scoring reasons.",
   },
-  { label: "Upcoming", href: "/upcoming", icon: <CalendarMonthIcon /> },
-  { label: "Top Lists", href: "/top-lists", icon: <FavoriteIcon /> },
-  { label: "Insights", href: "/insights", icon: <BarChartIcon /> },
-  { label: "Watchlist", href: "/watchlist", icon: <PlaylistAddCheckIcon /> },
-  { label: "Friends", href: "/friends", icon: <PeopleIcon /> },
-  { label: "Data Health", href: "/data-health", icon: <HealthAndSafetyIcon /> },
+  {
+    label: "Upcoming",
+    href: "/upcoming",
+    icon: <CalendarMonthIcon />,
+    description: "Track upcoming dates and review release candidates.",
+  },
+  {
+    label: "Top Lists",
+    href: "/top-lists",
+    icon: <FavoriteIcon />,
+    description: "Top items by score, type, genre, and confidence.",
+  },
+  {
+    label: "Insights",
+    href: "/insights",
+    icon: <BarChartIcon />,
+    description: "Genre distribution, strengths, low-data areas, and media mix.",
+  },
+  {
+    label: "Watchlist",
+    href: "/watchlist",
+    icon: <PlaylistAddCheckIcon />,
+    description: "Prioritized backlog and watchlist items.",
+  },
+  {
+    label: "Friends",
+    href: "/friends",
+    icon: <PeopleIcon />,
+    description: "Local friend ratings, overlap, and compatibility.",
+  },
+  {
+    label: "Data Health",
+    href: "/data-health",
+    icon: <HealthAndSafetyIcon />,
+    description: "Missing metadata, low comparison coverage, and duplicates.",
+  },
   {
     label: "Import / Export",
     href: "/import-export",
     icon: <ImportExportIcon />,
+    description: "Local JSON, CSV, and XLSX workflows.",
   },
-  { label: "Settings", href: "/settings", icon: <SettingsIcon /> },
+  {
+    label: "Settings",
+    href: "/settings",
+    icon: <SettingsIcon />,
+    description: "Manage local app preferences and database setup details.",
+  },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const header = getHeader(pathname);
+  const showAddMedia = pathname !== "/media/new";
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -72,28 +126,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Toolbar sx={{ gap: 2, minHeight: 68, px: { xs: 2, md: 3 } }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontWeight: 800, lineHeight: 1.1 }} variant="h5">
-              Medialy
+            <Typography
+              component="h1"
+              sx={{ fontWeight: 800, lineHeight: 1.1 }}
+              variant="h5"
+            >
+              {header.title}
             </Typography>
             <Typography color="text.secondary" variant="body2">
-              Local recommendations, rankings, watchlist signals, and data
-              health.
+              {header.description}
             </Typography>
           </Box>
-          <Button
-            href="/media/new"
-            startIcon={<AddIcon />}
-            sx={{
-              bgcolor: alpha("#8c6bff", 0.16),
-              border: `1px solid ${alpha("#8c6bff", 0.36)}`,
-              color: "text.primary",
-              minWidth: 0,
-              whiteSpace: "nowrap",
-            }}
-            variant="outlined"
-          >
-            Add Media
-          </Button>
+          {showAddMedia ? (
+            <Button
+              href="/media/new"
+              startIcon={<AddIcon />}
+              sx={{
+                bgcolor: alpha("#8c6bff", 0.16),
+                border: `1px solid ${alpha("#8c6bff", 0.36)}`,
+                color: "text.primary",
+                minWidth: 0,
+                whiteSpace: "nowrap",
+              }}
+              variant="outlined"
+            >
+              Add Media
+            </Button>
+          ) : null}
         </Toolbar>
       </AppBar>
 
@@ -179,4 +238,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </Box>
     </Box>
   );
+}
+
+function getHeader(pathname: string) {
+  if (pathname === "/media/new") {
+    return {
+      title: "Add Media",
+      description: "Create a local library item.",
+    };
+  }
+
+  if (pathname.startsWith("/media/") && pathname.endsWith("/edit")) {
+    return {
+      title: "Edit Media",
+      description: "Update details, tags, genres, notes, and ratings.",
+    };
+  }
+
+  if (pathname.startsWith("/media/")) {
+    return {
+      title: "Media Details",
+      description: "Review metadata, notes, comparisons, and library status.",
+    };
+  }
+
+  const activeItem =
+    navItems.find(
+      (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
+    ) ?? {
+      label: "Medialy",
+      description: "Local recommendations, rankings, watchlist, and data health.",
+    };
+
+  return { title: activeItem.label, description: activeItem.description };
 }

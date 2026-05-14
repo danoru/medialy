@@ -38,14 +38,6 @@ export default async function WatchlistPage({
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          Watchlist
-        </Typography>
-        <Typography color="text.secondary">
-          Prioritized backlog and watchlist items.
-        </Typography>
-      </Box>
       <Card variant="outlined">
         <CardContent>
           <Tabs

@@ -1,4 +1,4 @@
-import { Box, Card, CardContent, Stack, Typography } from "@mui/material";
+import { Card, CardContent, Stack, Typography } from "@mui/material";
 import {
   importCsvFile,
   importJsonFile,
@@ -18,14 +18,6 @@ export default async function ImportExportPage() {
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          Import / Export
-        </Typography>
-        <Typography color="text.secondary">
-          Local JSON, CSV, and XLSX workflows. JSON is the full-fidelity format.
-        </Typography>
-      </Box>
       <ImportExportPanel
         importCsvFile={importCsvFile}
         importJsonFile={importJsonFile}

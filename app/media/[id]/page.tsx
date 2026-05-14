@@ -58,7 +58,7 @@ export default async function MediaDetailPage({
         sx={{ justifyContent: "space-between" }}
       >
         <Box>
-          <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
+          <Typography component="h2" sx={{ fontWeight: 700 }} variant="h4">
             {item.title}
           </Typography>
           <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1, mt: 1 }}>

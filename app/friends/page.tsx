@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Card,
   CardContent,
@@ -58,14 +57,6 @@ export default async function FriendsPage({
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          Friends
-        </Typography>
-        <Typography color="text.secondary">
-          Local friend records, manual ratings, overlap, and compatibility.
-        </Typography>
-      </Box>
       <Card variant="outlined">
         <CardContent>
           <Tabs

@@ -1,5 +1,4 @@
 import {
-  Box,
   Button,
   Card,
   CardContent,
@@ -81,24 +80,6 @@ export default async function MediaPage({
 
   return (
     <Stack spacing={3}>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={2}
-        sx={{ justifyContent: "space-between" }}
-      >
-        <Box>
-          <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-            Media Library
-          </Typography>
-          <Typography color="text.secondary">
-            Browse, filter, add, and edit local media.
-          </Typography>
-        </Box>
-        <Button href="/media/new" variant="contained">
-          Add media
-        </Button>
-      </Stack>
-
       <Card variant="outlined">
         <CardContent>
           <Tabs

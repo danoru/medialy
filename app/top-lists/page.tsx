@@ -1,5 +1,4 @@
 import {
-  Box,
   Card,
   CardContent,
   Chip,
@@ -58,14 +57,6 @@ export default async function TopListsPage({
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          Top Lists
-        </Typography>
-        <Typography color="text.secondary">
-          Top items by score, type, genre, and confidence.
-        </Typography>
-      </Box>
       <Card variant="outlined">
         <CardContent>
           <Tabs

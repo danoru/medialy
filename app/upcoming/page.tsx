@@ -92,24 +92,6 @@ export default async function UpcomingPage({
 
   return (
     <Stack spacing={2.5}>
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={2}
-        sx={{ justifyContent: "space-between" }}
-      >
-        <Box>
-          <Typography component="h1" sx={{ fontWeight: 800 }} variant="h4">
-            Upcoming
-          </Typography>
-          <Typography color="text.secondary">
-            Media with a tracked upcoming date, sorted by what is next.
-          </Typography>
-        </Box>
-        <Button href="/media/new" variant="contained">
-          Add media
-        </Button>
-      </Stack>
-
       <Card variant="outlined">
         <CardContent>
           <Tabs

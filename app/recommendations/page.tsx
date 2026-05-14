@@ -45,14 +45,6 @@ export default async function RecommendationsPage({
 
   return (
     <Stack spacing={3}>
-      <Box>
-        <Typography component="h1" sx={{ fontWeight: 700 }} variant="h4">
-          Recommendations
-        </Typography>
-        <Typography color="text.secondary">
-          Ranked local picks with scoring reasons.
-        </Typography>
-      </Box>
       <Card variant="outlined">
         <CardContent>
           <Tabs
