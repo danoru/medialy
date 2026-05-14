@@ -14,6 +14,7 @@ import { formatMediaType } from "@/lib/format";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Insights" };
 
 export default async function InsightsPage() {
   const [genres, types] = await Promise.all([

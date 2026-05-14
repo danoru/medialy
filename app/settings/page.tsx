@@ -1,5 +1,7 @@
 import { PlaceholderPage } from "@/components/shared/PlaceholderPage";
 
+export const metadata = { title: "Settings" };
+
 export default function SettingsPage() {
   return (
     <PlaceholderPage

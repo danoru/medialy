@@ -23,6 +23,7 @@ import { formatMediaType, formatStatus } from "@/lib/format";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Compare" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

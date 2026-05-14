@@ -5,7 +5,10 @@ import { AppShell } from "@/components/app-shell/AppShell";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "Medialy",
+  title: {
+    default: "Medialy",
+    template: "%s | Medialy",
+  },
   description: "A local-first personal media recommendation dashboard.",
 };
 

@@ -22,8 +22,10 @@ import { MediaStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
+import { updateMediaRatings } from "@/app/media/actions";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Media" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -77,6 +79,10 @@ export default async function MediaPage({
 
   const startIndex = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const endIndex = Math.min(total, page * PAGE_SIZE);
+  const currentHref = buildMediaHref(params, {
+    type: selectedType,
+    page: String(page),
+  });
 
   return (
     <Stack spacing={3}>
@@ -177,7 +183,8 @@ export default async function MediaPage({
         </CardContent>
       </Card>
 
-      <Card variant="outlined">
+      <Card component="form" action={updateMediaRatings} variant="outlined">
+        <input name="returnTo" type="hidden" value={currentHref} />
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -195,6 +202,12 @@ export default async function MediaPage({
             {items.map((item) => (
               <TableRow hover key={item.id}>
                 <TableCell>
+                  <input name="mediaId" type="hidden" value={item.id} />
+                  <input
+                    name={`current:${item.id}`}
+                    type="hidden"
+                    value={item.personalRating ?? ""}
+                  />
                   <Stack spacing={0.5}>
                     <Link
                       href={`/media/${item.id}`}
@@ -237,7 +250,15 @@ export default async function MediaPage({
                   {formatScore(item.computedConsensusScore)}
                 </TableCell>
                 <TableCell align="right">
-                  {item.personalRating ?? "-"}
+                  <TextField
+                    defaultValue={item.personalRating ?? ""}
+                    name={`rating:${item.id}`}
+                    placeholder="-"
+                    size="small"
+                    slotProps={{ htmlInput: { max: 10, min: 0, step: 0.5 } }}
+                    sx={{ width: 86 }}
+                    type="number"
+                  />
                 </TableCell>
                 <TableCell>{item.updatedAt.toLocaleDateString()}</TableCell>
               </TableRow>
@@ -258,58 +279,75 @@ export default async function MediaPage({
                 ? "No items found."
                 : `Showing ${startIndex}-${endIndex} of ${total}`}
             </Typography>
-            {totalPages > 1 ? (
-              <Stack
-                direction="row"
-                spacing={0.75}
-                sx={{
-                  flexWrap: "wrap",
-                  gap: 0.75,
-                  justifyContent: { sm: "flex-end" },
-                }}
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{
+                flexWrap: "wrap",
+                gap: 1,
+                justifyContent: { sm: "flex-end" },
+              }}
+            >
+              <Button
+                disabled={items.length === 0}
+                type="submit"
+                variant="contained"
               >
-                <Button
-                  disabled={page <= 1}
-                  href={buildMediaHref(params, { page: String(page - 1) })}
-                  size="small"
-                  variant="outlined"
+                Save ratings
+              </Button>
+              {totalPages > 1 ? (
+                <Stack
+                  direction="row"
+                  spacing={0.75}
+                  sx={{
+                    flexWrap: "wrap",
+                    gap: 0.75,
+                    justifyContent: { sm: "flex-end" },
+                  }}
                 >
-                  Previous
-                </Button>
-                {getPaginationItems(page, totalPages).map((item, index) =>
-                  item === "ellipsis" ? (
-                    <Button
-                      disabled
-                      key={`${item}-${index}`}
-                      size="small"
-                      sx={{ minWidth: 36 }}
-                      variant="text"
-                    >
-                      ...
-                    </Button>
-                  ) : (
-                    <Button
-                      aria-current={item === page ? "page" : undefined}
-                      href={buildMediaHref(params, { page: String(item) })}
-                      key={item}
-                      size="small"
-                      sx={{ minWidth: 36 }}
-                      variant={item === page ? "contained" : "outlined"}
-                    >
-                      {item}
-                    </Button>
-                  ),
-                )}
-                <Button
-                  disabled={page >= totalPages}
-                  href={buildMediaHref(params, { page: String(page + 1) })}
-                  size="small"
-                  variant="outlined"
-                >
-                  Next
-                </Button>
-              </Stack>
-            ) : null}
+                  <Button
+                    disabled={page <= 1}
+                    href={buildMediaHref(params, { page: String(page - 1) })}
+                    size="small"
+                    variant="outlined"
+                  >
+                    Previous
+                  </Button>
+                  {getPaginationItems(page, totalPages).map((item, index) =>
+                    item === "ellipsis" ? (
+                      <Button
+                        disabled
+                        key={`${item}-${index}`}
+                        size="small"
+                        sx={{ minWidth: 36 }}
+                        variant="text"
+                      >
+                        ...
+                      </Button>
+                    ) : (
+                      <Button
+                        aria-current={item === page ? "page" : undefined}
+                        href={buildMediaHref(params, { page: String(item) })}
+                        key={item}
+                        size="small"
+                        sx={{ minWidth: 36 }}
+                        variant={item === page ? "contained" : "outlined"}
+                      >
+                        {item}
+                      </Button>
+                    ),
+                  )}
+                  <Button
+                    disabled={page >= totalPages}
+                    href={buildMediaHref(params, { page: String(page + 1) })}
+                    size="small"
+                    variant="outlined"
+                  >
+                    Next
+                  </Button>
+                </Stack>
+              ) : null}
+            </Stack>
           </Stack>
         </CardContent>
       </Card>

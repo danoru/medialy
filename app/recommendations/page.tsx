@@ -16,6 +16,7 @@ import { formatMediaType, formatStatus } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Recommendations" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

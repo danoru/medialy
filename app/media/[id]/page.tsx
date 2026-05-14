@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
   Box,
@@ -24,10 +25,26 @@ import { formatMediaType, formatStatus } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+type PageParams = Promise<{ id: string }>;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: PageParams;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const item = await prisma.mediaItem.findUnique({
+    where: { id },
+    select: { title: true },
+  });
+
+  return { title: item?.title ?? "Media Details" };
+}
+
 export default async function MediaDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: PageParams;
 }) {
   const { id } = await params;
   const item = await prisma.mediaItem.findUnique({

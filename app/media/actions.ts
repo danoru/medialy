@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache";
 import { mediaMutationData, upsertTaxonomy } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
-import { mediaFormInputFromFormData } from "@/lib/validation";
+import {
+  mediaFormInputFromFormData,
+  parseOptionalRating,
+} from "@/lib/validation";
 
 export async function createMediaItem(formData: FormData) {
   const input = mediaFormInputFromFormData(formData);
@@ -29,6 +32,34 @@ export async function updateMediaItem(id: string, formData: FormData) {
   revalidatePath("/media");
   revalidatePath(`/media/${id}`);
   redirect(`/media/${id}`);
+}
+
+export async function updateMediaRatings(formData: FormData) {
+  const returnTo = String(formData.get("returnTo") ?? "/media");
+  const ids = formData
+    .getAll("mediaId")
+    .map((value) => String(value))
+    .filter(Boolean);
+
+  for (const id of ids) {
+    const personalRating = parseOptionalRating(formData.get(`rating:${id}`));
+    const currentRating = parseOptionalRating(formData.get(`current:${id}`));
+
+    if (personalRating === currentRating) continue;
+
+    await prisma.mediaItem.update({
+      where: { id },
+      data: { personalRating },
+    });
+    await recomputeMediaScores(id);
+  }
+
+  revalidatePath("/");
+  revalidatePath("/dashboard");
+  revalidatePath("/media");
+  revalidatePath("/recommendations");
+  revalidatePath("/top-lists");
+  redirect(returnTo.startsWith("/media") ? returnTo : "/media");
 }
 
 export async function archiveMediaItem(id: string) {

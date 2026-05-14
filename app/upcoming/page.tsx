@@ -36,6 +36,7 @@ import {
 } from "@/lib/upcoming";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Upcoming" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

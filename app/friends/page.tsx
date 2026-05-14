@@ -24,6 +24,7 @@ import {
 } from "@/lib/media-types";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Friends" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

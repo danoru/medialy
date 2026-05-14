@@ -1,13 +1,27 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Card, CardContent, Stack } from "@mui/material";
 import { updateMediaItem } from "@/app/media/actions";
 import { MediaForm } from "@/components/media/MediaForm";
 import { getMediaItemDTO } from "@/lib/media";
 
+type PageParams = Promise<{ id: string }>;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: PageParams;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const item = await getMediaItemDTO(id);
+
+  return { title: item ? `Edit ${item.title}` : "Edit Media" };
+}
+
 export default async function EditMediaPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: PageParams;
 }) {
   const { id } = await params;
   const item = await getMediaItemDTO(id);

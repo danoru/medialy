@@ -435,10 +435,13 @@ export async function previewMediaImport(
   rows: CsvMediaRow[],
 ): Promise<ImportPreview> {
   const existing = await prisma.mediaItem.findMany({
-    select: { title: true, mediaType: true },
+    select: { title: true, mediaType: true, externalUrl: true },
   });
   const existingKeys = new Set(
     existing.map((item) => normalizeKey(item.title, item.mediaType)),
+  );
+  const existingUrls = new Set(
+    existing.map((item) => item.externalUrl).filter(Boolean),
   );
   const parsed: MediaFormInput[] = [];
   const errors: ImportPreview["errors"] = [];
@@ -449,7 +452,10 @@ export async function previewMediaImport(
     try {
       const input = mediaFormInputFromCsvRow(row);
       parsed.push(input);
-      if (existingKeys.has(normalizeKey(input.title, input.mediaType)))
+      if (
+        (input.externalUrl && existingUrls.has(input.externalUrl)) ||
+        existingKeys.has(normalizeKey(input.title, input.mediaType))
+      )
         updates += 1;
       else creates += 1;
     } catch (error) {
@@ -480,13 +486,7 @@ export async function importMediaRowsWithSource(
 
   for (const [index, input] of rows.entries()) {
     try {
-      const media = await prisma.mediaItem.upsert({
-        where: {
-          title_mediaType: { title: input.title, mediaType: input.mediaType },
-        },
-        update: mediaMutationData(input),
-        create: mediaMutationData(input),
-      });
+      const media = await upsertImportedMedia(input);
       await upsertTaxonomy(media.id, input.genres, input.tags);
       await recomputeMediaScores(media.id);
       importedCount += 1;
@@ -526,29 +526,7 @@ export async function importLetterboxdRows(
 
   for (const [index, input] of rows.entries()) {
     try {
-      const existingByUrl = input.externalUrl
-        ? await prisma.mediaItem.findFirst({
-            where: { externalUrl: input.externalUrl },
-            select: { id: true },
-          })
-        : null;
-      const data = mediaMutationData(input);
-      const media = existingByUrl
-        ? await prisma.mediaItem.update({
-            where: { id: existingByUrl.id },
-            data,
-          })
-        : await prisma.mediaItem.upsert({
-            where: {
-              title_mediaType: {
-                title: input.title,
-                mediaType: input.mediaType,
-              },
-            },
-            update: data,
-            create: data,
-          });
-
+      const media = await upsertImportedMedia(input);
       await upsertTaxonomy(media.id, input.genres, input.tags);
       await recomputeMediaScores(media.id);
       importedCount += 1;
@@ -627,13 +605,7 @@ export async function importJsonExport(
             .filter(Boolean)
             .join(";") ?? "",
       });
-      const media = await prisma.mediaItem.upsert({
-        where: {
-          title_mediaType: { title: input.title, mediaType: input.mediaType },
-        },
-        update: mediaMutationData(input),
-        create: mediaMutationData(input),
-      });
+      const media = await upsertImportedMedia(input);
       await upsertTaxonomy(media.id, input.genres, input.tags);
       await recomputeMediaScores(media.id);
       importedCount += 1;
@@ -666,6 +638,39 @@ export async function importJsonExport(
 
 function formatDate(value: Date | null) {
   return value ? value.toISOString().slice(0, 10) : "";
+}
+
+async function upsertImportedMedia(input: MediaFormInput) {
+  const existing = await findExistingImportedMedia(input);
+  const data = mediaMutationData(input);
+
+  if (existing) {
+    return prisma.mediaItem.update({
+      where: { id: existing.id },
+      data,
+    });
+  }
+
+  return prisma.mediaItem.create({ data });
+}
+
+async function findExistingImportedMedia(input: MediaFormInput) {
+  const candidates = await prisma.mediaItem.findMany({
+    where: { mediaType: input.mediaType },
+    select: { id: true, title: true, mediaType: true, externalUrl: true },
+  });
+  const normalizedKey = normalizeKey(input.title, input.mediaType);
+  const externalUrl = input.externalUrl?.trim();
+
+  return (
+    candidates.find(
+      (item) => externalUrl && item.externalUrl === externalUrl,
+    ) ??
+    candidates.find(
+      (item) => normalizeKey(item.title, item.mediaType) === normalizedKey,
+    ) ??
+    null
+  );
 }
 
 function csvEscape(value: unknown) {

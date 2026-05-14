@@ -9,6 +9,7 @@ import { ImportExportPanel } from "@/components/import-export/ImportExportPanel"
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Import / Export" };
 
 export default async function ImportExportPage() {
   const jobs = await prisma.importJob.findMany({
