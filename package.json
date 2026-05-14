@@ -16,6 +16,7 @@
     "prisma:generate": "prisma generate",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:migrate": "prisma migrate dev",
+    "posters:backfill": "tsx scripts/backfill-posters.ts",
     "ratings:fetch": "node scripts/enrich-ratings.mjs",
     "ratings:recompute": "node scripts/recompute-ratings.mjs",
     "upcoming:fetch": "tsx scripts/fetch-upcoming.ts",
