@@ -1,6 +1,11 @@
-import { ImportStatus } from "@prisma/client";
+import { ImportStatus, type Prisma, type PrismaClient } from "@prisma/client";
 import ExcelJS from "exceljs";
-import { mediaMutationData, upsertTaxonomy } from "@/lib/media";
+import {
+  mediaMutationDataWithUniqueTitle,
+  mediaReleaseYear,
+  mediaTitleKey,
+  upsertTaxonomy,
+} from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
 import type {
@@ -17,9 +22,10 @@ import type {
 import {
   assertExportVersion,
   mediaFormInputFromCsvRow,
-  normalizeKey,
 } from "@/lib/validation";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
+
+type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
 export const MEDIA_IMPORT_FIELDS: Array<{
   key: MediaImportField;
@@ -385,11 +391,13 @@ export async function previewLetterboxdImport(
   initialErrors: ImportPreview["errors"] = [],
 ): Promise<ImportPreview> {
   const existing = await prisma.mediaItem.findMany({
-    select: { title: true, mediaType: true, externalUrl: true },
+    select: {
+      title: true,
+      mediaType: true,
+      externalUrl: true,
+      releaseDate: true,
+    },
   });
-  const existingKeys = new Set(
-    existing.map((item) => normalizeKey(item.title, item.mediaType)),
-  );
   const existingUrls = new Set(
     existing.map((item) => item.externalUrl).filter(Boolean),
   );
@@ -404,7 +412,7 @@ export async function previewLetterboxdImport(
       parsed.push(input);
       if (
         (input.externalUrl && existingUrls.has(input.externalUrl)) ||
-        existingKeys.has(normalizeKey(input.title, input.mediaType))
+        existing.some((item) => isCompatibleTitleMatch(input, item))
       ) {
         updates += 1;
       } else {
@@ -425,11 +433,13 @@ export async function previewMediaImport(
   rows: CsvMediaRow[],
 ): Promise<ImportPreview> {
   const existing = await prisma.mediaItem.findMany({
-    select: { title: true, mediaType: true, externalUrl: true },
+    select: {
+      title: true,
+      mediaType: true,
+      externalUrl: true,
+      releaseDate: true,
+    },
   });
-  const existingKeys = new Set(
-    existing.map((item) => normalizeKey(item.title, item.mediaType)),
-  );
   const existingUrls = new Set(
     existing.map((item) => item.externalUrl).filter(Boolean),
   );
@@ -444,7 +454,7 @@ export async function previewMediaImport(
       parsed.push(input);
       if (
         (input.externalUrl && existingUrls.has(input.externalUrl)) ||
-        existingKeys.has(normalizeKey(input.title, input.mediaType))
+        existing.some((item) => isCompatibleTitleMatch(input, item))
       )
         updates += 1;
       else creates += 1;
@@ -627,36 +637,69 @@ function formatDate(value: Date | null) {
 }
 
 async function upsertImportedMedia(input: MediaFormInput) {
-  const existing = await findExistingImportedMedia(input);
-  const data = mediaMutationData(input);
+  return prisma.$transaction(async (tx) => {
+    const existing = await findExistingImportedMedia(tx, input);
 
-  if (existing) {
-    return prisma.mediaItem.update({
-      where: { id: existing.id },
-      data,
-    });
-  }
+    if (existing) {
+      const data = await mediaMutationDataWithUniqueTitle(
+        tx,
+        input,
+        existing.id,
+      );
+      return tx.mediaItem.update({
+        where: { id: existing.id },
+        data,
+      });
+    }
 
-  return prisma.mediaItem.create({ data });
+    const data = await mediaMutationDataWithUniqueTitle(tx, input);
+    return tx.mediaItem.create({ data });
+  });
 }
 
-async function findExistingImportedMedia(input: MediaFormInput) {
-  const candidates = await prisma.mediaItem.findMany({
+async function findExistingImportedMedia(
+  client: PrismaLike,
+  input: MediaFormInput,
+) {
+  const candidates = await client.mediaItem.findMany({
     where: { mediaType: input.mediaType },
-    select: { id: true, title: true, mediaType: true, externalUrl: true },
+    select: {
+      id: true,
+      title: true,
+      mediaType: true,
+      externalUrl: true,
+      releaseDate: true,
+    },
   });
-  const normalizedKey = normalizeKey(input.title, input.mediaType);
   const externalUrl = input.externalUrl?.trim();
 
   return (
     candidates.find(
       (item) => externalUrl && item.externalUrl === externalUrl,
     ) ??
-    candidates.find(
-      (item) => normalizeKey(item.title, item.mediaType) === normalizedKey,
-    ) ??
+    candidates.find((item) => isCompatibleTitleMatch(input, item)) ??
     null
   );
+}
+
+function isCompatibleTitleMatch(
+  input: MediaFormInput,
+  item: {
+    title: string;
+    mediaType: string;
+    releaseDate?: Date | string | null;
+  },
+) {
+  if (
+    mediaTitleKey(input.title, input.mediaType) !==
+    mediaTitleKey(item.title, item.mediaType)
+  ) {
+    return false;
+  }
+
+  const inputYear = mediaReleaseYear(input.releaseDate);
+  const itemYear = mediaReleaseYear(item.releaseDate);
+  return !inputYear || !itemYear || inputYear === itemYear;
 }
 
 function csvEscape(value: unknown) {

@@ -2,7 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { mediaMutationData, upsertTaxonomy } from "@/lib/media";
+import { Prisma } from "@prisma/client";
+import {
+  findExistingMediaItem,
+  mediaMutationDataWithUniqueTitle,
+  upsertTaxonomy,
+} from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
 import {
@@ -10,28 +15,74 @@ import {
   parseOptionalRating,
 } from "@/lib/validation";
 
-export async function createMediaItem(formData: FormData) {
-  const input = mediaFormInputFromFormData(formData);
-  const media = await prisma.mediaItem.create({
-    data: mediaMutationData(input),
-  });
-  await upsertTaxonomy(media.id, input.genres, input.tags);
-  await recomputeMediaScores(media.id);
-  revalidatePath("/media");
-  redirect(`/media/${media.id}`);
+export type MediaFormActionState = {
+  message: string;
+  severity: "error" | "success";
+  submittedAt: number;
+};
+
+const duplicateMediaState = (): MediaFormActionState => ({
+  message: "Media item already exists.",
+  severity: "error",
+  submittedAt: Date.now(),
+});
+
+export async function createMediaItem(
+  _state: MediaFormActionState,
+  formData: FormData,
+) {
+  try {
+    const input = mediaFormInputFromFormData(formData);
+    const media = await prisma.$transaction(async (tx) => {
+      const existing = await findExistingMediaItem(tx, input);
+      if (existing) return null;
+
+      const data = await mediaMutationDataWithUniqueTitle(tx, input);
+      return tx.mediaItem.create({ data });
+    });
+
+    if (!media) return duplicateMediaState();
+
+    await upsertTaxonomy(media.id, input.genres, input.tags);
+    await recomputeMediaScores(media.id);
+    revalidatePath("/media");
+    redirect(`/media/${media.id}`);
+  } catch (error) {
+    if (isUniqueMediaTitleError(error)) return duplicateMediaState();
+    throw error;
+  }
 }
 
-export async function updateMediaItem(id: string, formData: FormData) {
-  const input = mediaFormInputFromFormData(formData);
-  await prisma.mediaItem.update({
-    where: { id },
-    data: mediaMutationData(input),
-  });
-  await upsertTaxonomy(id, input.genres, input.tags);
-  await recomputeMediaScores(id);
-  revalidatePath("/media");
-  revalidatePath(`/media/${id}`);
-  redirect(`/media/${id}`);
+export async function updateMediaItem(
+  id: string,
+  _state: MediaFormActionState,
+  formData: FormData,
+) {
+  try {
+    const input = mediaFormInputFromFormData(formData);
+    const updated = await prisma.$transaction(async (tx) => {
+      const existing = await findExistingMediaItem(tx, input, id);
+      if (existing) return false;
+
+      const data = await mediaMutationDataWithUniqueTitle(tx, input, id);
+      await tx.mediaItem.update({
+        where: { id },
+        data,
+      });
+      return true;
+    });
+
+    if (!updated) return duplicateMediaState();
+
+    await upsertTaxonomy(id, input.genres, input.tags);
+    await recomputeMediaScores(id);
+    revalidatePath("/media");
+    revalidatePath(`/media/${id}`);
+    redirect(`/media/${id}`);
+  } catch (error) {
+    if (isUniqueMediaTitleError(error)) return duplicateMediaState();
+    throw error;
+  }
 }
 
 export async function updateMediaRatings(formData: FormData) {
@@ -100,4 +151,14 @@ export async function updateNote(
     await prisma.note.delete({ where: { id: noteId } });
   }
   revalidatePath(`/media/${mediaId}`);
+}
+
+function isUniqueMediaTitleError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002" &&
+    Array.isArray(error.meta?.target) &&
+    error.meta.target.includes("title") &&
+    error.meta.target.includes("mediaType")
+  );
 }

@@ -68,7 +68,7 @@ export async function getDashboardData() {
       orderBy: [{ computedPersonalScore: "desc" }, { pairwiseScore: "desc" }],
       take: 10,
     }),
-    getRecommendations(5),
+    getRecommendations(),
     getDataHealthReport(),
     getGenreInsights(),
     prisma.mediaItem.groupBy({
@@ -150,6 +150,17 @@ export async function getDashboardData() {
     ),
   ]);
 
+  const tonightPickStatuses = new Set(["UNTRACKED", "WATCHLIST", "BACKLOG"]);
+  const tonightPicksByMediaType = VISIBLE_MEDIA_TYPES.map((mediaType) => ({
+    mediaType,
+    recommendation:
+      recommendations.find(
+        (recommendation) =>
+          recommendation.media.mediaType === mediaType &&
+          tonightPickStatuses.has(recommendation.media.status),
+      ) ?? null,
+  }));
+
   return {
     totalItems,
     watchlistCount,
@@ -162,7 +173,8 @@ export async function getDashboardData() {
       mediaType: entry.mediaType,
       items: entry.items.map(toMediaItemDTO),
     })),
-    recommendations,
+    recommendations: recommendations.slice(0, 18),
+    tonightPicksByMediaType,
     genreInsights: genreInsights.slice(0, 8),
     mediaTypeCounts: mediaTypeCounts.map((entry) => ({
       mediaType: entry.mediaType,

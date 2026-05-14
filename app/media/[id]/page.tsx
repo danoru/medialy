@@ -194,6 +194,50 @@ export default async function MediaDetailPage({
           <Card variant="outlined">
             <CardContent>
               <Typography sx={{ fontWeight: 700, mb: 2 }} variant="h6">
+                Poster
+              </Typography>
+              <Box
+                sx={{
+                  alignItems: "center",
+                  bgcolor: "background.default",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  display: "flex",
+                  justifyContent: "center",
+                  minHeight: { xs: 260, md: 420 },
+                  overflow: "hidden",
+                }}
+              >
+                {item.posterUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    alt={`${item.title} poster`}
+                    src={item.posterUrl}
+                    style={{
+                      display: "block",
+                      height: "100%",
+                      maxHeight: 560,
+                      objectFit: "cover",
+                      width: "100%",
+                    }}
+                  />
+                ) : (
+                  <Stack spacing={1} sx={{ alignItems: "center", p: 3 }}>
+                    <Typography color="text.secondary" variant="body2">
+                      No poster yet.
+                    </Typography>
+                    <Button href={`/media/${item.id}/edit`} size="small">
+                      Add poster URL
+                    </Button>
+                  </Stack>
+                )}
+              </Box>
+            </CardContent>
+          </Card>
+          <Card sx={{ mt: 2 }} variant="outlined">
+            <CardContent>
+              <Typography sx={{ fontWeight: 700, mb: 2 }} variant="h6">
                 Comparison History
               </Typography>
               <Stack spacing={1.25}>

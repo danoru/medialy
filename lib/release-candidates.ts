@@ -6,7 +6,7 @@ import {
   type ReleaseCandidate,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { mediaMutationData, upsertTaxonomy } from "@/lib/media";
+import { mediaMutationDataWithUniqueTitle, upsertTaxonomy } from "@/lib/media";
 import { splitGenresAndTags, normalizeTagName } from "@/lib/taxonomy";
 
 export type CandidateReason = {
@@ -195,7 +195,7 @@ export async function importReleaseCandidate(id: string) {
       ? MediaStatus.BACKLOG
       : MediaStatus.WATCHLIST;
 
-  const mediaData = mediaMutationData({
+  const mediaInput = {
     title: candidate.title,
     mediaType: candidate.mediaType,
     status,
@@ -207,14 +207,21 @@ export async function importReleaseCandidate(id: string) {
     isFavorite: false,
     genres,
     tags,
-  });
+  };
+  const media = await prisma.$transaction(async (tx) => {
+    const mediaData = await mediaMutationDataWithUniqueTitle(
+      tx,
+      mediaInput,
+      existing?.id,
+    );
 
-  const media = existing
-    ? await prisma.mediaItem.update({
-        where: { id: existing.id },
-        data: mediaData,
-      })
-    : await prisma.mediaItem.create({ data: mediaData });
+    return existing
+      ? tx.mediaItem.update({
+          where: { id: existing.id },
+          data: mediaData,
+        })
+      : tx.mediaItem.create({ data: mediaData });
+  });
 
   await upsertTaxonomy(media.id, genres, tags);
   await prisma.releaseCandidate.update({
@@ -279,12 +286,6 @@ async function findExistingMediaMatch(
   const items = await prisma.mediaItem.findMany({
     where: {
       mediaType: input.mediaType,
-      OR: [
-        input.externalUrl ? { externalUrl: input.externalUrl } : undefined,
-        { title: { equals: input.title } },
-      ].filter(Boolean) as Array<
-        { externalUrl: string } | { title: { equals: string } }
-      >,
     },
     select: {
       id: true,

@@ -45,6 +45,14 @@ type DashboardData = {
     score: number;
     confidence: number;
   }>;
+  tonightPicksByMediaType: Array<{
+    mediaType: MediaType;
+    recommendation: {
+      media: MediaItemDTO;
+      score: number;
+      confidence: number;
+    } | null;
+  }>;
   genreInsights: Array<{
     name: string;
     count: number;
@@ -73,8 +81,19 @@ type DashboardData = {
 
 const dashboardMediaTypes: MediaType[] = ["MOVIE", "TV_SHOW", "VIDEO_GAME"];
 
+type DashboardRecommendation = DashboardData["recommendations"][number];
+
 export function DashboardClient({ data }: { data: DashboardData }) {
+  const initialTonightPickType =
+    dashboardMediaTypes.find((mediaType) =>
+      data.tonightPicksByMediaType.some(
+        (entry) => entry.mediaType === mediaType && entry.recommendation,
+      ),
+    ) ?? "MOVIE";
   const [topMediaType, setTopMediaType] = useState<MediaType>("MOVIE");
+  const [tonightPickType, setTonightPickType] = useState<MediaType>(
+    initialTonightPickType,
+  );
   const [upcomingMediaType, setUpcomingMediaType] =
     useState<MediaType>("MOVIE");
 
@@ -93,7 +112,34 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     [data.upcomingItemsByMediaType, upcomingMediaType],
   );
 
-  const heroRecommendation = data.recommendations[0];
+  const tonightPicksByType = useMemo(() => {
+    const picks = new Map<MediaType, DashboardRecommendation>();
+
+    for (const entry of data.tonightPicksByMediaType) {
+      if (
+        !entry.recommendation ||
+        !dashboardMediaTypes.includes(entry.mediaType)
+      ) {
+        continue;
+      }
+
+      picks.set(entry.mediaType, entry.recommendation);
+    }
+
+    return picks;
+  }, [data.tonightPicksByMediaType]);
+
+  const heroRecommendation = tonightPicksByType.get(tonightPickType);
+  const recommendationRailItems = data.recommendations
+    .filter(
+      (recommendation) =>
+        recommendation.media.id !== heroRecommendation?.media.id,
+    )
+    .slice(0, 5);
+  const tonightPickCounts = dashboardMediaTypes.map((mediaType) => ({
+    mediaType,
+    count: tonightPicksByType.has(mediaType) ? 1 : 0,
+  }));
 
   return (
     <Stack spacing={1.25}>
@@ -178,9 +224,12 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <Box sx={{ gridArea: "pick", minWidth: 0 }}>
           {heroRecommendation ? (
             <TonightPickCard
+              counts={tonightPickCounts}
               confidence={heroRecommendation.confidence}
               item={heroRecommendation.media}
+              onTypeChange={setTonightPickType}
               score={heroRecommendation.score}
+              value={tonightPickType}
             />
           ) : (
             <DashboardCard title="Tonight's Pick">
@@ -202,7 +251,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             title="Top Recommendations For You"
           >
             <MediaRail>
-              {data.recommendations.slice(0, 5).map((recommendation) => (
+              {recommendationRailItems.map((recommendation) => (
                 <PosterCard
                   href={`/media/${recommendation.media.id}`}
                   item={recommendation.media}
@@ -351,22 +400,38 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 }
 
 function TonightPickCard({
+  counts,
   confidence,
   item,
+  onTypeChange,
   score,
+  value,
 }: {
+  counts: Array<{ mediaType: MediaType; count: number }>;
   confidence: number;
   item: MediaItemDTO;
+  onTypeChange: (value: MediaType) => void;
   score: number;
+  value: MediaType;
 }) {
   return (
     <DashboardSection accent={noirTokens.accent.amber} title="Tonight's Pick">
+      <MediaTypeTabs
+        counts={counts}
+        disabledMediaTypes={counts
+          .filter((entry) => entry.count === 0)
+          .map((entry) => entry.mediaType)}
+        onChange={onTypeChange}
+        showCounts={false}
+        value={value}
+      />
       <Link
         href={`/media/${item.id}`}
         style={{
           color: "inherit",
           display: "block",
-          height: "100%",
+          height: "calc(100% - 38px)",
+          marginTop: 8,
           textDecoration: "none",
         }}
       >
@@ -426,7 +491,7 @@ function TonightPickCard({
               <ScoreBadge label="Match" value={`${Math.round(score)}%`} />
               <ScoreBadge
                 label="Confidence"
-                value={`${Math.round(confidence)}%`}
+                value={`${Math.round(confidence * 100)}%`}
               />
               {item.genres.slice(0, 2).map((genre) => (
                 <Chip
@@ -602,16 +667,21 @@ function GenreBarChart({
 
 function MediaTypeTabs({
   counts,
+  disabledMediaTypes = [],
   onChange,
+  showCounts = true,
   value,
 }: {
   counts: Array<{ mediaType: MediaType; count: number }>;
+  disabledMediaTypes?: MediaType[];
   onChange: (value: MediaType) => void;
+  showCounts?: boolean;
   value: MediaType;
 }) {
   const countByType = new Map(
     counts.map((entry) => [entry.mediaType, entry.count]),
   );
+  const disabledTypes = new Set(disabledMediaTypes);
 
   return (
     <ToggleButtonGroup
@@ -645,18 +715,24 @@ function MediaTypeTabs({
       value={value}
     >
       {dashboardMediaTypes.map((mediaType) => (
-        <ToggleButton key={mediaType} value={mediaType}>
+        <ToggleButton
+          disabled={disabledTypes.has(mediaType)}
+          key={mediaType}
+          value={mediaType}
+        >
           {mediaTypeIcon(mediaType)}
           <Typography component="span" sx={{ fontSize: 11, fontWeight: 800 }}>
             {shortMediaTypeLabel(mediaType)}
           </Typography>
-          <Typography
-            color="text.secondary"
-            component="span"
-            sx={{ fontSize: 10 }}
-          >
-            {countByType.get(mediaType) ?? 0}
-          </Typography>
+          {showCounts ? (
+            <Typography
+              color="text.secondary"
+              component="span"
+              sx={{ fontSize: 10 }}
+            >
+              {countByType.get(mediaType) ?? 0}
+            </Typography>
+          ) : null}
         </ToggleButton>
       ))}
     </ToggleButtonGroup>

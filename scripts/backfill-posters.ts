@@ -1,4 +1,5 @@
 import { MediaType, PrismaClient } from "@prisma/client";
+import "dotenv/config";
 
 type MediaItemRow = {
   id: string;
@@ -21,12 +22,16 @@ const limitArg = process.argv.find((arg) => arg.startsWith("--limit="));
 const limit = limitArg
   ? Number.parseInt(limitArg.split("=")[1] ?? "", 10)
   : null;
+const mediaTypes = parseMediaTypes(process.argv.slice(2));
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
 
 async function main() {
   const items = await prisma.mediaItem.findMany({
-    where: overwrite ? {} : { posterUrl: null },
+    where: {
+      ...(overwrite ? {} : { posterUrl: null }),
+      ...(mediaTypes ? { mediaType: { in: [...mediaTypes] } } : {}),
+    },
     select: {
       id: true,
       title: true,
@@ -256,13 +261,15 @@ async function posterFromRawg(item: MediaItemRow): Promise<PosterMatch | null> {
   const url = new URL("https://api.rawg.io/api/games");
   url.searchParams.set("key", process.env.RAWG_API_KEY);
   url.searchParams.set("search", item.title);
+  url.searchParams.set("search_precise", "true");
   url.searchParams.set("page_size", "10");
 
   const response = await fetch(url);
   if (!response.ok) return null;
 
   const normalizedTitle = normalizeTitle(item.title);
-  const matches = arrayValue(await response.json())
+  const json = await response.json();
+  const matches = arrayValue(recordValue(json).results)
     .map((entry) => entry)
     .filter(
       (game) =>
@@ -336,6 +343,53 @@ function stringValue(value: unknown) {
 
 function arrayValue(value: unknown) {
   return Array.isArray(value) ? value : [];
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function parseMediaTypes(argv: string[]) {
+  const rawValues = argv.flatMap((arg, index) => {
+    if (arg === "--game" || arg === "--games" || arg === "-game") {
+      return ["game"];
+    }
+    if (arg === "--movie" || arg === "--movies") {
+      return ["movie"];
+    }
+    if (arg === "--tv" || arg === "--show" || arg === "--shows") {
+      return ["tv"];
+    }
+    if (arg === "--type" || arg === "--types") {
+      return argv[index + 1] ? [argv[index + 1]] : [];
+    }
+    if (arg.startsWith("--type=")) {
+      return [arg.split("=")[1] ?? ""];
+    }
+    if (arg.startsWith("--types=")) {
+      return [arg.split("=")[1] ?? ""];
+    }
+    return [];
+  });
+
+  const parsed = rawValues
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean)
+    .map((value) => {
+      if (["game", "games", "video_game", "video-game"].includes(value)) {
+        return MediaType.VIDEO_GAME;
+      }
+      if (["movie", "movies"].includes(value)) return MediaType.MOVIE;
+      if (["tv", "tv_show", "tv-show", "show", "shows"].includes(value)) {
+        return MediaType.TV_SHOW;
+      }
+      throw new Error(`Invalid media type filter: ${value}`);
+    });
+
+  return parsed.length > 0 ? new Set(parsed) : null;
 }
 
 main()

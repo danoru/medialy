@@ -4,15 +4,35 @@ import { toMediaItemDTO } from "@/lib/media";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 import type { Recommendation, RecommendationReason } from "@/lib/types";
 import { GENRE_WEIGHT, TAG_WEIGHT } from "@/lib/scoring/taxonomySimilarity";
+import { startOfToday } from "@/lib/upcoming";
+import type { MediaStatus, Prisma } from "@prisma/client";
+
+export const EXCLUDED_RECOMMENDATION_STATUSES: MediaStatus[] = [
+  "IN_PROGRESS",
+  "COMPLETED",
+];
+
+const RECOMMENDATION_STATUS_SIGNALS: Record<MediaStatus, number> = {
+  UNTRACKED: 100,
+  WATCHLIST: 85,
+  BACKLOG: 75,
+  PAUSED: 20,
+  DROPPED: 5,
+  IN_PROGRESS: 0,
+  COMPLETED: 0,
+};
 
 export async function getRecommendations(
   limit?: number,
 ): Promise<Recommendation[]> {
+  const availableReleaseDateWhere = getRecommendationReleaseDateWhere();
+
   const items = await prisma.mediaItem.findMany({
     where: {
       isArchived: false,
       mediaType: visibleMediaTypeFilter(),
-      status: { notIn: ["COMPLETED", "DROPPED"] },
+      status: { notIn: EXCLUDED_RECOMMENDATION_STATUSES },
+      ...availableReleaseDateWhere,
     },
     include: {
       genres: { include: { genre: true } },
@@ -35,8 +55,7 @@ export async function getRecommendations(
         0,
       );
       const friendAffinity = averageFriendBoost(item.friendRatings);
-      const statusSignal =
-        item.status === "WATCHLIST" ? 100 : item.status === "BACKLOG" ? 70 : 35;
+      const statusSignal = recommendationStatusSignal(item.status);
       const upcomingSignal =
         item.releaseDate && item.releaseDate.getTime() >= Date.now()
           ? 100
@@ -71,6 +90,25 @@ export async function getRecommendations(
   return typeof limit === "number"
     ? recommendations.slice(0, limit)
     : recommendations;
+}
+
+export function isRecommendationEligibleStatus(status: MediaStatus) {
+  return !EXCLUDED_RECOMMENDATION_STATUSES.includes(status);
+}
+
+export function recommendationStatusSignal(status: MediaStatus) {
+  return RECOMMENDATION_STATUS_SIGNALS[status];
+}
+
+export function getRecommendationReleaseDateWhere(
+  now = new Date(),
+): Prisma.MediaItemWhereInput {
+  const tomorrow = startOfToday(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return {
+    OR: [{ releaseDate: null }, { releaseDate: { lt: tomorrow } }],
+  };
 }
 
 async function getAffinityMaps() {

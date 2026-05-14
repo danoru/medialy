@@ -1,16 +1,18 @@
 "use client";
 
 import {
+  Alert,
   Autocomplete,
   Button,
   Checkbox,
   FormControlLabel,
   Grid,
   MenuItem,
+  Snackbar,
   Stack,
   TextField,
 } from "@mui/material";
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { MediaStatus, type MediaType, type TagStatus } from "@prisma/client";
 import type { MediaItemDTO } from "@/lib/types";
 import { formatMediaType, formatStatus } from "@/lib/format";
@@ -22,17 +24,37 @@ type TagOption = {
   status: TagStatus;
 };
 
+type MediaFormActionState = {
+  message: string;
+  severity: "error" | "success";
+  submittedAt: number;
+};
+
+const initialActionState: MediaFormActionState = {
+  message: "",
+  severity: "error",
+  submittedAt: 0,
+};
+
 export function MediaForm({
   action,
   item,
   submitLabel,
   tagOptions = [],
 }: {
-  action: (formData: FormData) => void | Promise<void>;
+  action: (
+    state: MediaFormActionState,
+    formData: FormData,
+  ) => MediaFormActionState | Promise<MediaFormActionState>;
   item?: MediaItemDTO;
   submitLabel: string;
   tagOptions?: TagOption[];
 }) {
+  const [actionState, formAction, isPending] = useActionState(
+    action,
+    initialActionState,
+  );
+  const [dismissedSubmission, setDismissedSubmission] = useState(0);
   const [mediaType, setMediaType] = useState<MediaType>(
     item?.mediaType ?? "MOVIE",
   );
@@ -51,8 +73,12 @@ export function MediaForm({
     [tagOptions],
   );
 
+  const snackbarOpen =
+    actionState.submittedAt > 0 &&
+    actionState.submittedAt !== dismissedSubmission;
+
   return (
-    <form action={action}>
+    <form action={formAction}>
       {genres.map((genre) => (
         <input key={genre} name="genres" type="hidden" value={genre} />
       ))}
@@ -221,6 +247,7 @@ export function MediaForm({
           label="Favorite"
         />
         <Button
+          disabled={isPending}
           sx={{ alignSelf: "flex-start" }}
           type="submit"
           variant="contained"
@@ -228,6 +255,20 @@ export function MediaForm({
           {submitLabel}
         </Button>
       </Stack>
+      <Snackbar
+        anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
+        autoHideDuration={4000}
+        onClose={() => setDismissedSubmission(actionState.submittedAt)}
+        open={snackbarOpen}
+      >
+        <Alert
+          onClose={() => setDismissedSubmission(actionState.submittedAt)}
+          severity={actionState.severity}
+          variant="filled"
+        >
+          {actionState.message}
+        </Alert>
+      </Snackbar>
     </form>
   );
 }
