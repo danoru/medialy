@@ -19,7 +19,8 @@
     "ratings:fetch": "node scripts/enrich-ratings.mjs",
     "ratings:recompute": "node scripts/recompute-ratings.mjs",
     "upcoming:fetch": "tsx scripts/fetch-upcoming.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@emotion/cache": "11.14.0",

@@ -2,43 +2,76 @@
 
 import { alpha } from "@mui/material/styles";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { noirTokens } from "@/components/cinematic/CinematicPrimitives";
 
 const theme = createTheme({
   palette: {
     mode: "dark",
     primary: {
-      main: "#7c5cff",
+      main: noirTokens.accent.purple,
     },
     secondary: {
-      main: "#25d0b2",
+      main: noirTokens.accent.blue,
     },
     background: {
-      default: "#07111d",
-      paper: "#101b2a",
+      default: noirTokens.background.default,
+      paper: noirTokens.background.panel,
     },
     success: {
-      main: "#55d66b",
+      main: noirTokens.accent.emerald,
     },
     warning: {
-      main: "#ffb13d",
+      main: noirTokens.accent.amber,
     },
     info: {
-      main: "#4fa3ff",
+      main: noirTokens.accent.blue,
+    },
+    text: {
+      primary: noirTokens.text.primary,
+      secondary: noirTokens.text.muted,
     },
   },
   shape: {
-    borderRadius: 8,
+    borderRadius: 6,
   },
   typography: {
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    h1: { fontWeight: 900, letterSpacing: 0 },
+    h2: { fontWeight: 900, letterSpacing: 0 },
+    h3: { fontWeight: 900, letterSpacing: 0 },
+    h4: { fontWeight: 850, letterSpacing: 0 },
+    h5: { fontWeight: 850, letterSpacing: 0 },
+    h6: { fontWeight: 800, letterSpacing: 0 },
+    button: {
+      fontWeight: 800,
+      letterSpacing: 0,
+      textTransform: "none",
+    },
   },
   components: {
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          borderRadius: 6,
+          minHeight: 30,
+          paddingBottom: 4,
+          paddingTop: 4,
+        },
+      },
+    },
     MuiCssBaseline: {
       styleOverrides: {
+        "::selection": {
+          backgroundColor: alpha(noirTokens.accent.purple, 0.34),
+        },
+        html: {
+          background: noirTokens.background.default,
+        },
         body: {
           background:
-            "radial-gradient(circle at 20% 0%, rgba(41, 112, 255, 0.18), transparent 28rem), radial-gradient(circle at 85% 8%, rgba(124, 92, 255, 0.16), transparent 30rem), #07111d",
+            "radial-gradient(circle at 18% -8%, rgba(56, 189, 248, 0.18), transparent 30rem), radial-gradient(circle at 82% 4%, rgba(139, 92, 246, 0.18), transparent 34rem), linear-gradient(180deg, #0B1020 0%, #080B12 42%, #080B12 100%)",
+          minHeight: "100vh",
         },
         "*": {
           scrollbarColor: `${alpha("#9fb4d0", 0.35)} transparent`,
@@ -49,18 +82,20 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           background:
-            "linear-gradient(180deg, rgba(20, 35, 54, 0.88), rgba(12, 24, 38, 0.88))",
-          borderColor: alpha("#9fb4d0", 0.18),
-          boxShadow: `inset 0 1px 0 ${alpha("#ffffff", 0.04)}, 0 18px 50px ${alpha("#000000", 0.22)}`,
-          backdropFilter: "blur(18px)",
+            "linear-gradient(145deg, rgba(17, 24, 39, 0.92), rgba(8, 11, 18, 0.9))",
+          borderColor: alpha("#bfdbfe", 0.1),
+          boxShadow: `inset 0 1px 0 ${alpha("#ffffff", 0.04)}, 0 12px 38px ${alpha("#000000", 0.3)}`,
         },
       },
     },
     MuiChip: {
       styleOverrides: {
         root: {
-          borderColor: alpha("#9fb4d0", 0.22),
-          backgroundColor: alpha("#9fb4d0", 0.1),
+          borderColor: alpha("#bfdbfe", 0.18),
+          backgroundColor: alpha("#bfdbfe", 0.08),
+          borderRadius: 5,
+          height: 22,
+          fontWeight: 700,
         },
       },
     },
@@ -69,7 +104,7 @@ const theme = createTheme({
         root: {
           height: 7,
           borderRadius: 999,
-          backgroundColor: alpha("#9fb4d0", 0.14),
+          backgroundColor: alpha("#bfdbfe", 0.12),
         },
         bar: {
           borderRadius: 999,
