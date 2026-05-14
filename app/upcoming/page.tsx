@@ -16,11 +16,10 @@ import Link from "next/link";
 import { ReleaseCandidateStatus, type MediaType } from "@prisma/client";
 import {
   approveReleaseCandidate,
-  clearUpcomingDate,
+  clearReleaseDate,
   ignoreReleaseCandidate,
   importApprovedReleaseCandidate,
   rejectReleaseCandidate,
-  setUpcomingAsReleaseDate,
 } from "@/app/upcoming/actions";
 import { prisma } from "@/lib/prisma";
 import { formatMediaType, formatStatus } from "@/lib/format";
@@ -55,24 +54,29 @@ export default async function UpcomingPage({
       where: {
         isArchived: false,
         mediaType: selectedType,
-        upcomingDate: { not: null },
+        releaseDate: { not: null },
       },
       include: {
         genres: { include: { genre: true } },
         tags: { include: { tag: true } },
       },
-      orderBy: [{ upcomingDate: "asc" }, { title: "asc" }],
+      orderBy: [{ releaseDate: "asc" }, { title: "asc" }],
     }),
     prisma.releaseCandidate.findMany({
       where: {
         mediaType: visibleMediaTypeFilter(),
         status: {
-          in: [ReleaseCandidateStatus.PENDING, ReleaseCandidateStatus.APPROVED],
+          in: [
+            ReleaseCandidateStatus.PENDING,
+            ReleaseCandidateStatus.APPROVED,
+            ReleaseCandidateStatus.IGNORED,
+          ],
         },
       },
       orderBy: [
+        { status: "asc" },
         { finalScore: "desc" },
-        { upcomingDate: "asc" },
+        { releaseDate: "asc" },
         { title: "asc" },
       ],
     }),
@@ -176,7 +180,7 @@ function CandidateQueue({
               Upcoming Candidates
             </Typography>
             <Typography color="text.secondary" variant="body2">
-              Fetched releases staged for review before they enter
+              Fetched releases staged or auto-muted before they enter
               recommendations.
             </Typography>
           </Box>
@@ -267,7 +271,6 @@ function CandidateRow({ candidate }: { candidate: ReleaseCandidateItem }) {
         <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.6, mt: 0.8 }}>
           <Chip
             label={
-              candidate.upcomingDate?.toLocaleDateString() ??
               candidate.releaseDate?.toLocaleDateString() ??
               "Date unknown"
             }
@@ -290,7 +293,7 @@ function CandidateRow({ candidate }: { candidate: ReleaseCandidateItem }) {
         direction="row"
         sx={{ flexWrap: "wrap", gap: 0.75, justifyContent: { lg: "flex-end" } }}
       >
-        {candidate.status === ReleaseCandidateStatus.PENDING ? (
+        {candidate.status !== ReleaseCandidateStatus.APPROVED ? (
           <form action={approveReleaseCandidate.bind(null, candidate.id)}>
             <Button size="small" type="submit" variant="outlined">
               Approve
@@ -375,7 +378,7 @@ function ReleaseSection({
                 showReviewActions={showReviewActions}
                 status={item.status}
                 title={item.title}
-                upcomingDate={item.upcomingDate}
+                releaseDate={item.releaseDate}
               />
             ))}
           </Stack>
@@ -414,7 +417,7 @@ function ReleaseRow({
   showReviewActions = false,
   status,
   title,
-  upcomingDate,
+  releaseDate,
 }: {
   genres: string[];
   id: string;
@@ -423,7 +426,7 @@ function ReleaseRow({
   showReviewActions?: boolean;
   status: string;
   title: string;
-  upcomingDate: Date | null;
+  releaseDate: Date | null;
 }) {
   return (
     <Stack
@@ -475,15 +478,15 @@ function ReleaseRow({
             sx={{ whiteSpace: "nowrap" }}
             variant="body2"
           >
-            {upcomingDate ? upcomingDate.toLocaleDateString() : "-"}
+            {releaseDate ? releaseDate.toLocaleDateString() : "-"}
           </Typography>
-          {upcomingDate ? (
+          {releaseDate ? (
             <Typography
               color="text.secondary"
               sx={{ whiteSpace: "nowrap" }}
               variant="caption"
             >
-              {formatUpcomingRelativeLabel(upcomingDate, now)}
+              {formatUpcomingRelativeLabel(releaseDate, now)}
             </Typography>
           ) : null}
         </Box>
@@ -498,28 +501,11 @@ function ReleaseRow({
             Edit
           </Button>
           {showReviewActions ? (
-            <>
-              <form action={setUpcomingAsReleaseDate.bind(null, id)}>
-                <Button
-                  color="success"
-                  size="small"
-                  type="submit"
-                  variant="outlined"
-                >
-                  Set released
-                </Button>
-              </form>
-              <form action={clearUpcomingDate.bind(null, id)}>
-                <Button
-                  color="warning"
-                  size="small"
-                  type="submit"
-                  variant="outlined"
-                >
-                  Clear date
-                </Button>
-              </form>
-            </>
+            <form action={clearReleaseDate.bind(null, id)}>
+              <Button color="warning" size="small" type="submit" variant="outlined">
+                Clear date
+              </Button>
+            </form>
           ) : null}
         </Stack>
       </Stack>

@@ -23,7 +23,6 @@ export type ReleaseCandidateInput = {
   description?: string | null;
   posterUrl?: string | null;
   releaseDate?: Date | null;
-  upcomingDate?: Date | null;
   genres?: string[];
   tags?: string[];
   companies?: string[];
@@ -61,7 +60,6 @@ export async function upsertReleaseCandidate(input: ReleaseCandidateInput) {
     description: input.description || null,
     posterUrl: input.posterUrl || null,
     releaseDate: input.releaseDate ?? null,
-    upcomingDate: input.upcomingDate ?? input.releaseDate ?? null,
     genresJson: stringifyList(taxonomy.genres),
     tagsJson: stringifyList(taxonomy.tags),
     companiesJson: stringifyList(input.companies),
@@ -139,10 +137,8 @@ export async function scoreReleaseCandidate(
   const confidenceScore = confidenceSignal(input);
   pushReason(reasons, "Source confidence", confidenceScore);
 
-  const releaseBoost = upcomingBoost(
-    input.upcomingDate ?? input.releaseDate ?? null,
-  );
-  pushReason(reasons, "Upcoming soon", releaseBoost);
+  const releaseBoost = upcomingBoost(input.releaseDate ?? null);
+  pushReason(reasons, "Release soon", releaseBoost);
 
   const duplicatePenalty = duplicate ? 100 : 0;
   if (duplicatePenalty)
@@ -193,7 +189,6 @@ export async function importReleaseCandidate(id: string) {
     externalId: candidate.externalId,
     externalUrl: candidate.externalUrl,
     releaseDate: candidate.releaseDate,
-    upcomingDate: candidate.upcomingDate,
   });
   const status =
     candidate.mediaType === MediaType.VIDEO_GAME
@@ -206,7 +201,6 @@ export async function importReleaseCandidate(id: string) {
     status,
     description: candidate.description ?? undefined,
     releaseDate: candidate.releaseDate,
-    upcomingDate: candidate.upcomingDate,
     externalUrl: candidate.externalUrl ?? undefined,
     metadataJson: JSON.stringify(metadata),
     personalRating: null,
@@ -279,7 +273,6 @@ async function findExistingMediaMatch(
     | "externalId"
     | "externalUrl"
     | "releaseDate"
-    | "upcomingDate"
   >,
 ) {
   const normalizedTitle = normalizeTitle(input.title);
@@ -297,14 +290,11 @@ async function findExistingMediaMatch(
       id: true,
       title: true,
       releaseDate: true,
-      upcomingDate: true,
       metadataJson: true,
     },
   });
 
-  const inputYear = yearFromDate(
-    input.releaseDate ?? input.upcomingDate ?? null,
-  );
+  const inputYear = yearFromDate(input.releaseDate ?? null);
   return (
     items.find((item) => {
       if (
@@ -316,9 +306,7 @@ async function findExistingMediaMatch(
       )
         return true;
       if (normalizeTitle(item.title) !== normalizedTitle) return false;
-      const itemYear = yearFromDate(
-        item.releaseDate ?? item.upcomingDate ?? null,
-      );
+      const itemYear = yearFromDate(item.releaseDate ?? null);
       return !inputYear || !itemYear || inputYear === itemYear;
     }) ?? null
   );
@@ -401,7 +389,7 @@ function qualitySignal(input: ReleaseCandidateInput) {
   let score = 0;
   if (input.description) score += 5;
   if (input.posterUrl) score += 5;
-  if (input.upcomingDate || input.releaseDate) score += 5;
+  if (input.releaseDate) score += 5;
   if (input.genres?.length) score += 5;
   return score;
 }
@@ -414,7 +402,7 @@ function confidenceSignal(input: ReleaseCandidateInput) {
     input.externalSource === ExternalReleaseSource.IGDB
   )
     score += 6;
-  if (input.upcomingDate || input.releaseDate) score += 4;
+  if (input.releaseDate) score += 4;
   return clamp(score, 0, 20);
 }
 

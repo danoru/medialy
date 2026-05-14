@@ -68,11 +68,11 @@ const booleanFields = new Map([
 const dateFields = new Map([
   [
     "MediaItem",
-    ["releaseDate", "upcomingDate", "createdAt", "updatedAt"],
+    ["releaseDate", "createdAt", "updatedAt"],
   ],
   [
     "ReleaseCandidate",
-    ["releaseDate", "upcomingDate", "fetchedAt", "createdAt", "updatedAt"],
+    ["releaseDate", "fetchedAt", "createdAt", "updatedAt"],
   ],
   ["PairwiseComparison", ["createdAt"]],
   ["CustomList", ["createdAt", "updatedAt"]],

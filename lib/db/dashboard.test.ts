@@ -11,13 +11,13 @@ describe("dashboard upcoming query", () => {
     expect(getDashboardUpcomingWhere(today)).toEqual({
       isArchived: false,
       mediaType: { in: ["MOVIE", "TV_SHOW", "VIDEO_GAME"] },
-      upcomingDate: { gte: today },
+      releaseDate: { gte: today },
     });
   });
 
   it("sorts upcoming dashboard items by date, then title", () => {
     expect(dashboardUpcomingOrderBy).toEqual([
-      { upcomingDate: "asc" },
+      { releaseDate: "asc" },
       { title: "asc" },
     ]);
   });

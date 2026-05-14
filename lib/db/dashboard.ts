@@ -13,12 +13,12 @@ export function getDashboardUpcomingWhere(
   return {
     isArchived: false,
     mediaType: visibleMediaTypeFilter(),
-    upcomingDate: { gte: today },
+    releaseDate: { gte: today },
   };
 }
 
 export const dashboardUpcomingOrderBy = [
-  { upcomingDate: "asc" },
+  { releaseDate: "asc" },
   { title: "asc" },
 ] satisfies Prisma.MediaItemOrderByWithRelationInput[];
 

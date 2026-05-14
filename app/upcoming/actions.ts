@@ -22,31 +22,19 @@ function revalidateCandidateChange() {
   revalidatePath("/media");
 }
 
-export async function setUpcomingAsReleaseDate(id: string) {
+export async function clearReleaseDate(id: string) {
   const item = await prisma.mediaItem.findUnique({
     where: { id },
-    select: { upcomingDate: true },
+    select: { releaseDate: true },
   });
 
-  if (!item?.upcomingDate) {
+  if (!item?.releaseDate) {
     return;
   }
 
   await prisma.mediaItem.update({
     where: { id },
-    data: {
-      releaseDate: item.upcomingDate,
-      upcomingDate: null,
-    },
-  });
-
-  revalidateUpcomingChange(id);
-}
-
-export async function clearUpcomingDate(id: string) {
-  await prisma.mediaItem.update({
-    where: { id },
-    data: { upcomingDate: null },
+    data: { releaseDate: null },
   });
 
   revalidateUpcomingChange(id);

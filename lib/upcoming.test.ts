@@ -6,7 +6,7 @@ import {
 } from "@/lib/upcoming";
 
 function datedItem(title: string, date: string) {
-  return { title, upcomingDate: new Date(`${date}T12:00:00`) };
+  return { title, releaseDate: new Date(`${date}T12:00:00`) };
 }
 
 describe("upcoming grouping", () => {

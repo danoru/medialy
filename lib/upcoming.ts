@@ -1,6 +1,6 @@
 export type UpcomingDatedItem = {
   title: string;
-  upcomingDate: Date | string | null;
+  releaseDate: Date | string | null;
 };
 
 export type UpcomingGroups<T extends UpcomingDatedItem> = {
@@ -51,8 +51,8 @@ export function formatUpcomingRelativeLabel(
 export function sortUpcomingItems<T extends UpcomingDatedItem>(items: T[]) {
   return [...items].sort((a, b) => {
     const dateCompare =
-      new Date(a.upcomingDate ?? 0).getTime() -
-      new Date(b.upcomingDate ?? 0).getTime();
+      new Date(a.releaseDate ?? 0).getTime() -
+      new Date(b.releaseDate ?? 0).getTime();
 
     if (dateCompare !== 0) {
       return dateCompare;
@@ -73,11 +73,11 @@ export function groupUpcomingItems<T extends UpcomingDatedItem>(
   };
 
   for (const item of items) {
-    if (!item.upcomingDate) {
+    if (!item.releaseDate) {
       continue;
     }
 
-    const dayDelta = daysFromToday(item.upcomingDate, now);
+    const dayDelta = daysFromToday(item.releaseDate, now);
 
     if (dayDelta < 0) {
       groups.needsReview.push(item);

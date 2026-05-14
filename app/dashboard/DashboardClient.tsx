@@ -817,13 +817,11 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
       </Box>
       <Box sx={{ minWidth: 86, textAlign: "right" }}>
         <Typography color="text.secondary" sx={{ fontSize: 11.5 }}>
-          {item.upcomingDate
-            ? new Date(item.upcomingDate).toLocaleDateString()
-            : "-"}
+          {item.releaseDate ? new Date(item.releaseDate).toLocaleDateString() : "-"}
         </Typography>
-        {item.upcomingDate ? (
+        {item.releaseDate ? (
           <Typography color="text.secondary" sx={{ fontSize: 10.5 }}>
-            {formatUpcomingRelativeLabel(item.upcomingDate)}
+            {formatUpcomingRelativeLabel(item.releaseDate)}
           </Typography>
         ) : null}
       </Box>

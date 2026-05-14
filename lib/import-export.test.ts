@@ -14,8 +14,8 @@ import { mediaFormInputFromCsvRow } from "@/lib/validation";
 describe("media csv import", () => {
   it("parses genres and tags from semicolon-separated columns", () => {
     const [row] = parseMediaCsv(
-      "title,mediaType,status,releaseDate,upcomingDate,personalRating,genres,tags,description,externalUrl\n" +
-        "Heat,MOVIE,WATCHLIST,1995-12-15,,9,Crime;Drama,heist;rewatchable,Classic,http://example.test",
+      "title,mediaType,status,releaseDate,personalRating,genres,tags,description,externalUrl\n" +
+        "Heat,MOVIE,WATCHLIST,1995-12-15,9,Crime;Drama,heist;rewatchable,Classic,http://example.test",
     );
     const input = mediaFormInputFromCsvRow(row);
 

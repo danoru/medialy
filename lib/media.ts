@@ -96,7 +96,6 @@ export function mediaMutationData(input: MediaFormInput) {
     status: input.status,
     description: input.description || null,
     releaseDate: input.releaseDate,
-    upcomingDate: input.upcomingDate,
     externalUrl: input.externalUrl || null,
     metadataJson: input.metadataJson || null,
     personalRating: input.personalRating,

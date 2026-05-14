@@ -14,7 +14,6 @@ export type MediaItemDTO = {
   status: MediaStatus;
   description?: string | null;
   releaseDate?: Date | string | null;
-  upcomingDate?: Date | string | null;
   posterUrl?: string | null;
   externalUrl?: string | null;
   metadataJson?: string | null;
@@ -40,7 +39,6 @@ export type MediaFormInput = {
   status: MediaStatus;
   description?: string;
   releaseDate?: Date | null;
-  upcomingDate?: Date | null;
   externalUrl?: string;
   metadataJson?: string;
   personalRating?: number | null;
@@ -91,7 +89,6 @@ export type CsvMediaRow = {
   status: string;
   originalTitle?: string;
   releaseDate?: string;
-  upcomingDate?: string;
   personalRating?: string;
   genres?: string;
   tags?: string;

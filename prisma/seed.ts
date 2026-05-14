@@ -9,7 +9,6 @@ type SeedMediaItem = {
   status: MediaStatus;
   description: string;
   releaseDate?: string;
-  upcomingDate?: string;
   personalRating?: number;
   genres: string[];
   tags: string[];
@@ -129,7 +128,6 @@ async function main() {
         status: item.status,
         description: item.description,
         releaseDate: item.releaseDate ? new Date(item.releaseDate) : null,
-        upcomingDate: item.upcomingDate ? new Date(item.upcomingDate) : null,
         personalRating: item.personalRating ?? null,
         pairwiseScore: 1000,
         comparisonCount: 0,
@@ -141,9 +139,6 @@ async function main() {
         status: item.status,
         description: item.description,
         releaseDate: item.releaseDate ? new Date(item.releaseDate) : undefined,
-        upcomingDate: item.upcomingDate
-          ? new Date(item.upcomingDate)
-          : undefined,
         personalRating: item.personalRating,
         pairwiseScore: 1000,
         comparisonCount: 0,

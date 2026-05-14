@@ -27,10 +27,7 @@ async function main() {
     if (args.types.has("movie"))
       candidates.push(...(await fetchTmdbMovies(from, to, args.limit)));
     if (args.types.has("tv"))
-      candidates.push(
-        ...(await fetchTmdbTv(from, to, args.limit)),
-        ...(await fetchTvMazeShows(to, args.limit)),
-      );
+      candidates.push(...(await fetchTmdbTv(from, to, args.limit)));
     if (args.types.has("game"))
       candidates.push(
         ...(await fetchIgdbGames(from, to, args.limit)),
@@ -49,26 +46,36 @@ async function main() {
         type: candidate.mediaType,
         source: candidate.externalSource,
         title: candidate.title,
-        date:
-          (candidate.upcomingDate ?? candidate.releaseDate)
-            ?.toISOString()
-            .slice(0, 10) ?? "-",
+        date: candidate.releaseDate?.toISOString().slice(0, 10) ?? "-",
       })),
     );
     return;
   }
 
   let imported = 0;
+  const statusCounts = new Map<string, number>();
   for (const candidate of filtered) {
-    await upsertReleaseCandidate(candidate);
+    const releaseCandidate = await upsertReleaseCandidate(candidate);
+    statusCounts.set(
+      releaseCandidate.status,
+      (statusCounts.get(releaseCandidate.status) ?? 0) + 1,
+    );
     imported += 1;
   }
 
   console.log(`Upserted ${imported} release candidates.`);
+  console.table(
+    [...statusCounts.entries()]
+      .sort(([first], [second]) => first.localeCompare(second))
+      .map(([status, count]) => ({ status, count })),
+  );
 }
 
 async function fetchTmdbMovies(from: Date, to: Date, limit: number) {
-  if (!process.env.TMDB_BEARER_TOKEN) return [];
+  if (!process.env.TMDB_BEARER_TOKEN) {
+    logSkippedSource("TMDB movies", "TMDB_BEARER_TOKEN is not set");
+    return [];
+  }
   const url = new URL("https://api.themoviedb.org/3/discover/movie");
   url.searchParams.set("include_adult", "false");
   url.searchParams.set("include_video", "false");
@@ -95,7 +102,6 @@ async function fetchTmdbMovies(from: Date, to: Date, limit: number) {
             ? `${TMDB_IMAGE_BASE}${movie.poster_path}`
             : null,
           releaseDate: parseDate(movie.release_date),
-          upcomingDate: parseDate(movie.release_date),
           genres: [],
           tags: movie.original_language
             ? [`language:${movie.original_language}`]
@@ -111,7 +117,10 @@ async function fetchTmdbMovies(from: Date, to: Date, limit: number) {
 }
 
 async function fetchTmdbTv(from: Date, to: Date, limit: number) {
-  if (!process.env.TMDB_BEARER_TOKEN) return [];
+  if (!process.env.TMDB_BEARER_TOKEN) {
+    logSkippedSource("TMDB TV", "TMDB_BEARER_TOKEN is not set");
+    return [];
+  }
   const url = new URL("https://api.themoviedb.org/3/discover/tv");
   url.searchParams.set("include_adult", "false");
   url.searchParams.set("include_null_first_air_dates", "false");
@@ -137,7 +146,6 @@ async function fetchTmdbTv(from: Date, to: Date, limit: number) {
             ? `${TMDB_IMAGE_BASE}${show.poster_path}`
             : null,
           releaseDate: parseDate(show.first_air_date),
-          upcomingDate: parseDate(show.first_air_date),
           genres: [],
           tags: show.original_language
             ? [`language:${show.original_language}`]
@@ -152,49 +160,14 @@ async function fetchTmdbTv(from: Date, to: Date, limit: number) {
     );
 }
 
-async function fetchTvMazeShows(to: Date, limit: number) {
-  const response = await fetch("https://api.tvmaze.com/schedule/full", {
-    headers: { "user-agent": "Medialy upcoming release fetcher" },
-  });
-  if (!response.ok) return [];
-  const episodes = array(await response.json());
-  const seen = new Map<number, ReleaseCandidateInput>();
-
-  for (const episode of episodes) {
-    const embedded = recordValue(episode._embedded);
-    const show = recordValue(embedded.show ?? episode.show);
-    const image = recordValue(show.image);
-    const rating = recordValue(show.rating);
-    const showId = numberValue(show?.id);
-    const airDate = parseDate(episode.airdate);
-    if (!showId || !airDate || airDate > to || seen.has(showId)) continue;
-
-    seen.set(showId, {
-      mediaType: MediaType.TV_SHOW,
-      title: String(show.name ?? ""),
-      externalSource: ExternalReleaseSource.TVMAZE,
-      externalId: String(showId),
-      externalUrl: show.url ? String(show.url) : null,
-      description: stripHtml(show.summary),
-      posterUrl: stringValue(image.medium ?? image.original),
-      releaseDate: parseDate(show.premiered),
-      upcomingDate: airDate,
-      genres: array(show.genres).map(String),
-      tags: [show.type, show.language, show.status].filter(Boolean).map(String),
-      metadata: { show, nextEpisode: episode },
-      sourceSignals: {
-        popularity: numberValue(show.weight),
-        rating: numberValue(rating.average),
-      },
-    });
-  }
-
-  return [...seen.values()].slice(0, limit);
-}
-
 async function fetchIgdbGames(from: Date, to: Date, limit: number) {
-  if (!process.env.TWITCH_CLIENT_ID || !process.env.TWITCH_CLIENT_SECRET)
+  if (!process.env.TWITCH_CLIENT_ID || !process.env.TWITCH_CLIENT_SECRET) {
+    logSkippedSource(
+      "IGDB games",
+      "TWITCH_CLIENT_ID or TWITCH_CLIENT_SECRET is not set",
+    );
     return [];
+  }
   const token = await getTwitchToken();
   const body = [
     "fields name,summary,url,first_release_date,hypes,follows,total_rating,total_rating_count,genres.name,themes.name,involved_companies.company.name,cover.url,platforms.name;",
@@ -215,7 +188,6 @@ async function fetchIgdbGames(from: Date, to: Date, limit: number) {
         description: game.summary ? String(game.summary) : null,
         posterUrl: coverUrl(game.cover),
         releaseDate: parseUnixDate(game.first_release_date),
-        upcomingDate: parseUnixDate(game.first_release_date),
         genres: array(game.genres)
           .map((genre) => String(genre.name))
           .filter(Boolean),
@@ -240,7 +212,10 @@ async function fetchIgdbGames(from: Date, to: Date, limit: number) {
 }
 
 async function fetchRawgGames(from: Date, to: Date, limit: number) {
-  if (!process.env.RAWG_API_KEY) return [];
+  if (!process.env.RAWG_API_KEY) {
+    logSkippedSource("RAWG games", "RAWG_API_KEY is not set");
+    return [];
+  }
   const url = new URL("https://api.rawg.io/api/games");
   url.searchParams.set("key", process.env.RAWG_API_KEY);
   url.searchParams.set("dates", `${isoDate(from)},${isoDate(to)}`);
@@ -260,7 +235,6 @@ async function fetchRawgGames(from: Date, to: Date, limit: number) {
         externalUrl: `https://rawg.io/games/${game.slug ?? game.id}`,
         posterUrl: game.background_image ? String(game.background_image) : null,
         releaseDate: parseDate(game.released),
-        upcomingDate: parseDate(game.released),
         genres: array(game.genres)
           .map((genre) => String(genre.name))
           .filter(Boolean),
@@ -330,7 +304,7 @@ function fixtureCandidates(from: Date): ReleaseCandidateInput[] {
       title: "Example Festival Breakout",
       externalSource: ExternalReleaseSource.TMDB,
       externalId: "dry-run-movie-1",
-      upcomingDate: addDays(from, 42),
+      releaseDate: addDays(from, 42),
       genres: ["Drama"],
       tags: ["language:en"],
       sourceSignals: { popularity: 18, voteCount: 40, voteAverage: 7.6 },
@@ -340,7 +314,7 @@ function fixtureCandidates(from: Date): ReleaseCandidateInput[] {
       title: "Example Returning Series",
       externalSource: ExternalReleaseSource.TVMAZE,
       externalId: "dry-run-tv-1",
-      upcomingDate: addDays(from, 12),
+      releaseDate: addDays(from, 12),
       genres: ["Science-Fiction"],
       tags: ["Scripted"],
       sourceSignals: { popularity: 72, rating: 8.1 },
@@ -350,7 +324,7 @@ function fixtureCandidates(from: Date): ReleaseCandidateInput[] {
       title: "Example Indie Adventure",
       externalSource: ExternalReleaseSource.IGDB,
       externalId: "dry-run-game-1",
-      upcomingDate: addDays(from, 88),
+      releaseDate: addDays(from, 88),
       genres: ["Adventure"],
       tags: ["Indie"],
       companies: ["Small Studio"],
@@ -447,6 +421,10 @@ function isoDate(date: Date) {
 
 function unixSeconds(date: Date) {
   return Math.floor(date.getTime() / 1000);
+}
+
+function logSkippedSource(source: string, reason: string) {
+  console.warn(`Skipped ${source}: ${reason}.`);
 }
 
 main()

@@ -70,12 +70,6 @@ export const MEDIA_IMPORT_FIELDS: Array<{
     aliases: ["release date", "released", "year"],
   },
   {
-    key: "upcomingDate",
-    label: "Upcoming date",
-    required: false,
-    aliases: ["upcoming date", "planned date"],
-  },
-  {
     key: "genres",
     label: "Genres",
     required: false,
@@ -107,7 +101,6 @@ export const MEDIA_IMPORT_CORE_FIELDS: MediaImportField[] = [
 export const MEDIA_IMPORT_ADVANCED_FIELDS: MediaImportField[] = [
   "originalTitle",
   "releaseDate",
-  "upcomingDate",
   "genres",
   "tags",
   "description",
@@ -214,7 +207,6 @@ export async function buildMediaCsvExport() {
     "mediaType",
     "status",
     "releaseDate",
-    "upcomingDate",
     "personalRating",
     "genres",
     "tags",
@@ -227,7 +219,6 @@ export async function buildMediaCsvExport() {
       item.mediaType,
       item.status,
       formatDate(item.releaseDate),
-      formatDate(item.upcomingDate),
       item.personalRating ?? "",
       item.genres.map((entry) => entry.genre.name).join(";"),
       item.tags.map((entry) => entry.tag.name).join(";"),
@@ -380,7 +371,6 @@ export function mediaInputFromLetterboxdRow(
     status: role === "watchlist" ? "WATCHLIST" : "COMPLETED",
     description: "",
     releaseDate: parseLetterboxdYear(year),
-    upcomingDate: null,
     externalUrl: uri,
     metadataJson: JSON.stringify(metadata),
     personalRating: rating ? parseLetterboxdRating(rating) : null,
@@ -573,7 +563,6 @@ export async function importJsonExport(
       status?: string;
       description?: string | null;
       releaseDate?: string | Date | null;
-      upcomingDate?: string | Date | null;
       personalRating?: number | null;
       externalUrl?: string | null;
       genres?: Array<{ genre?: { name?: string } }>;
@@ -586,9 +575,6 @@ export async function importJsonExport(
         status: item.status ?? "UNTRACKED",
         releaseDate: item.releaseDate
           ? String(item.releaseDate).slice(0, 10)
-          : "",
-        upcomingDate: item.upcomingDate
-          ? String(item.upcomingDate).slice(0, 10)
           : "",
         personalRating:
           item.personalRating == null ? "" : String(item.personalRating),

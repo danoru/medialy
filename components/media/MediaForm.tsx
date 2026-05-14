@@ -136,16 +136,6 @@ export function MediaForm({
             />
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              defaultValue={dateValue(item?.upcomingDate)}
-              fullWidth
-              label="Upcoming date"
-              name="upcomingDate"
-              slotProps={{ inputLabel: { shrink: true } }}
-              type="date"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
             <Autocomplete
               getOptionDisabled={(option) =>
                 genres.length >= MAX_GENRES_PER_ITEM && !genres.includes(option)

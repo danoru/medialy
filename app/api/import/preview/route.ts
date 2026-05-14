@@ -94,7 +94,6 @@ export async function POST(request: Request) {
           mediaType?: string;
           status?: string;
           releaseDate?: string | Date | null;
-          upcomingDate?: string | Date | null;
           personalRating?: number | null;
         };
 
@@ -105,9 +104,6 @@ export async function POST(request: Request) {
             status: item.status ?? "UNTRACKED",
             releaseDate: item.releaseDate
               ? String(item.releaseDate).slice(0, 10)
-              : "",
-            upcomingDate: item.upcomingDate
-              ? String(item.upcomingDate).slice(0, 10)
               : "",
             personalRating:
               item.personalRating == null ? "" : String(item.personalRating),

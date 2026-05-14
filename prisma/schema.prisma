@@ -16,7 +16,6 @@ model MediaItem {
   status                  MediaStatus @default(UNTRACKED)
   description             String?
   releaseDate             DateTime?
-  upcomingDate            DateTime?
   posterUrl               String?
   externalUrl             String?
   metadataJson            String?
@@ -78,7 +77,6 @@ model ReleaseCandidate {
   description         String?
   posterUrl           String?
   releaseDate         DateTime?
-  upcomingDate        DateTime?
   genresJson          String?
   tagsJson            String?
   companiesJson       String?
@@ -98,7 +96,6 @@ model ReleaseCandidate {
 
   @@unique([externalSource, externalId])
   @@index([mediaType])
-  @@index([upcomingDate])
   @@index([status])
   @@index([finalScore])
   @@index([normalizedTitle, mediaType])

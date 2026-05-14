@@ -176,10 +176,6 @@ export default async function MediaDetailPage({
                 value={item.releaseDate?.toLocaleDateString() ?? "-"}
               />
               <Info
-                label="Upcoming date"
-                value={item.upcomingDate?.toLocaleDateString() ?? "-"}
-              />
-              <Info
                 label="Genres"
                 value={
                   item.genres.map((entry) => entry.genre.name).join(", ") || "-"

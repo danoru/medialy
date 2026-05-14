@@ -38,7 +38,7 @@ export async function getRecommendations(
       const statusSignal =
         item.status === "WATCHLIST" ? 100 : item.status === "BACKLOG" ? 70 : 35;
       const upcomingSignal =
-        item.upcomingDate && item.upcomingDate.getTime() >= Date.now()
+        item.releaseDate && item.releaseDate.getTime() >= Date.now()
           ? 100
           : 0;
       const match = calculateMedialyMatch({
