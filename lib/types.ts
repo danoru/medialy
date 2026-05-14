@@ -3,6 +3,7 @@ import type {
   ImportSourceType,
   MediaStatus,
   MediaType,
+  TagStatus,
 } from "@prisma/client";
 
 export type MediaItemDTO = {
@@ -29,6 +30,7 @@ export type MediaItemDTO = {
   updatedAt?: Date | string;
   genres: string[];
   tags: string[];
+  tagDetails?: Array<{ name: string; status: TagStatus }>;
 };
 
 export type MediaFormInput = {

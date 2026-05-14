@@ -4,6 +4,7 @@ import { Card, CardContent, Stack } from "@mui/material";
 import { updateMediaItem } from "@/app/media/actions";
 import { MediaForm } from "@/components/media/MediaForm";
 import { getMediaItemDTO } from "@/lib/media";
+import { prisma } from "@/lib/prisma";
 
 type PageParams = Promise<{ id: string }>;
 
@@ -24,7 +25,14 @@ export default async function EditMediaPage({
   params: PageParams;
 }) {
   const { id } = await params;
-  const item = await getMediaItemDTO(id);
+  const [item, tags] = await Promise.all([
+    getMediaItemDTO(id),
+    prisma.tag.findMany({
+      where: { status: { in: ["APPROVED", "PENDING"] } },
+      orderBy: [{ status: "asc" }, { name: "asc" }],
+      select: { name: true, status: true },
+    }),
+  ]);
   if (!item) notFound();
 
   return (
@@ -35,6 +43,7 @@ export default async function EditMediaPage({
             action={updateMediaItem.bind(null, id)}
             item={item}
             submitLabel="Save changes"
+            tagOptions={tags}
           />
         </CardContent>
       </Card>

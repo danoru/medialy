@@ -3,6 +3,7 @@ import { calculateMedialyMatch } from "@/lib/scoring/medialyMatch";
 import { toMediaItemDTO } from "@/lib/media";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 import type { Recommendation, RecommendationReason } from "@/lib/types";
+import { GENRE_WEIGHT, TAG_WEIGHT } from "@/lib/scoring/taxonomySimilarity";
 
 export async function getRecommendations(
   limit?: number,
@@ -15,7 +16,7 @@ export async function getRecommendations(
     },
     include: {
       genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
+      tags: { where: { tag: { status: "APPROVED" } }, include: { tag: true } },
       friendRatings: { include: { friend: true } },
     },
     orderBy: [{ computedPersonalScore: "desc" }, { pairwiseScore: "desc" }],
@@ -108,7 +109,11 @@ async function getAffinityMaps() {
       );
     }
     for (const entry of item.tags) {
-      tags.set(entry.tag.name, (tags.get(entry.tag.name) ?? 0) + itemBoost / 2);
+      tags.set(
+        entry.tag.name,
+        (tags.get(entry.tag.name) ?? 0) +
+          itemBoost * (TAG_WEIGHT / GENRE_WEIGHT),
+      );
     }
   }
 

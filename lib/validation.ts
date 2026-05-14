@@ -1,5 +1,12 @@
 import { MediaStatus, MediaType } from "@prisma/client";
 import type { CsvMediaRow, MediaFormInput } from "@/lib/types";
+import {
+  MAX_GENRES_PER_ITEM,
+  normalizeGenreName,
+  normalizeGenresForMediaType,
+  normalizeTagName,
+  splitGenresAndTags,
+} from "@/lib/taxonomy";
 
 const mediaTypes = new Set<string>(Object.values(MediaType));
 const mediaStatuses = new Set<string>(Object.values(MediaStatus));
@@ -70,6 +77,7 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
   if (!title) {
     throw new Error("Title is required.");
   }
+  const mediaType = coerceMediaType(formData.get("mediaType"));
 
   const metadataJson = String(formData.get("metadataJson") ?? "").trim();
   if (metadataJson) {
@@ -79,7 +87,7 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
   return {
     title,
     originalTitle: normalizeName(String(formData.get("originalTitle") ?? "")),
-    mediaType: coerceMediaType(formData.get("mediaType")),
+    mediaType,
     status: coerceMediaStatus(formData.get("status")),
     description: String(formData.get("description") ?? "").trim(),
     releaseDate: parseOptionalDate(formData.get("releaseDate")),
@@ -88,19 +96,21 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
     metadataJson,
     personalRating: parseOptionalRating(formData.get("personalRating")),
     isFavorite: formData.get("isFavorite") === "on",
-    genres: splitNames(formData.get("genres")),
-    tags: splitNames(formData.get("tags")),
+    genres: parseCanonicalGenres(formData.getAll("genres"), mediaType),
+    tags: splitNames(formData.get("tags")).map(normalizeTagName),
   };
 }
 
 export function mediaFormInputFromCsvRow(row: CsvMediaRow): MediaFormInput {
   const title = normalizeName(row.title ?? "");
   if (!title) throw new Error("Title is required.");
+  const mediaType = coerceMediaType(row.mediaType);
+  const split = splitGenresAndTags(mediaType, splitNames(row.genres ?? ""));
 
   return {
     title,
     originalTitle: normalizeName(row.originalTitle ?? ""),
-    mediaType: coerceMediaType(row.mediaType),
+    mediaType,
     status: row.status ? coerceMediaStatus(row.status) : "UNTRACKED",
     description: row.description?.trim() ?? "",
     releaseDate: parseOptionalDate(row.releaseDate ?? ""),
@@ -108,9 +118,41 @@ export function mediaFormInputFromCsvRow(row: CsvMediaRow): MediaFormInput {
     externalUrl: row.externalUrl?.trim() ?? "",
     personalRating: parseOptionalRating(row.personalRating ?? ""),
     isFavorite: parseOptionalBoolean(row.isFavorite ?? ""),
-    genres: splitNames(row.genres ?? ""),
-    tags: splitNames(row.tags ?? ""),
+    genres: split.genres,
+    tags: [
+      ...new Set([
+        ...split.tags,
+        ...splitNames(row.tags ?? "").map(normalizeTagName),
+      ]),
+    ],
   };
+}
+
+export function parseCanonicalGenres(
+  values: Array<FormDataEntryValue | string>,
+  mediaType: MediaType,
+) {
+  const genres = values
+    .flatMap((value) => splitNames(value))
+    .map((value) => {
+      const genre = normalizeGenreName(value, mediaType);
+      if (!genre) throw new Error(`Invalid genre for ${mediaType}: ${value}`);
+      return genre;
+    });
+  if (genres.length > MAX_GENRES_PER_ITEM) {
+    throw new Error(
+      `A media item can have at most ${MAX_GENRES_PER_ITEM} genres.`,
+    );
+  }
+  return normalizeGenresForMediaType(mediaType, genres);
+}
+
+export function parseGenres(
+  value: FormDataEntryValue | string | null,
+  mediaType: MediaType,
+) {
+  const genres = normalizeGenresForMediaType(mediaType, splitNames(value));
+  return genres;
 }
 
 function parseOptionalBoolean(value: string) {

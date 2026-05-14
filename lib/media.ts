@@ -1,6 +1,7 @@
 import type { MediaItem, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { MediaFormInput, MediaItemDTO } from "@/lib/types";
+import { normalizeTagKey, normalizeTagName } from "@/lib/taxonomy";
 
 const includeTaxonomy = {
   genres: { include: { genre: true } },
@@ -9,7 +10,9 @@ const includeTaxonomy = {
 
 type MediaWithTaxonomy = MediaItem & {
   genres: Array<{ genre: { name: string } }>;
-  tags: Array<{ tag: { name: string } }>;
+  tags: Array<{
+    tag: { name: string; status: "APPROVED" | "PENDING" | "REJECTED" };
+  }>;
 };
 
 export function toMediaItemDTO(item: MediaWithTaxonomy): MediaItemDTO {
@@ -17,6 +20,12 @@ export function toMediaItemDTO(item: MediaWithTaxonomy): MediaItemDTO {
     ...item,
     genres: item.genres.map((entry) => entry.genre.name).sort(),
     tags: item.tags.map((entry) => entry.tag.name).sort(),
+    tagDetails: item.tags
+      .map((entry) => ({
+        name: entry.tag.name,
+        status: entry.tag.status,
+      }))
+      .sort((first, second) => first.name.localeCompare(second.name)),
   };
 }
 
@@ -47,7 +56,7 @@ export async function upsertTaxonomy(
   await prisma.mediaGenre.deleteMany({ where: { mediaId } });
   await prisma.mediaTag.deleteMany({ where: { mediaId } });
 
-  for (const name of genres) {
+  for (const name of [...new Set(genres)]) {
     const genre = await prisma.genre.upsert({
       where: { name },
       update: {},
@@ -56,11 +65,24 @@ export async function upsertTaxonomy(
     await prisma.mediaGenre.create({ data: { mediaId, genreId: genre.id } });
   }
 
-  for (const name of tags) {
+  const normalizedTags = [
+    ...new Map(
+      tags
+        .map((rawName) => normalizeTagName(rawName))
+        .filter(Boolean)
+        .map((name) => [normalizeTagKey(name), name]),
+    ).values(),
+  ];
+
+  for (const name of normalizedTags) {
     const tag = await prisma.tag.upsert({
-      where: { name },
+      where: { normalizedName: normalizeTagKey(name) },
       update: {},
-      create: { name },
+      create: {
+        name,
+        normalizedName: normalizeTagKey(name),
+        status: "PENDING",
+      },
     });
     await prisma.mediaTag.create({ data: { mediaId, tagId: tag.id } });
   }

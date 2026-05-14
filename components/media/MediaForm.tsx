@@ -1,4 +1,7 @@
+"use client";
+
 import {
+  Autocomplete,
   Button,
   Checkbox,
   FormControlLabel,
@@ -7,22 +10,53 @@ import {
   Stack,
   TextField,
 } from "@mui/material";
-import { MediaStatus } from "@prisma/client";
+import { useMemo, useState } from "react";
+import { MediaStatus, type MediaType, type TagStatus } from "@prisma/client";
 import type { MediaItemDTO } from "@/lib/types";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
+import { getGenresForMediaType, MAX_GENRES_PER_ITEM } from "@/lib/taxonomy";
+
+type TagOption = {
+  name: string;
+  status: TagStatus;
+};
 
 export function MediaForm({
   action,
   item,
   submitLabel,
+  tagOptions = [],
 }: {
   action: (formData: FormData) => void | Promise<void>;
   item?: MediaItemDTO;
   submitLabel: string;
+  tagOptions?: TagOption[];
 }) {
+  const [mediaType, setMediaType] = useState<MediaType>(
+    item?.mediaType ?? "MOVIE",
+  );
+  const [genres, setGenres] = useState<string[]>(item?.genres ?? []);
+  const [tags, setTags] = useState<string[]>(item?.tags ?? []);
+  const genreOptions = useMemo(
+    () => getGenresForMediaType(mediaType),
+    [mediaType],
+  );
+  const tagNames = useMemo(
+    () => tagOptions.map((tag) => tag.name),
+    [tagOptions],
+  );
+  const tagStatusByName = useMemo(
+    () => new Map(tagOptions.map((tag) => [tag.name, tag.status])),
+    [tagOptions],
+  );
+
   return (
     <form action={action}>
+      {genres.map((genre) => (
+        <input key={genre} name="genres" type="hidden" value={genre} />
+      ))}
+      <input name="tags" type="hidden" value={tags.join(";")} />
       <Stack spacing={3}>
         <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 8 }}>
@@ -44,11 +78,20 @@ export function MediaForm({
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
             <TextField
-              defaultValue={item?.mediaType ?? "MOVIE"}
               fullWidth
               label="Type"
               name="mediaType"
+              onChange={(event) => {
+                const nextType = event.target.value as MediaType;
+                setMediaType(nextType);
+                setGenres((current) =>
+                  current.filter((genre) =>
+                    getGenresForMediaType(nextType).includes(genre),
+                  ),
+                );
+              }}
               select
+              value={mediaType}
             >
               {VISIBLE_MEDIA_TYPES.map((type) => (
                 <MenuItem key={type} value={type}>
@@ -103,19 +146,50 @@ export function MediaForm({
             />
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              defaultValue={item?.genres.join("; ") ?? ""}
-              fullWidth
-              label="Genres"
-              name="genres"
+            <Autocomplete
+              getOptionDisabled={(option) =>
+                genres.length >= MAX_GENRES_PER_ITEM && !genres.includes(option)
+              }
+              multiple
+              onChange={(_, value) => {
+                setGenres(value.slice(0, MAX_GENRES_PER_ITEM));
+              }}
+              options={genreOptions}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  helperText={`Choose up to ${MAX_GENRES_PER_ITEM} canonical genres.`}
+                  label="Genres"
+                />
+              )}
+              value={genres}
             />
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              defaultValue={item?.tags.join("; ") ?? ""}
+            <Autocomplete
+              freeSolo
               fullWidth
-              label="Tags"
-              name="tags"
+              multiple
+              onChange={(_, value) => {
+                setTags(value.filter(Boolean));
+              }}
+              options={tagNames}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  helperText="Existing tags autocomplete; new tags save as pending."
+                  label="Tags"
+                />
+              )}
+              renderOption={(props, option) => (
+                <li {...props} key={option}>
+                  {option}
+                  {tagStatusByName.get(option) === "PENDING"
+                    ? " (pending)"
+                    : ""}
+                </li>
+              )}
+              value={tags}
             />
           </Grid>
           <Grid size={{ xs: 12 }}>

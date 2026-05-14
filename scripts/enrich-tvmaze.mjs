@@ -26,11 +26,21 @@ function titleCase(value) {
         : word.charAt(0).toUpperCase() + word.slice(1),
     )
     .join(" ")
-    .replace(/\bSci Fi\b/g, "Sci-Fi");
+    .replace(/\bSci Fi\b/g, "Science Fiction");
 }
 
 function tag(value) {
-  return titleCase(value).toLowerCase().replaceAll(" ", "-");
+  return normalizeTagName(value);
+}
+
+function normalizeTagName(value) {
+  return titleCase(value.replace(/[-_]+/g, " "));
+}
+
+function normalizeTagKey(value) {
+  return normalizeTagName(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 async function searchShow(title) {
@@ -54,7 +64,26 @@ async function searchShow(title) {
 }
 
 async function connectGenres(mediaId, names) {
-  for (const name of names) {
+  const canonical = new Set([
+    "Action",
+    "Adventure",
+    "Animation",
+    "Comedy",
+    "Crime",
+    "Documentary",
+    "Drama",
+    "Family",
+    "Fantasy",
+    "Horror",
+    "Musical",
+    "Mystery",
+    "Romance",
+    "Science Fiction",
+    "Thriller",
+    "War",
+    "Western",
+  ]);
+  for (const name of names.filter((entry) => canonical.has(entry))) {
     const genre = await prisma.genre.upsert({
       where: { name },
       update: {},
@@ -69,11 +98,17 @@ async function connectGenres(mediaId, names) {
 }
 
 async function connectTags(mediaId, names) {
-  for (const name of names) {
+  for (const rawName of names) {
+    const name = normalizeTagName(rawName);
     const nextTag = await prisma.tag.upsert({
-      where: { name },
+      where: { normalizedName: normalizeTagKey(name) },
       update: {},
-      create: { name },
+      create: {
+        name,
+        normalizedName: normalizeTagKey(name),
+        status: "APPROVED",
+        approvedAt: new Date(),
+      },
     });
     await prisma.mediaTag.upsert({
       where: { mediaId_tagId: { mediaId, tagId: nextTag.id } },

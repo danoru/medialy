@@ -120,9 +120,18 @@ model MediaGenre {
 }
 
 model Tag {
-  id    String     @id @default(cuid())
-  name  String     @unique
-  media MediaTag[]
+  id             String     @id @default(cuid())
+  name           String
+  normalizedName String     @unique
+  status         TagStatus  @default(APPROVED)
+  createdById    String?
+  approvedAt     DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  media          MediaTag[]
+
+  @@unique([name])
+  @@index([status])
 }
 
 model MediaTag {
@@ -284,4 +293,10 @@ enum ImportStatus {
   SUCCESS
   PARTIAL
   FAILED
+}
+
+enum TagStatus {
+  APPROVED
+  PENDING
+  REJECTED
 }

@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { mediaMutationData, upsertTaxonomy } from "@/lib/media";
+import { splitGenresAndTags, normalizeTagName } from "@/lib/taxonomy";
 
 export type CandidateReason = {
   label: string;
@@ -50,6 +51,7 @@ export type CandidateScore = {
 
 export async function upsertReleaseCandidate(input: ReleaseCandidateInput) {
   const normalizedTitle = normalizeTitle(input.title);
+  const taxonomy = normalizeCandidateTaxonomy(input);
   const score = await scoreReleaseCandidate(input);
   const data = {
     mediaType: input.mediaType,
@@ -60,8 +62,8 @@ export async function upsertReleaseCandidate(input: ReleaseCandidateInput) {
     posterUrl: input.posterUrl || null,
     releaseDate: input.releaseDate ?? null,
     upcomingDate: input.upcomingDate ?? input.releaseDate ?? null,
-    genresJson: stringifyList(input.genres),
-    tagsJson: stringifyList(input.tags),
+    genresJson: stringifyList(taxonomy.genres),
+    tagsJson: stringifyList(taxonomy.tags),
     companiesJson: stringifyList(input.companies),
     platformsJson: stringifyList(input.platforms),
     metadataJson: input.metadata ? JSON.stringify(input.metadata) : null,
@@ -103,8 +105,9 @@ export async function scoreReleaseCandidate(
     findExistingMediaMatch(input),
   ]);
 
-  const genres = normalizeList(input.genres);
-  const tags = normalizeList(input.tags);
+  const taxonomy = normalizeCandidateTaxonomy(input);
+  const genres = taxonomy.genres;
+  const tags = taxonomy.tags;
   const companies = normalizeList(input.companies);
   const reasons: CandidateReason[] = [];
 
@@ -112,11 +115,11 @@ export async function scoreReleaseCandidate(
   pushReason(reasons, "Public interest", publicInterestScore);
 
   const genreAffinity = genres.reduce(
-    (total, genre) => total + (affinity.genres.get(genre) ?? 0),
+    (total, genre) => total + (affinity.genres.get(genre.toLowerCase()) ?? 0),
     0,
   );
   const tagAffinity = tags.reduce(
-    (total, tag) => total + (affinity.tags.get(tag) ?? 0),
+    (total, tag) => total + (affinity.tags.get(tag.toLowerCase()) ?? 0),
     0,
   );
   const localAffinityScore = clamp(genreAffinity + tagAffinity, 0, 35);
@@ -335,7 +338,7 @@ async function getLocalAffinity(mediaType: MediaType) {
     },
     include: {
       genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
+      tags: { where: { tag: { status: "APPROVED" } }, include: { tag: true } },
     },
   });
 
@@ -358,7 +361,7 @@ async function getLocalAffinity(mediaType: MediaType) {
     for (const entry of item.tags)
       tags.set(
         entry.tag.name.toLowerCase(),
-        (tags.get(entry.tag.name.toLowerCase()) ?? 0) + boost / 2,
+        (tags.get(entry.tag.name.toLowerCase()) ?? 0) + boost * 0.3,
       );
   }
 
@@ -433,7 +436,20 @@ function stringifyList(value: string[] | undefined) {
 function normalizeList(value: string[] | undefined) {
   return [
     ...new Set((value ?? []).map((entry) => entry.trim()).filter(Boolean)),
-  ].map((entry) => entry.toLowerCase());
+  ];
+}
+
+function normalizeCandidateTaxonomy(input: ReleaseCandidateInput) {
+  const split = splitGenresAndTags(input.mediaType, input.genres ?? []);
+  const tags = [
+    ...split.tags,
+    ...(input.tags ?? []).map(normalizeTagName).filter(Boolean),
+  ];
+
+  return {
+    genres: split.genres,
+    tags: [...new Set(tags)],
+  };
 }
 
 function pushReason(reasons: CandidateReason[], label: string, value: number) {

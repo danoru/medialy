@@ -1,4 +1,5 @@
 import { PrismaClient, type MediaStatus, type MediaType } from "@prisma/client";
+import { normalizeTagKey, normalizeTagName } from "../lib/taxonomy";
 
 const prisma = new PrismaClient();
 
@@ -23,8 +24,8 @@ const mediaItems: SeedMediaItem[] = [
     description: "A reality-bending sci-fi action classic.",
     releaseDate: "1999-03-31",
     personalRating: 9.5,
-    genres: ["Sci-Fi", "Action"],
-    tags: ["rewatchable", "cyberpunk"],
+    genres: ["Science Fiction", "Action"],
+    tags: ["Rewatchable", "Cyberpunk"],
     isFavorite: true,
   },
   {
@@ -33,8 +34,8 @@ const mediaItems: SeedMediaItem[] = [
     status: "WATCHLIST",
     description: "A workplace mystery about memory and identity.",
     releaseDate: "2022-02-18",
-    genres: ["Drama", "Mystery", "Sci-Fi"],
-    tags: ["slow-burn", "prestige"],
+    genres: ["Drama", "Mystery", "Science Fiction"],
+    tags: ["Slow Burn", "Prestige"],
   },
   {
     title: "The Legend of Zelda: Breath of the Wild",
@@ -43,8 +44,8 @@ const mediaItems: SeedMediaItem[] = [
     description: "Open-world exploration built around curiosity and systems.",
     releaseDate: "2017-03-03",
     personalRating: 9.7,
-    genres: ["Adventure", "Open World"],
-    tags: ["exploration", "systems"],
+    genres: ["Adventure"],
+    tags: ["Open World", "Exploration", "Systems"],
     isFavorite: true,
   },
   {
@@ -53,8 +54,8 @@ const mediaItems: SeedMediaItem[] = [
     status: "WATCHLIST",
     description: "A large-scale sci-fi continuation with political spectacle.",
     releaseDate: "2024-03-01",
-    genres: ["Sci-Fi", "Drama"],
-    tags: ["epic", "cinematic"],
+    genres: ["Science Fiction", "Drama"],
+    tags: ["Epic", "Cinematic"],
   },
   {
     title: "Hades II",
@@ -62,8 +63,8 @@ const mediaItems: SeedMediaItem[] = [
     status: "BACKLOG",
     description: "A mythological roguelike action game.",
     releaseDate: "2024-05-06",
-    genres: ["Action", "Roguelike"],
-    tags: ["fast", "replayable"],
+    genres: ["Action"],
+    tags: ["Roguelike", "Fast", "Replayable"],
   },
   {
     title: "Andor",
@@ -72,8 +73,8 @@ const mediaItems: SeedMediaItem[] = [
     description: "A grounded political thriller in a sci-fi setting.",
     releaseDate: "2022-09-21",
     personalRating: 9.2,
-    genres: ["Sci-Fi", "Drama"],
-    tags: ["political", "tense"],
+    genres: ["Science Fiction", "Drama"],
+    tags: ["Political", "Tense"],
   },
 ];
 
@@ -94,11 +95,17 @@ async function connectGenres(mediaId: string, names: string[]) {
 }
 
 async function connectTags(mediaId: string, names: string[]) {
-  for (const name of names) {
+  for (const rawName of names) {
+    const name = normalizeTagName(rawName);
     const tag = await prisma.tag.upsert({
-      where: { name },
+      where: { normalizedName: normalizeTagKey(name) },
       update: {},
-      create: { name },
+      create: {
+        name,
+        normalizedName: normalizeTagKey(name),
+        status: "APPROVED",
+        approvedAt: new Date(),
+      },
     });
 
     await prisma.mediaTag.upsert({

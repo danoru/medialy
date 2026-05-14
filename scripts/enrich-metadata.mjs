@@ -16,15 +16,15 @@ const typeRoots = {
 };
 
 const genreMap = new Map([
-  ["science fiction", "Sci-Fi"],
-  ["science fiction film", "Sci-Fi"],
-  ["sci-fi", "Sci-Fi"],
-  ["comic science fiction", "Sci-Fi"],
+  ["science fiction", "Science Fiction"],
+  ["science fiction film", "Science Fiction"],
+  ["sci-fi", "Science Fiction"],
+  ["comic science fiction", "Science Fiction"],
   ["action film", "Action"],
   ["adventure film", "Adventure"],
   ["animated film", "Animation"],
   ["comedy film", "Comedy"],
-  ["comedy drama", "Comedy Drama"],
+  ["comedy drama", "Comedy"],
   ["crime film", "Crime"],
   ["documentary film", "Documentary"],
   ["drama film", "Drama"],
@@ -33,15 +33,15 @@ const genreMap = new Map([
   ["musical film", "Musical"],
   ["mystery film", "Mystery"],
   ["romance film", "Romance"],
-  ["romantic comedy", "Romantic Comedy"],
+  ["romantic comedy", "Romance"],
   ["thriller film", "Thriller"],
   ["war film", "War"],
   ["western film", "Western"],
   ["platform game", "Platformer"],
   ["role-playing video game", "RPG"],
-  ["action role-playing game", "Action RPG"],
+  ["action role-playing game", "RPG"],
   ["adventure game", "Adventure"],
-  ["action-adventure game", "Action Adventure"],
+  ["action-adventure game", "Adventure"],
   ["puzzle video game", "Puzzle"],
   ["racing video game", "Racing"],
   ["simulation video game", "Simulation"],
@@ -95,7 +95,27 @@ function normalizeGenre(label) {
 
 function normalizeTag(label) {
   const genre = normalizeGenre(label);
-  return genre ? genre.toLowerCase().replaceAll(" ", "-") : null;
+  return genre ? normalizeTagName(genre) : null;
+}
+
+function normalizeTagName(value) {
+  return value
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (["rpg", "mmo"].includes(lower)) return lower.toUpperCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
+function normalizeTagKey(value) {
+  return normalizeTagName(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
 }
 
 async function queryChunk(mediaType, titles) {
@@ -183,9 +203,12 @@ function selectCandidate(item, titleCandidates) {
 }
 
 function buildUpdate(item, candidate) {
+  const canonical = canonicalGenresForMediaType(item.mediaType);
   const genres = [
     ...new Set(candidate.genres.map(normalizeGenre).filter(Boolean)),
-  ].slice(0, 5);
+  ]
+    .filter((genre) => canonical.has(genre))
+    .slice(0, 3);
   const tags = [
     ...new Set(candidate.genres.map(normalizeTag).filter(Boolean)),
   ].slice(0, 8);
@@ -224,11 +247,17 @@ async function connectGenres(mediaId, names) {
 }
 
 async function connectTags(mediaId, names) {
-  for (const name of names) {
+  for (const rawName of names) {
+    const name = normalizeTagName(rawName);
     const tag = await prisma.tag.upsert({
-      where: { name },
+      where: { normalizedName: normalizeTagKey(name) },
       update: {},
-      create: { name },
+      create: {
+        name,
+        normalizedName: normalizeTagKey(name),
+        status: "APPROVED",
+        approvedAt: new Date(),
+      },
     });
     await prisma.mediaTag.upsert({
       where: { mediaId_tagId: { mediaId, tagId: tag.id } },
@@ -236,6 +265,50 @@ async function connectTags(mediaId, names) {
       create: { mediaId, tagId: tag.id },
     });
   }
+}
+
+function canonicalGenresForMediaType(mediaType) {
+  if (mediaType === "VIDEO_GAME") {
+    return new Set([
+      "Action",
+      "Adventure",
+      "Fighting",
+      "Horror",
+      "MMO",
+      "Party",
+      "Platformer",
+      "Puzzle",
+      "Racing",
+      "RPG",
+      "Sandbox",
+      "Shooter",
+      "Simulation",
+      "Sports",
+      "Stealth",
+      "Strategy",
+      "Survival",
+      "Visual Novel",
+    ]);
+  }
+  return new Set([
+    "Action",
+    "Adventure",
+    "Animation",
+    "Comedy",
+    "Crime",
+    "Documentary",
+    "Drama",
+    "Family",
+    "Fantasy",
+    "Horror",
+    "Musical",
+    "Mystery",
+    "Romance",
+    "Science Fiction",
+    "Thriller",
+    "War",
+    "Western",
+  ]);
 }
 
 async function main() {

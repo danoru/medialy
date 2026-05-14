@@ -8,6 +8,7 @@ export function calculateComparisonRelevance(
   if (first.mediaType !== second.mediaType) return 0;
 
   const genreScore = genreOverlapScore(first, second);
+  const tagScore = tagOverlapScore(first, second);
   const ratingScore = proximityScore(
     first.personalRating,
     second.personalRating,
@@ -28,13 +29,24 @@ export function calculateComparisonRelevance(
     clamp(
       0.25 +
         genreScore * 0.35 +
+        tagScore * 0.08 +
         ratingScore * 0.2 +
-        pairwiseScore * 0.15 +
+        pairwiseScore * 0.1 +
         yearScore * 0.05,
       0,
       1,
     ),
   );
+}
+
+function tagOverlapScore(first: ScoredMediaItem, second: ScoredMediaItem) {
+  const firstTags = new Set((first.tags ?? []).map((entry) => entry.tag.name));
+  const secondTags = new Set(
+    (second.tags ?? []).map((entry) => entry.tag.name),
+  );
+  if (firstTags.size === 0 || secondTags.size === 0) return 0;
+  const shared = [...firstTags].filter((name) => secondTags.has(name)).length;
+  return shared / Math.max(firstTags.size, secondTags.size);
 }
 
 export function relevanceToEloWeight(relevance: number) {

@@ -20,8 +20,19 @@ describe("media csv import", () => {
     const input = mediaFormInputFromCsvRow(row);
 
     expect(input.genres).toEqual(["Crime", "Drama"]);
-    expect(input.tags).toEqual(["heist", "rewatchable"]);
+    expect(input.tags).toEqual(["Heist", "Rewatchable"]);
     expect(input.personalRating).toBe(9);
+  });
+
+  it("moves noncanonical imported genre labels into normalized tags", () => {
+    const [row] = parseMediaCsv(
+      "title,mediaType,status,genres,tags\n" +
+        "Blade Runner,MOVIE,COMPLETED,Sci-Fi;Cyberpunk,found-family",
+    );
+    const input = mediaFormInputFromCsvRow(row);
+
+    expect(input.genres).toEqual(["Science Fiction"]);
+    expect(input.tags).toEqual(["Cyberpunk", "Found Family"]);
   });
 
   it("returns row-level validation errors for invalid enum values", () => {
