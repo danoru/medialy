@@ -1,9 +1,11 @@
 "use client";
 
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import MovieIcon from "@mui/icons-material/Movie";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
@@ -21,6 +23,7 @@ import {
   ToggleButtonGroup,
   Typography,
 } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha } from "@mui/material/styles";
 import type { MediaType } from "@prisma/client";
 import Link from "next/link";
@@ -74,6 +77,7 @@ type DashboardData = {
   friendCount: number;
   health: {
     missingGenres: number;
+    missingPosters: number;
     missingReleaseDates: number;
     lowComparisonItems: number;
   };
@@ -82,6 +86,22 @@ type DashboardData = {
 const dashboardMediaTypes: MediaType[] = ["MOVIE", "TV_SHOW", "VIDEO_GAME"];
 
 type DashboardRecommendation = DashboardData["recommendations"][number];
+
+const premiumPanelActionSx = {
+  borderColor: alpha("#FFFFFF", 0.08),
+  borderRadius: 999,
+  color: "text.secondary",
+  fontSize: 11,
+  fontWeight: 800,
+  minHeight: 28,
+  px: 1.2,
+  textTransform: "none",
+  "&:hover": {
+    bgcolor: alpha("#FFFFFF", 0.065),
+    borderColor: alpha("#FFFFFF", 0.16),
+    color: "text.primary",
+  },
+} as const;
 
 export function DashboardClient({ data }: { data: DashboardData }) {
   const initialTonightPickType =
@@ -142,7 +162,36 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   }));
 
   return (
-    <Stack spacing={1.25}>
+    <Stack
+      spacing={1.5}
+      sx={{
+        isolation: "isolate",
+        position: "relative",
+        "&::before": {
+          background:
+            "radial-gradient(circle at 12% 4%, rgba(85, 216, 255, 0.14), transparent 28rem), radial-gradient(circle at 72% 0%, rgba(155, 124, 255, 0.16), transparent 34rem), radial-gradient(circle at 90% 48%, rgba(248, 184, 78, 0.08), transparent 28rem)",
+          content: '""',
+          inset: { xs: "-24px -12px auto", md: "-42px -28px auto" },
+          minHeight: 620,
+          pointerEvents: "none",
+          position: "absolute",
+          zIndex: -2,
+        },
+        "&::after": {
+          background:
+            "linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px)",
+          backgroundSize: "42px 42px",
+          content: '""',
+          inset: { xs: "-18px -12px", md: "-28px" },
+          maskImage:
+            "radial-gradient(circle at 50% 0%, black, transparent 78%)",
+          opacity: 0.28,
+          pointerEvents: "none",
+          position: "absolute",
+          zIndex: -1,
+        },
+      }}
+    >
       <Stack
         direction={{ xs: "column", lg: "row" }}
         sx={{ alignItems: { lg: "end" }, gap: 1.25 }}
@@ -153,6 +202,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             sx={{
               fontSize: { xs: 22, md: 27 },
               fontWeight: 950,
+              letterSpacing: 0,
               lineHeight: 1,
             }}
           >
@@ -212,7 +262,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               "health"
             `,
             lg: `
-              "pick pick pick pick recs recs recs recs recs recs recs recs"
+              "pick pick pick pick pick recs recs recs recs recs recs recs"
               "top top top top top top top top genre genre genre genre"
               "watch watch watch watch watch watch side side side side side side"
               "health health health health health health health health health health health health"
@@ -227,6 +277,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               counts={tonightPickCounts}
               confidence={heroRecommendation.confidence}
               item={heroRecommendation.media}
+              likedItems={data.topItems.slice(0, 5)}
               onTypeChange={setTonightPickType}
               score={heroRecommendation.score}
               value={tonightPickType}
@@ -244,7 +295,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <Box sx={{ gridArea: "recs", minWidth: 0 }}>
           <DashboardCard
             action={
-              <Button href="/recommendations" size="small">
+              <Button
+                href="/recommendations"
+                size="small"
+                sx={premiumPanelActionSx}
+              >
                 View all
               </Button>
             }
@@ -266,7 +321,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <Box sx={{ gridArea: "top", minWidth: 0 }}>
           <DashboardCard
             action={
-              <Button href="/top-lists" size="small">
+              <Button href="/top-lists" size="small" sx={premiumPanelActionSx}>
                 Open lists
               </Button>
             }
@@ -306,7 +361,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <Box sx={{ gridArea: "genre", minWidth: 0 }}>
           <DashboardCard
             action={
-              <Button href="/insights" size="small">
+              <Button href="/insights" size="small" sx={premiumPanelActionSx}>
                 View insights
               </Button>
             }
@@ -319,7 +374,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <Box sx={{ gridArea: "watch", minWidth: 0 }}>
           <DashboardCard
             action={
-              <Button href="/watchlist" size="small">
+              <Button href="/watchlist" size="small" sx={premiumPanelActionSx}>
                 Open watchlist
               </Button>
             }
@@ -358,7 +413,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <Box sx={{ minWidth: 0 }}>
             <DashboardCard
               action={
-                <Button href="/upcoming" size="small">
+                <Button href="/upcoming" size="small" sx={premiumPanelActionSx}>
                   Open upcoming
                 </Button>
               }
@@ -403,6 +458,7 @@ function TonightPickCard({
   counts,
   confidence,
   item,
+  likedItems,
   onTypeChange,
   score,
   value,
@@ -410,138 +466,378 @@ function TonightPickCard({
   counts: Array<{ mediaType: MediaType; count: number }>;
   confidence: number;
   item: MediaItemDTO;
+  likedItems: MediaItemDTO[];
   onTypeChange: (value: MediaType) => void;
   score: number;
   value: MediaType;
 }) {
+  const releaseYear = releaseYearLabel(item.releaseDate);
+  const heroMeta = [
+    formatMediaType(item.mediaType),
+    releaseYear,
+    ...item.genres.slice(0, 1),
+  ].filter(Boolean);
+
   return (
-    <DashboardSection accent={noirTokens.accent.amber} title="Tonight's Pick">
-      <MediaTypeTabs
-        counts={counts}
-        disabledMediaTypes={counts
-          .filter((entry) => entry.count === 0)
-          .map((entry) => entry.mediaType)}
-        onChange={onTypeChange}
-        showCounts={false}
-        value={value}
+    <Box
+      component="section"
+      sx={{
+        background: "#05070E",
+        borderRadius: { xs: "24px", md: "28px" },
+        boxShadow: [
+          `0 30px 90px ${alpha("#000000", 0.52)}`,
+          `0 0 70px ${alpha(mediaTypeColor(item.mediaType), 0.1)}`,
+          `inset 0 1px 0 ${alpha("#FFFFFF", 0.07)}`,
+        ].join(", "),
+        height: { xs: 430, md: 476 },
+        isolation: "isolate",
+        overflow: "hidden",
+        position: "relative",
+        transform: "translateZ(0)",
+        "&:hover .tonight-backdrop": {
+          transform: "scale(1.035)",
+        },
+      }}
+    >
+      <Box
+        className="tonight-backdrop"
+        sx={{
+          backgroundImage: item.posterUrl
+            ? `url(${item.posterUrl})`
+            : designedHeroFallback(item.mediaType),
+          backgroundPosition: "center",
+          backgroundSize: "cover",
+          filter: item.posterUrl ? "saturate(0.92) contrast(1.05)" : "none",
+          inset: 0,
+          position: "absolute",
+          transition: "transform 700ms cubic-bezier(.2,.8,.2,1)",
+          zIndex: 0,
+        }}
       />
-      <Link
-        href={`/media/${item.id}`}
-        style={{
-          color: "inherit",
-          display: "block",
-          height: "calc(100% - 38px)",
-          marginTop: 8,
-          textDecoration: "none",
+      <Box
+        sx={{
+          background:
+            "linear-gradient(90deg, rgba(3,5,12,0.96) 0%, rgba(3,5,12,0.82) 36%, rgba(3,5,12,0.3) 68%, rgba(3,5,12,0.58) 100%), linear-gradient(0deg, rgba(3,5,12,0.98) 0%, rgba(3,5,12,0.58) 38%, rgba(3,5,12,0.18) 100%)",
+          inset: 0,
+          position: "absolute",
+          zIndex: 1,
+        }}
+      />
+      <Box
+        sx={{
+          backgroundImage:
+            "radial-gradient(circle at 28% 22%, rgba(255,255,255,0.12) 0 1px, transparent 1px), radial-gradient(circle at 78% 32%, rgba(255,255,255,0.08) 0 1px, transparent 1px)",
+          backgroundSize: "18px 18px, 23px 23px",
+          inset: 0,
+          opacity: item.posterUrl ? 0.1 : 0.18,
+          pointerEvents: "none",
+          position: "absolute",
+          zIndex: 2,
+        }}
+      />
+      <Box
+        sx={{
+          left: { xs: 14, sm: 18 },
+          maxWidth: { xs: "calc(100% - 108px)", sm: 430 },
+          position: "absolute",
+          top: { xs: 14, sm: 16 },
+          width: "100%",
+          zIndex: 5,
         }}
       >
-        <Box
+        <MediaTypeTabs
+          counts={counts}
+          disabledMediaTypes={counts
+            .filter((entry) => entry.count === 0)
+            .map((entry) => entry.mediaType)}
+          onChange={onTypeChange}
+          showCounts={false}
           sx={{
-            background: alpha("#080B12", 0.42),
-            border: `1px solid ${alpha(noirTokens.accent.amber, 0.18)}`,
-            borderRadius: 1,
-            display: "flex",
-            flexDirection: "column",
-            height: "100%",
-            overflow: "hidden",
-            transition: "border-color 180ms ease, transform 180ms ease",
-            "&:hover": {
-              borderColor: alpha(noirTokens.accent.amber, 0.42),
-              transform: "translateY(-2px)",
-              "& .tonight-art": {
-                transform: "scale(1.035)",
+            backdropFilter: "blur(20px) saturate(1.25)",
+            bgcolor: alpha("#060A14", 0.42),
+            border: 0,
+            boxShadow: `0 12px 36px ${alpha("#000000", 0.24)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
+            p: 0.25,
+            "& .MuiToggleButton-root": {
+              color: alpha("#F8FAFC", 0.64),
+              minHeight: 28,
+              px: { xs: 0.65, sm: 0.9 },
+              py: 0.35,
+              "&.Mui-selected": {
+                bgcolor: alpha("#FFFFFF", 0.14),
+                boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.1)}`,
               },
             },
           }}
+          value={value}
+        />
+      </Box>
+      <ScoreBadge
+        label="Match"
+        sx={{
+          position: "absolute",
+          right: { xs: 14, sm: 18 },
+          top: { xs: 14, sm: 16 },
+          zIndex: 5,
+        }}
+        value={`${Math.round(score)}%`}
+      />
+      <Stack
+        spacing={1.05}
+        sx={{
+          bottom: { xs: 18, md: 22 },
+          left: { xs: 18, md: 24 },
+          maxWidth: { xs: "calc(100% - 36px)", sm: 610 },
+          position: "absolute",
+          right: { xs: 18, sm: "auto" },
+          zIndex: 4,
+        }}
+      >
+        <Typography
+          sx={{
+            color: alpha("#F8FAFC", 0.7),
+            fontSize: 10,
+            fontWeight: 850,
+            letterSpacing: 1.2,
+            lineHeight: 1,
+            textShadow: `0 8px 24px ${alpha("#000000", 0.8)}`,
+            textTransform: "uppercase",
+          }}
         >
-          <Box
-            className="tonight-art"
+          Curated for tonight / Tonight&apos;s Pick
+        </Typography>
+        <Typography
+          component="h2"
+          sx={{
+            color: "#FFFFFF",
+            fontSize: { xs: 36, sm: 48, md: 58 },
+            fontWeight: 920,
+            letterSpacing: 0,
+            lineHeight: 0.92,
+            maxWidth: 660,
+            textShadow: `0 20px 60px ${alpha("#000000", 0.82)}`,
+          }}
+        >
+          {item.title}
+        </Typography>
+        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.55, pt: 0.2 }}>
+          {heroMeta.map((entry) => (
+            <TonightMetaChip key={entry}>{entry}</TonightMetaChip>
+          ))}
+          <TonightMetaChip>{`${Math.round(confidence * 100)}% confidence`}</TonightMetaChip>
+        </Stack>
+        <Typography
+          sx={{
+            color: alpha("#E5EEF9", 0.78),
+            fontSize: { xs: 12.5, md: 13 },
+            lineHeight: 1.45,
+            maxWidth: 500,
+            textShadow: `0 10px 28px ${alpha("#000000", 0.72)}`,
+          }}
+        >
+          {pickReason(item)}
+        </Typography>
+        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75, pt: 0.35 }}>
+          <Button
+            component={Link}
+            endIcon={<ArrowForwardIcon sx={{ fontSize: 16 }} />}
+            href={`/media/${item.id}`}
+            size="small"
             sx={{
-              aspectRatio: { xs: "16 / 8.7", md: "16 / 8.2" },
-              backgroundImage: item.posterUrl
-                ? `linear-gradient(180deg, transparent 32%, rgba(8, 11, 18, 0.92)), url(${item.posterUrl})`
-                : `radial-gradient(circle at 50% 20%, ${alpha(mediaTypeColor(item.mediaType), 0.44)}, transparent 16rem), linear-gradient(135deg, rgba(17, 24, 39, 0.96), rgba(8, 11, 18, 0.96))`,
-              backgroundPosition: "center",
-              backgroundSize: "cover",
-              flex: 1,
-              minHeight: { md: 272 },
-              position: "relative",
-              transition: "transform 220ms ease",
+              bgcolor: alpha("#F8FAFC", 0.92),
+              borderRadius: 999,
+              boxShadow: `0 12px 34px ${alpha("#000000", 0.28)}`,
+              color: "#070A12",
+              fontSize: 12,
+              fontWeight: 820,
+              minHeight: 32,
+              px: 1.2,
+              textTransform: "none",
+              "&:hover": {
+                bgcolor: "#FFFFFF",
+                boxShadow: `0 14px 38px ${alpha("#000000", 0.34)}`,
+              },
+            }}
+            variant="contained"
+          >
+            View details
+          </Button>
+          <Button
+            component={Link}
+            href="/recommendations"
+            size="small"
+            startIcon={<InfoOutlinedIcon sx={{ fontSize: 16 }} />}
+            sx={{
+              backdropFilter: "blur(16px)",
+              bgcolor: alpha("#FFFFFF", 0.075),
+              border: `1px solid ${alpha("#FFFFFF", 0.08)}`,
+              borderRadius: 999,
+              color: alpha("#F8FAFC", 0.92),
+              fontSize: 12,
+              fontWeight: 760,
+              minHeight: 32,
+              px: 1.1,
+              textTransform: "none",
+              "&:hover": {
+                bgcolor: alpha("#FFFFFF", 0.12),
+                borderColor: alpha("#FFFFFF", 0.12),
+              },
+            }}
+          >
+            Why this pick?
+          </Button>
+        </Stack>
+        {likedItems.length > 0 ? (
+          <Stack
+            direction="row"
+            sx={{
+              alignItems: "center",
+              gap: 0.65,
+              maxWidth: "100%",
+              minWidth: 0,
+              pt: 0.3,
             }}
           >
             <Typography
               sx={{
-                bottom: 12,
-                fontSize: { xs: 24, sm: 30 },
-                fontWeight: 950,
-                left: 12,
-                letterSpacing: 2.4,
-                lineHeight: 0.9,
-                maxWidth: "82%",
-                position: "absolute",
-                textShadow: `0 6px 24px ${alpha("#000000", 0.7)}`,
-                textTransform: "uppercase",
+                color: alpha("#F8FAFC", 0.58),
+                flexShrink: 0,
+                fontSize: 10,
+                fontWeight: 720,
               }}
             >
-              {item.title}
+              Because you liked
             </Typography>
-          </Box>
-          <Box sx={{ p: 1 }}>
-            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.45 }}>
-              <ScoreBadge label="Match" value={`${Math.round(score)}%`} />
-              <ScoreBadge
-                label="Confidence"
-                value={`${Math.round(confidence * 100)}%`}
-              />
-              {item.genres.slice(0, 2).map((genre) => (
-                <Chip
-                  key={genre}
-                  label={genre}
-                  size="small"
-                  variant="outlined"
+            <Box
+              sx={{
+                display: "flex",
+                gap: 0.45,
+                minWidth: 0,
+                overflow: "hidden",
+              }}
+            >
+              {likedItems.map((liked) => (
+                <Box
+                  key={liked.id}
+                  sx={{
+                    backgroundImage: liked.posterUrl
+                      ? `linear-gradient(180deg, transparent, ${alpha("#05070E", 0.45)}), url(${liked.posterUrl})`
+                      : designedPosterFallback(liked.mediaType),
+                    backgroundPosition: "center",
+                    backgroundSize: "cover",
+                    borderRadius: 1,
+                    boxShadow: `inset 0 0 0 1px ${alpha("#FFFFFF", 0.06)}`,
+                    flex: "0 0 54px",
+                    height: 30,
+                    opacity: 0.86,
+                  }}
+                  title={liked.title}
                 />
               ))}
-            </Stack>
-            <Typography
-              color="text.secondary"
-              sx={{ mt: 0.7 }}
-              variant="caption"
-            >
-              You rated similar releases highly.
-            </Typography>
-          </Box>
-        </Box>
-      </Link>
-    </DashboardSection>
+            </Box>
+          </Stack>
+        ) : null}
+      </Stack>
+    </Box>
   );
 }
 
-function ScoreBadge({ label, value }: { label: string; value: string }) {
+function ScoreBadge({
+  label,
+  sx,
+  value,
+}: {
+  label: string;
+  sx?: SxProps<Theme>;
+  value: string;
+}) {
   return (
     <Box
       sx={{
-        alignItems: "baseline",
-        background: alpha(noirTokens.accent.emerald, 0.08),
-        border: `1px solid ${alpha(noirTokens.accent.emerald, 0.22)}`,
-        borderRadius: 0.75,
+        alignItems: "center",
+        backdropFilter: "blur(18px) saturate(1.25)",
+        background: alpha("#06140F", 0.46),
+        borderRadius: 999,
+        boxShadow: [
+          `0 16px 42px ${alpha("#000000", 0.34)}`,
+          `0 0 24px ${alpha(noirTokens.accent.emerald, 0.16)}`,
+          `inset 0 0 0 1px ${alpha("#FFFFFF", 0.11)}`,
+        ].join(", "),
         color: noirTokens.accent.emerald,
-        display: "inline-flex",
-        gap: 0.45,
-        px: 0.65,
-        py: 0.25,
+        display: "flex",
+        flexDirection: "column",
+        height: { xs: 58, sm: 64 },
+        justifyContent: "center",
+        width: { xs: 58, sm: 64 },
+        ...sx,
       }}
     >
-      <Typography sx={{ fontSize: 10, fontWeight: 950, lineHeight: 1 }}>
+      <Typography
+        sx={{ fontSize: { xs: 17, sm: 19 }, fontWeight: 880, lineHeight: 1 }}
+      >
         {value}
       </Typography>
-      <Typography sx={{ fontSize: 9, fontWeight: 800, opacity: 0.82 }}>
+      <Typography
+        sx={{
+          color: alpha("#F8FAFC", 0.72),
+          fontSize: 8.5,
+          fontWeight: 780,
+          lineHeight: 1,
+        }}
+      >
         {label}
       </Typography>
     </Box>
   );
 }
 
+function TonightMetaChip({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        backdropFilter: "blur(14px) saturate(1.2)",
+        bgcolor: alpha("#FFFFFF", 0.075),
+        borderRadius: 999,
+        boxShadow: `inset 0 0 0 1px ${alpha("#FFFFFF", 0.075)}`,
+        color: alpha("#F8FAFC", 0.82),
+        fontSize: 10.5,
+        fontWeight: 720,
+        lineHeight: 1,
+        px: 0.75,
+        py: 0.45,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+function GlassPill({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      sx={{
+        backdropFilter: "blur(14px)",
+        bgcolor: alpha("#FFFFFF", 0.075),
+        border: `1px solid ${alpha("#FFFFFF", 0.09)}`,
+        borderRadius: 999,
+        color: alpha("#F8FAFC", 0.86),
+        fontSize: 10.5,
+        fontWeight: 850,
+        px: 0.85,
+        py: 0.38,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
 function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
+  const releaseYear = releaseYearLabel(item.releaseDate);
+  const meta = [shortMediaTypeLabel(item.mediaType), releaseYear].filter(
+    Boolean,
+  );
+
   return (
     <Link
       href={`/media/${item.id}`}
@@ -549,46 +845,146 @@ function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
     >
       <Box
         sx={{
+          aspectRatio: "2 / 3",
+          borderRadius: "20px",
+          minWidth: 0,
+          overflow: "hidden",
           position: "relative",
-          "&:hover .tile-poster": {
-            borderColor: alpha(noirTokens.accent.purple, 0.46),
-            transform: "translateY(-2px)",
+          transform: "translateZ(0)",
+          transition: "box-shadow 260ms ease, transform 260ms ease",
+          "&:hover": {
+            boxShadow: `0 24px 56px ${alpha("#000000", 0.48)}, 0 0 36px ${alpha(noirTokens.accent.purple, 0.2)}, 0 0 44px ${alpha(noirTokens.accent.blue, 0.12)}`,
+            transform: "translateY(-6px)",
+            "& .tile-poster": {
+              transform: "scale(1.07)",
+            },
+            "& .tile-title": {
+              opacity: 1,
+              transform: "translateY(0)",
+            },
           },
         }}
       >
-        <Typography
-          sx={{
-            color: "text.secondary",
-            fontSize: 11,
-            fontWeight: 900,
-            mb: 0.55,
-            textAlign: "center",
-          }}
-        >
-          {index + 1}
-        </Typography>
         <Box
           className="tile-poster"
           sx={{
-            aspectRatio: "2 / 3",
             backgroundImage: item.posterUrl
-              ? `linear-gradient(180deg, transparent 42%, rgba(8, 11, 18, 0.84)), url(${item.posterUrl})`
-              : `linear-gradient(135deg, ${alpha(mediaTypeColor(item.mediaType), 0.34)}, ${alpha("#080B12", 0.94)})`,
+              ? `url(${item.posterUrl})`
+              : designedPosterFallback(item.mediaType),
             backgroundPosition: "center",
             backgroundSize: "cover",
-            border: `1px solid ${alpha("#BFDBFE", 0.13)}`,
-            borderRadius: 0.75,
-            minHeight: 92,
-            transition: "border-color 180ms ease, transform 180ms ease",
+            inset: 0,
+            position: "absolute",
+            transformOrigin: "center",
+            transition: "transform 620ms cubic-bezier(.2,.8,.2,1)",
           }}
         />
-        <Typography
-          noWrap
-          sx={{ fontSize: 10.5, fontWeight: 800, mt: 0.45 }}
-          title={item.title}
+        <Box
+          sx={{
+            background:
+              "linear-gradient(180deg, rgba(5,7,14,0.02) 20%, rgba(5,7,14,0.22) 48%, rgba(5,7,14,0.92) 100%)",
+            inset: 0,
+            position: "absolute",
+          }}
+        />
+        <Box
+          sx={{
+            border: `1px solid ${alpha("#FFFFFF", 0.045)}`,
+            borderRadius: "20px",
+            boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}, inset 0 -60px 80px ${alpha("#000000", 0.18)}`,
+            inset: 0,
+            pointerEvents: "none",
+            position: "absolute",
+            zIndex: 3,
+          }}
+        />
+        <Box
+          sx={{
+            alignItems: "center",
+            backdropFilter: "blur(16px) saturate(1.25)",
+            bgcolor: alpha("#05070E", 0.48),
+            border: `1px solid ${alpha("#FFFFFF", 0.12)}`,
+            borderRadius: 999,
+            boxShadow: `0 10px 30px ${alpha("#000000", 0.3)}`,
+            color: "text.primary",
+            display: "flex",
+            fontSize: 10,
+            fontWeight: 950,
+            height: 24,
+            justifyContent: "center",
+            minWidth: 24,
+            px: 0.65,
+            position: "absolute",
+            right: 8,
+            top: 8,
+            zIndex: 4,
+          }}
         >
-          {item.title}
-        </Typography>
+          {index + 1}
+        </Box>
+        {!item.posterUrl ? (
+          <Box
+            sx={{
+              alignItems: "center",
+              color: alpha(mediaTypeColor(item.mediaType), 0.82),
+              display: "flex",
+              inset: 0,
+              justifyContent: "center",
+              position: "absolute",
+              zIndex: 1,
+              "& svg": { fontSize: 30 },
+            }}
+          >
+            {mediaTypeIcon(item.mediaType)}
+          </Box>
+        ) : null}
+        <Box
+          sx={{
+            bottom: 0,
+            left: 0,
+            p: 0.9,
+            position: "absolute",
+            right: 0,
+            zIndex: 4,
+          }}
+        >
+          <Typography
+            className="tile-title"
+            sx={{
+              color: "text.primary",
+              display: "-webkit-box",
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: 0,
+              lineHeight: 1.08,
+              opacity: { xs: 1, md: 0.92 },
+              overflow: "hidden",
+              textShadow: `0 8px 22px ${alpha("#000000", 0.8)}`,
+              transform: { xs: "none", md: "translateY(2px)" },
+              transition: "opacity 180ms ease, transform 180ms ease",
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: 2,
+            }}
+            title={item.title}
+          >
+            {item.title}
+          </Typography>
+          {meta.length > 0 ? (
+            <Typography
+              sx={{
+                color: alpha("#DCE9F7", 0.72),
+                fontSize: 9.5,
+                fontWeight: 800,
+                letterSpacing: 0,
+                lineHeight: 1,
+                mt: 0.45,
+                textShadow: `0 8px 18px ${alpha("#000000", 0.75)}`,
+              }}
+            >
+              {meta.join(" / ")}
+            </Typography>
+          ) : null}
+        </Box>
       </Box>
     </Link>
   );
@@ -613,15 +1009,25 @@ function GenreBarChart({
     <Box
       sx={{
         alignItems: "end",
-        borderBottom: `1px solid ${alpha("#BFDBFE", 0.1)}`,
-        borderLeft: `1px solid ${alpha("#BFDBFE", 0.1)}`,
+        background:
+          "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))",
+        borderRadius: 3,
         display: "grid",
         flex: 1,
         gap: 0.65,
         gridTemplateColumns: `repeat(${Math.max(genres.length, 1)}, minmax(0, 1fr))`,
-        minHeight: 176,
-        px: 0.75,
-        pt: 0.75,
+        minHeight: 188,
+        overflow: "hidden",
+        px: 1,
+        pt: 1.2,
+        position: "relative",
+        "&::before": {
+          background: `radial-gradient(circle at 50% 105%, ${alpha(noirTokens.accent.purple, 0.2)}, transparent 58%)`,
+          content: '""',
+          inset: 0,
+          pointerEvents: "none",
+          position: "absolute",
+        },
       }}
     >
       {genres.map((genre) => {
@@ -640,9 +1046,9 @@ function GenreBarChart({
             <Box
               sx={{
                 background: `linear-gradient(180deg, ${noirTokens.accent.purple}, ${alpha(noirTokens.accent.purple, 0.34)})`,
-                border: `1px solid ${alpha("#FFFFFF", 0.12)}`,
-                borderRadius: "3px 3px 0 0",
-                boxShadow: `0 0 18px ${alpha(noirTokens.accent.purple, 0.16)}`,
+                border: `1px solid ${alpha("#FFFFFF", 0.1)}`,
+                borderRadius: "999px 999px 0 0",
+                boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.22)}`,
                 height,
                 width: "60%",
               }}
@@ -670,18 +1076,53 @@ function MediaTypeTabs({
   disabledMediaTypes = [],
   onChange,
   showCounts = true,
+  sx,
   value,
 }: {
   counts: Array<{ mediaType: MediaType; count: number }>;
   disabledMediaTypes?: MediaType[];
   onChange: (value: MediaType) => void;
   showCounts?: boolean;
+  sx?: SxProps<Theme>;
   value: MediaType;
 }) {
   const countByType = new Map(
     counts.map((entry) => [entry.mediaType, entry.count]),
   );
   const disabledTypes = new Set(disabledMediaTypes);
+  const rootSx: SxProps<Theme> = {
+    backdropFilter: "blur(18px)",
+    bgcolor: alpha("#05070E", 0.42),
+    border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
+    borderRadius: 999,
+    boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.045)}`,
+    gap: 0.25,
+    p: 0.35,
+    "& .MuiToggleButton-root": {
+      border: 0,
+      borderRadius: 999,
+      color: alpha("#E5EEF9", 0.58),
+      gap: 0.6,
+      minHeight: 30,
+      px: 0.95,
+      py: 0.45,
+      textTransform: "none",
+      transition:
+        "background-color 180ms ease, color 180ms ease, box-shadow 180ms ease",
+      whiteSpace: "nowrap",
+      "&.Mui-disabled": {
+        color: alpha("#E5EEF9", 0.24),
+      },
+      "&.Mui-selected": {
+        bgcolor: alpha("#FFFFFF", 0.11),
+        boxShadow: `0 10px 28px ${alpha("#000000", 0.22)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
+        color: "text.primary",
+      },
+      "&:hover": {
+        bgcolor: alpha("#FFFFFF", 0.075),
+      },
+    },
+  };
 
   return (
     <ToggleButtonGroup
@@ -691,27 +1132,7 @@ function MediaTypeTabs({
         if (nextValue) onChange(nextValue);
       }}
       size="small"
-      sx={{
-        bgcolor: alpha("#07111d", 0.28),
-        border: `1px solid ${alpha("#9fb4d0", 0.1)}`,
-        borderRadius: 1,
-        p: 0.25,
-        "& .MuiToggleButton-root": {
-          border: 0,
-          borderRadius: 0.75,
-          color: "text.secondary",
-          gap: 0.6,
-          minHeight: 28,
-          px: 0.75,
-          py: 0.4,
-          textTransform: "none",
-          whiteSpace: "nowrap",
-          "&.Mui-selected": {
-            bgcolor: alpha("#7c5cff", 0.22),
-            color: "text.primary",
-          },
-        },
-      }}
+      sx={mergeSx(rootSx, sx)}
       value={value}
     >
       {dashboardMediaTypes.map((mediaType) => (
@@ -743,17 +1164,28 @@ function MediaRail({ children }: { children: React.ReactNode }) {
   return (
     <Box
       sx={{
+        alignItems: "stretch",
         display: "grid",
         flex: 1,
-        gap: 0.7,
-        gridAutoColumns: {
-          xs: "minmax(136px, 54vw)",
-          sm: "minmax(128px, 1fr)",
+        gap: "10px",
+        gridAutoColumns: { xs: "min(62vw, 170px)", sm: "auto" },
+        gridAutoFlow: { xs: "column", sm: "row" },
+        gridTemplateColumns: { xs: "none", sm: "repeat(5, minmax(0, 1fr))" },
+        height: "100%",
+        maskImage: {
+          xs: "linear-gradient(90deg, black calc(100% - 28px), transparent)",
+          sm: "none",
         },
-        gridAutoFlow: "column",
-        overflowX: "auto",
-        pb: 0.2,
+        minHeight: { xs: 258, sm: 318, xl: 346 },
+        overflowX: { xs: "auto", sm: "hidden" },
+        pb: 0.35,
+        pt: 0.15,
         scrollSnapType: "x proximity",
+        scrollbarWidth: "thin",
+        "& > *": {
+          height: "100%",
+          minWidth: 0,
+        },
       }}
     >
       {children}
@@ -770,6 +1202,13 @@ function PosterCard({
   item: MediaItemDTO;
   score: number;
 }) {
+  const releaseYear = releaseYearLabel(item.releaseDate);
+  const meta = [
+    formatMediaType(item.mediaType),
+    releaseYear,
+    item.genres[0],
+  ].filter(Boolean);
+
   return (
     <Link
       href={href}
@@ -782,22 +1221,29 @@ function PosterCard({
     >
       <Box
         sx={{
-          background: alpha("#BFDBFE", 0.035),
-          border: `1px solid ${alpha("#BFDBFE", 0.1)}`,
-          borderRadius: 1,
+          background: "#05070E",
+          borderRadius: "20px",
+          boxShadow: `0 14px 34px ${alpha("#000000", 0.36)}`,
           display: "flex",
           flexDirection: "column",
           height: "100%",
+          minHeight: 0,
           overflow: "hidden",
+          position: "relative",
           scrollSnapAlign: "start",
+          transform: "translateZ(0)",
           transition:
-            "border-color 180ms ease, background-color 180ms ease, transform 180ms ease",
+            "box-shadow 240ms ease, filter 240ms ease, transform 240ms ease",
+          width: "100%",
           "&:hover": {
-            bgcolor: alpha("#BFDBFE", 0.075),
-            borderColor: alpha(noirTokens.accent.purple, 0.46),
-            transform: "translateY(-2px)",
+            boxShadow: `0 24px 56px ${alpha("#000000", 0.5)}, 0 0 34px ${alpha(noirTokens.accent.blue, 0.12)}, 0 0 28px ${alpha(noirTokens.accent.purple, 0.09)}`,
+            filter: "saturate(1.04)",
+            transform: "translateY(-5px)",
             "& .poster-art": {
-              transform: "scale(1.045)",
+              transform: "scale(1.055)",
+            },
+            "& .poster-sheen": {
+              opacity: 0.46,
             },
           },
         }}
@@ -805,63 +1251,131 @@ function PosterCard({
         <Box
           className="poster-art"
           sx={{
-            aspectRatio: "2 / 3",
             bgcolor: alpha(mediaTypeColor(item.mediaType), 0.16),
             backgroundImage: item.posterUrl
-              ? `linear-gradient(180deg, transparent 38%, rgba(8, 11, 18, 0.92)), url(${item.posterUrl})`
-              : `linear-gradient(135deg, ${alpha(mediaTypeColor(item.mediaType), 0.34)}, ${alpha(noirTokens.background.default, 0.92)})`,
+              ? `url(${item.posterUrl})`
+              : designedPosterFallback(item.mediaType),
             backgroundPosition: "center",
             backgroundSize: "cover",
-            borderBottom: `1px solid ${alpha("#BFDBFE", 0.08)}`,
-            flex: 1,
-            minHeight: 0,
-            position: "relative",
+            inset: 0,
+            position: "absolute",
             transformOrigin: "center",
-            transition: "transform 220ms ease",
+            transition: "transform 520ms cubic-bezier(.2,.8,.2,1)",
+          }}
+        />
+        <Box
+          sx={{
+            background:
+              "linear-gradient(180deg, rgba(5,7,14,0.00) 26%, rgba(5,7,14,0.2) 55%, rgba(5,7,14,0.92) 100%)",
+            inset: 0,
+            position: "absolute",
+          }}
+        />
+        <Box
+          className="poster-sheen"
+          sx={{
+            background: `linear-gradient(135deg, ${alpha("#FFFFFF", 0.12)} 0%, transparent 30%, transparent 68%, ${alpha(mediaTypeColor(item.mediaType), 0.14)} 100%)`,
+            inset: 0,
+            opacity: 0.2,
+            pointerEvents: "none",
+            position: "absolute",
+            transition: "opacity 260ms ease",
+          }}
+        />
+        <Box
+          sx={{
+            border: `1px solid ${alpha("#FFFFFF", 0.035)}`,
+            borderRadius: "20px",
+            boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}`,
+            inset: 0,
+            pointerEvents: "none",
+            position: "absolute",
+            zIndex: 4,
+          }}
+        />
+        <Box
+          sx={{
+            alignItems: "center",
+            backdropFilter: "blur(14px) saturate(1.2)",
+            bgcolor: alpha("#06140F", 0.42),
+            border: `1px solid ${alpha("#FFFFFF", 0.1)}`,
+            borderRadius: 999,
+            boxShadow: `0 10px 24px ${alpha("#000000", 0.28)}, 0 0 18px ${alpha(noirTokens.accent.emerald, 0.12)}`,
+            color: noirTokens.accent.emerald,
+            display: "flex",
+            fontSize: 10,
+            fontWeight: 820,
+            height: 23,
+            justifyContent: "center",
+            px: 0.65,
+            position: "absolute",
+            right: 8,
+            top: 8,
+            zIndex: 2,
           }}
         >
+          {Math.round(score)}%
+        </Box>
+        {!item.posterUrl ? (
           <Box
             sx={{
               alignItems: "center",
-              backdropFilter: "blur(12px)",
-              bgcolor: alpha(noirTokens.background.default, 0.76),
-              border: `1px solid ${alpha(noirTokens.accent.emerald, 0.34)}`,
-              borderRadius: 0.75,
-              bottom: 8,
-              boxShadow: `0 0 24px ${alpha(noirTokens.accent.emerald, 0.2)}`,
-              color: noirTokens.accent.emerald,
+              color: alpha(mediaTypeColor(item.mediaType), 0.82),
               display: "flex",
-              fontSize: 11,
-              fontWeight: 900,
-              height: 24,
+              height: "100%",
               justifyContent: "center",
-              left: 8,
-              px: 0.7,
+              position: "relative",
+              zIndex: 1,
+              "& svg": { fontSize: 30 },
             }}
           >
-            {Math.round(score)}%
+            {mediaTypeIcon(item.mediaType)}
           </Box>
-          {!item.posterUrl ? (
-            <Box
-              sx={{
-                alignItems: "center",
-                color: mediaTypeColor(item.mediaType),
-                display: "flex",
-                height: "100%",
-                justifyContent: "center",
-              }}
-            >
-              {mediaTypeIcon(item.mediaType)}
-            </Box>
-          ) : null}
-        </Box>
-        <Box sx={{ p: 0.8 }}>
-          <Typography noWrap sx={{ fontSize: 12, fontWeight: 900 }}>
+        ) : null}
+        <Box
+          sx={{
+            bottom: 0,
+            left: 0,
+            px: 1,
+            py: 0.9,
+            position: "absolute",
+            right: 0,
+            zIndex: 2,
+          }}
+        >
+          <Typography
+            sx={{
+              display: "-webkit-box",
+              fontSize: 13,
+              fontWeight: 840,
+              letterSpacing: 0,
+              lineHeight: 1.12,
+              overflow: "hidden",
+              textShadow: `0 7px 20px ${alpha("#000000", 0.78)}`,
+              WebkitBoxOrient: "vertical",
+              WebkitLineClamp: 2,
+            }}
+          >
             {item.title}
           </Typography>
-          <Typography color="text.secondary" noWrap sx={{ fontSize: 10.5 }}>
-            {formatMediaType(item.mediaType)} / {formatStatus(item.status)}
-          </Typography>
+          {meta.length > 0 ? (
+            <Typography
+              sx={{
+                color: alpha("#DCE9F7", 0.74),
+                fontSize: 10,
+                fontWeight: 650,
+                letterSpacing: 0,
+                lineHeight: 1.15,
+                mt: 0.45,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                textShadow: `0 6px 14px ${alpha("#000000", 0.72)}`,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {meta.join(" / ")}
+            </Typography>
+          ) : null}
         </Box>
       </Box>
     </Link>
@@ -872,15 +1386,39 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
   return (
     <Stack
       direction="row"
-      spacing={0.8}
+      spacing={0.85}
       sx={{
         alignItems: "center",
-        borderBottom: `1px solid ${alpha("#9fb4d0", 0.08)}`,
-        minHeight: 42,
-        pb: 0.65,
+        background:
+          "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018))",
+        border: `1px solid ${alpha("#FFFFFF", 0.055)}`,
+        borderRadius: 2.5,
+        minHeight: 48,
+        px: 0.75,
+        py: 0.65,
+        transition: "background-color 180ms ease, transform 180ms ease",
+        "&:hover": {
+          bgcolor: alpha("#FFFFFF", 0.055),
+          transform: "translateX(3px)",
+        },
       }}
     >
-      <CalendarMonthIcon color="primary" sx={{ fontSize: 17 }} />
+      <Box
+        sx={{
+          alignItems: "center",
+          bgcolor: alpha(noirTokens.accent.blue, 0.11),
+          border: `1px solid ${alpha(noirTokens.accent.blue, 0.18)}`,
+          borderRadius: 2,
+          color: noirTokens.accent.blue,
+          display: "flex",
+          flexShrink: 0,
+          height: 30,
+          justifyContent: "center",
+          width: 30,
+        }}
+      >
+        <CalendarMonthIcon sx={{ fontSize: 16 }} />
+      </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Link href={`/media/${item.id}`} style={{ textDecoration: "none" }}>
           <Typography
@@ -891,9 +1429,13 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
           </Typography>
         </Link>
       </Box>
-      <Box sx={{ minWidth: 86, textAlign: "right" }}>
-        <Typography color="text.secondary" sx={{ fontSize: 11.5 }}>
-          {item.releaseDate ? new Date(item.releaseDate).toLocaleDateString() : "-"}
+      <Box sx={{ minWidth: 92, textAlign: "right" }}>
+        <Typography
+          sx={{ color: "text.primary", fontSize: 11.5, fontWeight: 850 }}
+        >
+          {item.releaseDate
+            ? new Date(item.releaseDate).toLocaleDateString()
+            : "-"}
         </Typography>
         {item.releaseDate ? (
           <Typography color="text.secondary" sx={{ fontSize: 10.5 }}>
@@ -931,21 +1473,22 @@ function DataHealthStrip({
   return (
     <DashboardSection
       action={
-        <Button href="/data-health" size="small">
+        <Button href="/data-health" size="small" sx={premiumPanelActionSx}>
           Review
         </Button>
       }
       accent={noirTokens.accent.amber}
+      kicker="System integrity"
       title="Data Health"
     >
       <Box
         sx={{
           display: "grid",
-          gap: 0.65,
+          gap: 0.75,
           gridTemplateColumns: {
             xs: "1fr",
             sm: "repeat(2, minmax(0, 1fr))",
-            lg: "repeat(4, minmax(0, 1fr))",
+            lg: "repeat(5, minmax(0, 1fr))",
           },
         }}
       >
@@ -954,6 +1497,7 @@ function DataHealthStrip({
           label="Missing release dates"
           value={health.missingReleaseDates}
         />
+        <HealthPill label="Missing posters" value={health.missingPosters} />
         <HealthPill label="Low comparisons" value={health.lowComparisonItems} />
         <HealthPill label="Possible duplicates" value={duplicateCount} />
       </Box>
@@ -969,13 +1513,14 @@ function HealthPill({ label, value }: { label: string; value: number }) {
     <Box
       sx={{
         alignItems: "center",
-        background: alpha(accent, 0.055),
-        border: `1px solid ${alpha(accent, 0.16)}`,
-        borderRadius: 0.75,
+        background: `linear-gradient(135deg, ${alpha(accent, value > 0 ? 0.12 : 0.08)}, ${alpha("#FFFFFF", 0.018)})`,
+        border: `1px solid ${alpha(accent, value > 0 ? 0.2 : 0.12)}`,
+        borderRadius: 999,
+        boxShadow: value > 0 ? `0 0 28px ${alpha(accent, 0.1)}` : "none",
         display: "flex",
         gap: 0.65,
-        minHeight: 32,
-        px: 0.8,
+        minHeight: 36,
+        px: 1,
       }}
     >
       <CheckCircleIcon sx={{ color: accent, fontSize: 15 }} />
@@ -1035,14 +1580,26 @@ function MediaSignalRow({
     >
       <Box
         sx={{
-          background: alpha("#BFDBFE", 0.028),
-          border: `1px solid ${alpha("#9fb4d0", 0.09)}`,
-          borderRadius: 1,
+          background:
+            "linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018))",
+          border: `1px solid ${alpha("#FFFFFF", 0.06)}`,
+          borderRadius: 3,
+          boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
           height: "100%",
-          p: 0.75,
+          p: 0.8,
+          transition: "background-color 180ms ease, transform 180ms ease",
           "&:hover": {
-            bgcolor: alpha("#9fb4d0", 0.045),
-            borderColor: alpha("#8c6bff", 0.28),
+            bgcolor: alpha("#FFFFFF", 0.065),
+            transform: "translateX(3px)",
+          },
+          "& .MuiLinearProgress-root": {
+            bgcolor: alpha("#FFFFFF", 0.08),
+            borderRadius: 999,
+            height: 5,
+          },
+          "& .MuiLinearProgress-bar": {
+            background: `linear-gradient(90deg, ${noirTokens.accent.emerald}, ${noirTokens.accent.blue})`,
+            borderRadius: 999,
           },
         }}
       >
@@ -1059,8 +1616,9 @@ function MediaSignalRow({
               direction="row"
               sx={{ flexWrap: "wrap", gap: 0.4, mt: 0.45 }}
             >
+              <GlassPill>{formatMediaType(item.mediaType)}</GlassPill>
               <Typography color="text.secondary" sx={{ fontSize: 10.5 }}>
-                {formatMediaType(item.mediaType)} / {formatStatus(item.status)}
+                {formatStatus(item.status)}
               </Typography>
               {!compact &&
                 item.genres
@@ -1103,6 +1661,32 @@ function formatDashboardScore(value: number) {
   return value.toFixed(1);
 }
 
+function mergeSx(
+  base: SxProps<Theme>,
+  override?: SxProps<Theme>,
+): SxProps<Theme> {
+  if (!override) return base;
+  return [
+    base,
+    ...(Array.isArray(override) ? override : [override]),
+  ] as SxProps<Theme>;
+}
+
+function pickReason(item: MediaItemDTO) {
+  const genre = item.genres[0];
+  if (genre) {
+    return `Because your library points toward ${genre.toLowerCase()} with strong local signals.`;
+  }
+  return "Because your ratings, rankings, and local signals make this stand out tonight.";
+}
+
+function releaseYearLabel(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return String(date.getFullYear());
+}
+
 function mediaTypeIcon(mediaType: MediaType) {
   if (mediaType === "TV_SHOW") return <TvIcon fontSize="small" />;
   if (mediaType === "VIDEO_GAME") return <SportsEsportsIcon fontSize="small" />;
@@ -1113,6 +1697,26 @@ function mediaTypeColor(mediaType: MediaType) {
   if (mediaType === "TV_SHOW") return "#25d0b2";
   if (mediaType === "VIDEO_GAME") return "#ffb13d";
   return "#7c5cff";
+}
+
+function designedPosterFallback(mediaType: MediaType) {
+  const accent = mediaTypeColor(mediaType);
+  return [
+    `radial-gradient(circle at 22% 16%, ${alpha(accent, 0.34)}, transparent 27%)`,
+    `radial-gradient(circle at 72% 8%, ${alpha("#FFFFFF", 0.1)}, transparent 24%)`,
+    `linear-gradient(180deg, ${alpha("#FFFFFF", 0.055)}, transparent 34%)`,
+    "linear-gradient(145deg, rgba(28, 26, 44, 0.98), rgba(10, 14, 26, 0.99) 52%, rgba(5, 7, 14, 0.99))",
+  ].join(", ");
+}
+
+function designedHeroFallback(mediaType: MediaType) {
+  const accent = mediaTypeColor(mediaType);
+  return [
+    `radial-gradient(circle at 22% 26%, ${alpha(accent, 0.42)}, transparent 24rem)`,
+    `radial-gradient(circle at 78% 18%, ${alpha(noirTokens.accent.blue, 0.16)}, transparent 22rem)`,
+    `radial-gradient(circle at 58% 86%, ${alpha(noirTokens.accent.purple, 0.18)}, transparent 26rem)`,
+    "linear-gradient(135deg, rgba(20, 24, 42, 0.98), rgba(7, 10, 22, 0.99) 54%, rgba(3, 5, 12, 1))",
+  ].join(", ");
 }
 
 function shortMediaTypeLabel(mediaType: MediaType) {

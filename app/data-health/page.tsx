@@ -38,6 +38,9 @@ export default async function DataHealthPage({
     missingDates: report.missingDates.filter(
       (item) => item.mediaType === selectedType,
     ),
+    missingPosters: report.missingPosters.filter(
+      (item) => item.mediaType === selectedType,
+    ),
     lowComparisonItems: report.lowComparisonItems.filter(
       (item) => item.mediaType === selectedType,
     ),
@@ -71,19 +74,25 @@ export default async function DataHealthPage({
         </CardContent>
       </Card>
       <Grid container spacing={2}>
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <HealthCard
             items={filteredReport.missingGenres}
             title="Missing Genres"
           />
         </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <HealthCard
             items={filteredReport.missingDates}
             title="Missing Dates"
           />
         </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
+        <Grid size={{ xs: 12, md: 3 }}>
+          <HealthCard
+            items={filteredReport.missingPosters}
+            title="Missing Posters"
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 3 }}>
           <HealthCard
             items={filteredReport.lowComparisonItems}
             title="Low Comparisons"

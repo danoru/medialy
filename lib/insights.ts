@@ -80,6 +80,7 @@ export async function getDataHealthReport(): Promise<DataHealthReport> {
   return {
     missingGenres: dtos.filter((item) => item.genres.length === 0),
     missingDates: dtos.filter((item) => !item.releaseDate),
+    missingPosters: dtos.filter((item) => !item.posterUrl),
     lowComparisonItems: dtos.filter((item) => item.comparisonCount < 3),
     duplicateCandidates: [...duplicateGroups.entries()]
       .filter(([, group]) => group.length > 1)

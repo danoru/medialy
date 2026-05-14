@@ -191,39 +191,33 @@ export default async function MediaDetailPage({
           </Card>
         </Grid>
         <Grid size={{ xs: 12, md: 5 }}>
-          <Card variant="outlined">
-            <CardContent>
-              <Typography sx={{ fontWeight: 700, mb: 2 }} variant="h6">
-                Poster
-              </Typography>
-              <Box
-                sx={{
-                  alignItems: "center",
-                  bgcolor: "background.default",
-                  border: "1px solid",
-                  borderColor: "divider",
-                  borderRadius: 1,
-                  display: "flex",
-                  justifyContent: "center",
-                  minHeight: { xs: 260, md: 420 },
-                  overflow: "hidden",
+          <Box
+            sx={{
+              alignItems: "flex-start",
+              display: "flex",
+              justifyContent: { xs: "center", md: "flex-end" },
+              minHeight: { md: 360 },
+            }}
+          >
+            {item.posterUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                alt={`${item.title} poster`}
+                src={item.posterUrl}
+                style={{
+                  borderRadius: 8,
+                  display: "block",
+                  height: "auto",
+                  maxHeight: 420,
+                  maxWidth: "100%",
+                  objectFit: "contain",
+                  width: "min(100%, 280px)",
                 }}
-              >
-                {item.posterUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    alt={`${item.title} poster`}
-                    src={item.posterUrl}
-                    style={{
-                      display: "block",
-                      height: "100%",
-                      maxHeight: 560,
-                      objectFit: "cover",
-                      width: "100%",
-                    }}
-                  />
-                ) : (
-                  <Stack spacing={1} sx={{ alignItems: "center", p: 3 }}>
+              />
+            ) : (
+              <Card sx={{ width: "min(100%, 280px)" }} variant="outlined">
+                <CardContent>
+                  <Stack spacing={1} sx={{ alignItems: "center" }}>
                     <Typography color="text.secondary" variant="body2">
                       No poster yet.
                     </Typography>
@@ -231,10 +225,10 @@ export default async function MediaDetailPage({
                       Add poster URL
                     </Button>
                   </Stack>
-                )}
-              </Box>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            )}
+          </Box>
           <Card sx={{ mt: 2 }} variant="outlined">
             <CardContent>
               <Typography sx={{ fontWeight: 700, mb: 2 }} variant="h6">

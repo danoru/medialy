@@ -79,6 +79,7 @@ export type GenreInsight = {
 export type DataHealthReport = {
   missingGenres: MediaItemDTO[];
   missingDates: MediaItemDTO[];
+  missingPosters: MediaItemDTO[];
   lowComparisonItems: MediaItemDTO[];
   duplicateCandidates: Array<{ key: string; items: MediaItemDTO[] }>;
 };

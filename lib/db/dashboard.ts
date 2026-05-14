@@ -166,7 +166,9 @@ export async function getDashboardData() {
     watchlistCount,
     comparisonCount,
     missingMetadataCount:
-      healthReport.missingGenres.length + healthReport.missingDates.length,
+      healthReport.missingGenres.length +
+      healthReport.missingDates.length +
+      healthReport.missingPosters.length,
     duplicateCount: healthReport.duplicateCandidates.length,
     topItems: topItems.map(toMediaItemDTO),
     topItemsByMediaType: topItemsByMediaType.map((entry) => ({
@@ -192,6 +194,7 @@ export async function getDashboardData() {
     health: {
       missingGenres: healthReport.missingGenres.length,
       missingReleaseDates: healthReport.missingDates.length,
+      missingPosters: healthReport.missingPosters.length,
       lowComparisonItems: healthReport.lowComparisonItems.length,
     },
   };

@@ -7,16 +7,16 @@ import { alpha, styled } from "@mui/material/styles";
 
 export const noirTokens = {
   accent: {
-    amber: "#F59E0B",
-    blue: "#38BDF8",
-    emerald: "#34D399",
-    purple: "#8B5CF6",
-    rose: "#F472B6",
+    amber: "#F8B84E",
+    blue: "#55D8FF",
+    emerald: "#38F2BD",
+    purple: "#9B7CFF",
+    rose: "#FF77C8",
   },
   background: {
-    default: "#080B12",
+    default: "#05070E",
     elevated: "#0B1020",
-    panel: "#111827",
+    panel: "#12162A",
   },
   border: {
     subtle: "rgba(191, 219, 254, 0.14)",
@@ -37,36 +37,46 @@ export const CinematicCard = styled(Card, {
   shouldForwardProp: (prop) => prop !== "accent",
 })<AccentCardProps>(({ accent = noirTokens.accent.purple, theme }) => ({
   background:
-    "linear-gradient(145deg, rgba(13, 18, 30, 0.94), rgba(6, 9, 15, 0.94))",
-  border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
+    "radial-gradient(circle at 15% 0%, rgba(155, 124, 255, 0.13), transparent 32%), linear-gradient(145deg, rgba(20, 24, 42, 0.88), rgba(6, 8, 16, 0.94))",
+  backdropFilter: "blur(20px)",
+  border: `1px solid ${alpha("#FFFFFF", 0.065)}`,
+  borderRadius: 24,
   boxShadow: [
-    `inset 0 1px 0 ${alpha("#FFFFFF", 0.045)}`,
-    `0 16px 48px ${alpha("#000000", 0.34)}`,
-    `0 0 0 1px ${alpha(accent, 0.04)}`,
+    `0 24px 80px ${alpha("#000000", 0.45)}`,
+    `inset 0 1px 0 ${alpha("#FFFFFF", 0.06)}`,
+    `0 0 42px ${alpha(accent, 0.055)}`,
   ].join(", "),
   overflow: "hidden",
   position: "relative",
   transition:
-    "border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease",
+    "border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease",
   height: "100%",
   "&::before": {
-    background: `linear-gradient(90deg, transparent, ${alpha(accent, 0.72)}, transparent)`,
+    background: `linear-gradient(90deg, transparent, ${alpha(accent, 0.44)}, transparent)`,
     content: '""',
     height: 1,
-    left: 18,
-    opacity: 0.55,
+    left: 22,
+    opacity: 0.6,
     position: "absolute",
-    right: 18,
+    right: 22,
     top: 0,
   },
+  "&::after": {
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.035), transparent 42%)",
+    content: '""',
+    inset: 0,
+    pointerEvents: "none",
+    position: "absolute",
+  },
   "&:hover": {
-    borderColor: alpha(accent, 0.34),
+    borderColor: alpha(accent, 0.2),
     boxShadow: [
-      `inset 0 1px 0 ${alpha("#FFFFFF", 0.07)}`,
-      `0 18px 56px ${alpha("#000000", 0.42)}`,
-      `0 0 28px ${alpha(accent, 0.1)}`,
+      `0 28px 92px ${alpha("#000000", 0.52)}`,
+      `inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
+      `0 0 50px ${alpha(accent, 0.11)}`,
     ].join(", "),
-    transform: "translateY(-2px)",
+    transform: "translateY(-3px)",
   },
   [theme.breakpoints.down("sm")]: {
     "&:hover": {
@@ -97,8 +107,10 @@ export function DashboardSection({
           display: "flex",
           flexDirection: "column",
           height: "100%",
-          p: { xs: 1.25, md: 1.4 },
-          "&:last-child": { pb: { xs: 1.25, md: 1.4 } },
+          p: { xs: 1.35, md: 1.55 },
+          position: "relative",
+          zIndex: 1,
+          "&:last-child": { pb: { xs: 1.35, md: 1.55 } },
         }}
       >
         <Stack
@@ -119,10 +131,7 @@ export function DashboardSection({
                 {kicker}
               </Typography>
             ) : null}
-            <Typography
-              component="h2"
-              sx={{ fontSize: 15, fontWeight: 850, lineHeight: 1.1 }}
-            >
+            <Typography component="h2" sx={{ fontSize: 15, fontWeight: 850 }}>
               {title}
             </Typography>
           </Box>
@@ -161,8 +170,10 @@ export function CompactStatCard({
       sx={{
         alignItems: "center",
         background: `linear-gradient(145deg, ${alpha(accent, 0.095)}, rgba(8, 11, 18, 0.72))`,
-        border: `1px solid ${alpha("#BFDBFE", 0.11)}`,
-        borderRadius: 1,
+        backdropFilter: "blur(18px)",
+        border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
+        borderRadius: 3,
+        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}, 0 16px 42px ${alpha("#000000", 0.24)}`,
         display: "flex",
         gap: 0.9,
         minHeight: 50,

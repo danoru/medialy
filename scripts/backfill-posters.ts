@@ -12,7 +12,7 @@ type MediaItemRow = {
 
 type PosterMatch = {
   posterUrl: string;
-  source: "metadata" | "tmdb" | "tvmaze" | "rawg";
+  source: "metadata" | "tmdb" | "tvmaze" | "igdb" | "rawg";
 };
 
 const prisma = new PrismaClient();
@@ -52,6 +52,7 @@ async function main() {
     metadata: 0,
     tmdb: 0,
     tvmaze: 0,
+    igdb: 0,
     rawg: 0,
   };
 
@@ -95,8 +96,10 @@ async function main() {
 }
 
 async function resolvePoster(item: MediaItemRow): Promise<PosterMatch | null> {
-  const fromMetadata = posterFromMetadata(item.metadataJson);
-  if (fromMetadata) return fromMetadata;
+  if (!(overwrite && item.mediaType === MediaType.VIDEO_GAME)) {
+    const fromMetadata = posterFromMetadata(item.metadataJson);
+    if (fromMetadata) return fromMetadata;
+  }
 
   if (item.mediaType === MediaType.MOVIE || item.mediaType === MediaType.TV_SHOW) {
     const fromTmdb = await posterFromTmdb(item);
@@ -109,6 +112,9 @@ async function resolvePoster(item: MediaItemRow): Promise<PosterMatch | null> {
   }
 
   if (item.mediaType === MediaType.VIDEO_GAME) {
+    const fromIgdb = await posterFromIgdb(item);
+    if (fromIgdb) return fromIgdb;
+
     const fromRawg = await posterFromRawg(item);
     if (fromRawg) return fromRawg;
   }
@@ -287,6 +293,70 @@ async function posterFromRawg(item: MediaItemRow): Promise<PosterMatch | null> {
   return posterUrl ? { posterUrl, source: "rawg" } : null;
 }
 
+async function posterFromIgdb(item: MediaItemRow): Promise<PosterMatch | null> {
+  if (!process.env.TWITCH_CLIENT_ID || !process.env.TWITCH_CLIENT_SECRET) {
+    return null;
+  }
+
+  const token = await getTwitchToken();
+  const title = item.title.replaceAll('"', '\\"');
+  const body = [
+    "fields name,first_release_date,cover.url;",
+    `search "${title}";`,
+    "limit 10;",
+  ].join(" ");
+
+  const json = await igdbFetch("games", body, token);
+  const normalizedTitle = normalizeTitle(item.title);
+  const matches = arrayValue(json).filter(
+    (game) =>
+      game &&
+      typeof game === "object" &&
+      recordValue((game as Record<string, unknown>).cover).url &&
+      normalizeTitle(
+        stringValue((game as Record<string, unknown>).name ?? "") ?? "",
+      ) === normalizedTitle,
+  );
+
+  const match = bestDatedMatch(matches, item.releaseDate);
+  if (!match) return null;
+
+  const cover = recordValue(recordValue(match).cover);
+  const posterUrl = cleanUrl(cover.url);
+  return posterUrl
+    ? { posterUrl: posterUrl.replace("t_thumb", "t_cover_big"), source: "igdb" }
+    : null;
+}
+
+async function igdbFetch(endpoint: string, body: string, token: string) {
+  const response = await fetch(`https://api.igdb.com/v4/${endpoint}`, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "client-id": process.env.TWITCH_CLIENT_ID ?? "",
+      authorization: `Bearer ${token}`,
+    },
+    body,
+  });
+  if (!response.ok) {
+    throw new Error(`IGDB request failed: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+async function getTwitchToken() {
+  const url = new URL("https://id.twitch.tv/oauth2/token");
+  url.searchParams.set("client_id", process.env.TWITCH_CLIENT_ID ?? "");
+  url.searchParams.set("client_secret", process.env.TWITCH_CLIENT_SECRET ?? "");
+  url.searchParams.set("grant_type", "client_credentials");
+  const response = await fetch(url, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`Twitch auth failed: ${response.status} ${response.statusText}`);
+  }
+  const json = await response.json();
+  return String(json.access_token);
+}
+
 async function tmdbFetch(url: string) {
   const response = await fetch(url, {
     headers: { authorization: `Bearer ${process.env.TMDB_BEARER_TOKEN}` },
@@ -349,6 +419,23 @@ function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function bestDatedMatch(
+  matches: unknown[],
+  releaseDate: Date | null,
+): Record<string, unknown> | null {
+  if (matches.length === 0) return null;
+  if (!releaseDate) return recordValue(matches[0]);
+
+  const releaseYear = releaseDate.getUTCFullYear();
+  const sameYear = matches.find((match) => {
+    const seconds = Number(recordValue(match).first_release_date);
+    if (!Number.isFinite(seconds)) return false;
+    return new Date(seconds * 1000).getUTCFullYear() === releaseYear;
+  });
+
+  return recordValue(sameYear ?? matches[0]);
 }
 
 function parseMediaTypes(argv: string[]) {
