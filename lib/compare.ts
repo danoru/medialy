@@ -1,13 +1,16 @@
 import type { MediaStatus, MediaType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
+import { calculateComparisonRelevance } from "@/lib/scoring/comparisonRelevance";
 
 export type ComparisonSelectionItem = {
   id: string;
   mediaType: MediaType;
   status: MediaStatus;
+  personalRating: number | null;
   comparisonCount: number;
   pairwiseScore: number;
+  releaseDate: Date | string | null;
   genres: Array<{ genre: { name: string } }>;
 };
 
@@ -172,24 +175,18 @@ function buildPairCandidates<TItem extends ComparisonSelectionItem>(
       if (recentKeys.has(comparisonKey(first.id, second.id))) continue;
 
       const sharedGenres = countSharedGenres(first, second);
+      const relevance = calculateComparisonRelevance(first, second);
       const lowDataWeight = Math.max(
         1,
         6 - Math.min(first.comparisonCount, second.comparisonCount),
       );
-      const scoreGapWeight = Math.max(
-        1,
-        5 -
-          Math.floor(
-            Math.abs(first.pairwiseScore - second.pairwiseScore) / 100,
-          ),
-      );
-      const genreWeight = sharedGenres > 0 ? 8 + sharedGenres * 2 : 1;
+      const relevanceWeight = Math.max(1, Math.round(relevance * 10));
 
       weightedPairs.push({
         first,
         second,
         sharedGenres,
-        weight: lowDataWeight + scoreGapWeight + genreWeight,
+        weight: lowDataWeight + relevanceWeight,
       });
     }
   }

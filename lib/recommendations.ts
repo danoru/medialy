@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { confidenceFromComparisons } from "@/lib/scoring";
+import { calculateMedialyMatch } from "@/lib/scoring/medialyMatch";
 import { toMediaItemDTO } from "@/lib/media";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 import type { Recommendation, RecommendationReason } from "@/lib/types";
@@ -18,75 +18,51 @@ export async function getRecommendations(
       tags: { include: { tag: true } },
       friendRatings: { include: { friend: true } },
     },
-    orderBy: [{ pairwiseScore: "desc" }],
+    orderBy: [{ computedPersonalScore: "desc" }, { pairwiseScore: "desc" }],
   });
 
   const affinity = await getAffinityMaps();
 
   const recommendations = items
     .map((item) => {
-      const reasons: RecommendationReason[] = [];
-      const confidence = confidenceFromComparisons(item.comparisonCount);
-      let score = item.pairwiseScore;
-
-      if (item.status === "WATCHLIST" || item.status === "BACKLOG") {
-        score += item.status === "WATCHLIST" ? 75 : 45;
-        reasons.push({
-          label: item.status === "WATCHLIST" ? "Watchlist" : "Backlog",
-          value: item.status === "WATCHLIST" ? 75 : 45,
-        });
-      }
-
-      const genreBoost = item.genres.reduce(
+      const genreAffinity = item.genres.reduce(
         (total, entry) => total + (affinity.genres.get(entry.genre.name) ?? 0),
         0,
       );
-      if (genreBoost > 0) {
-        score += genreBoost;
-        reasons.push({ label: "Genre affinity", value: genreBoost });
-      }
-
-      const tagBoost = item.tags.reduce(
+      const tagAffinity = item.tags.reduce(
         (total, entry) => total + (affinity.tags.get(entry.tag.name) ?? 0),
         0,
       );
-      if (tagBoost > 0) {
-        score += tagBoost;
-        reasons.push({ label: "Tag affinity", value: tagBoost });
-      }
+      const friendAffinity = averageFriendBoost(item.friendRatings);
+      const statusSignal =
+        item.status === "WATCHLIST" ? 100 : item.status === "BACKLOG" ? 70 : 35;
+      const upcomingSignal =
+        item.upcomingDate && item.upcomingDate.getTime() >= Date.now()
+          ? 100
+          : 0;
+      const match = calculateMedialyMatch({
+        personalScore:
+          item.computedPersonalScore ??
+          item.personalRating ??
+          item.pairwiseScore / 100,
+        genreAffinity,
+        tagAffinity,
+        friendAffinity,
+        status: statusSignal,
+        upcoming: upcomingSignal,
+        consensusScore: item.computedConsensusScore,
+      });
 
-      if (item.upcomingDate && item.upcomingDate.getTime() >= Date.now()) {
-        score += 30;
-        reasons.push({ label: "Upcoming", value: 30 });
-      }
-
-      const friendBoost = averageFriendBoost(item.friendRatings);
-      if (friendBoost > 0) {
-        score += friendBoost;
-        reasons.push({ label: "Friend signal", value: friendBoost });
-      }
-
-      const confidencePenalty = Math.round((1 - confidence) * 80);
-      if (confidencePenalty > 0) {
-        score -= confidencePenalty;
-        reasons.push({
-          label: "Low data confidence",
-          value: -confidencePenalty,
-        });
-      }
-
-      if (reasons.length === 0) {
-        reasons.push({
-          label: "Pairwise score",
-          value: Math.round(item.pairwiseScore),
-        });
-      }
+      const confidence = Math.max(
+        item.personalScoreConfidence ?? 0,
+        item.consensusConfidence ?? 0,
+      );
 
       return {
         media: toMediaItemDTO(item),
-        score,
+        score: match.score,
         confidence,
-        reasons,
+        reasons: match.reasons as RecommendationReason[],
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -102,7 +78,11 @@ async function getAffinityMaps() {
       isArchived: false,
       mediaType: visibleMediaTypeFilter(),
       status: "COMPLETED",
-      OR: [{ personalRating: { gte: 8 } }, { pairwiseScore: { gte: 1150 } }],
+      OR: [
+        { computedPersonalScore: { gte: 8 } },
+        { personalRating: { gte: 8 } },
+        { pairwiseScore: { gte: 1150 } },
+      ],
     },
     include: {
       genres: { include: { genre: true } },
@@ -116,7 +96,10 @@ async function getAffinityMaps() {
   for (const item of completed) {
     const itemBoost = Math.max(
       10,
-      Math.min(35, (item.pairwiseScore - 1000) / 10),
+      Math.min(
+        35,
+        ((item.computedPersonalScore ?? item.personalRating ?? 5) - 5) * 10,
+      ),
     );
     for (const entry of item.genres) {
       genres.set(

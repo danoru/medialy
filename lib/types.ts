@@ -18,6 +18,10 @@ export type MediaItemDTO = {
   externalUrl?: string | null;
   metadataJson?: string | null;
   personalRating?: number | null;
+  computedPersonalScore?: number | null;
+  personalScoreConfidence?: number | null;
+  computedConsensusScore?: number | null;
+  consensusConfidence?: number | null;
   pairwiseScore: number;
   comparisonCount: number;
   isFavorite: boolean;

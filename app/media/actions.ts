@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { mediaMutationData, upsertTaxonomy } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
+import { recomputeMediaScores } from "@/lib/scoring/recompute";
 import { mediaFormInputFromFormData } from "@/lib/validation";
 
 export async function createMediaItem(formData: FormData) {
@@ -12,6 +13,7 @@ export async function createMediaItem(formData: FormData) {
     data: mediaMutationData(input),
   });
   await upsertTaxonomy(media.id, input.genres, input.tags);
+  await recomputeMediaScores(media.id);
   revalidatePath("/media");
   redirect(`/media/${media.id}`);
 }
@@ -23,6 +25,7 @@ export async function updateMediaItem(id: string, formData: FormData) {
     data: mediaMutationData(input),
   });
   await upsertTaxonomy(id, input.genres, input.tags);
+  await recomputeMediaScores(id);
   revalidatePath("/media");
   revalidatePath(`/media/${id}`);
   redirect(`/media/${id}`);

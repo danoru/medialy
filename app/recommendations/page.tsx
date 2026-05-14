@@ -12,7 +12,6 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { getRecommendations } from "@/lib/recommendations";
-import { normalizeScoreForUi } from "@/lib/scoring";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 
@@ -104,7 +103,7 @@ export default async function RecommendationsPage({
                     {recommendation.reasons.map((reason) => (
                       <Chip
                         key={reason.label}
-                        label={`${reason.label} ${reason.value > 0 ? "+" : ""}${Math.round(reason.value)}`}
+                        label={`${reason.label} +${Math.round(reason.value)}`}
                         size="small"
                         variant="outlined"
                       />
@@ -117,10 +116,10 @@ export default async function RecommendationsPage({
                     color="text.secondary"
                     variant="body2"
                   >
-                    Recommendation {Math.round(recommendation.score)}
+                    Medialy Match {Math.round(recommendation.score)}%
                   </Typography>
                   <LinearProgress
-                    value={normalizeScoreForUi(recommendation.score)}
+                    value={recommendation.score}
                     variant="determinate"
                   />
                   <Typography

@@ -86,7 +86,7 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
     upcomingDate: parseOptionalDate(formData.get("upcomingDate")),
     externalUrl: String(formData.get("externalUrl") ?? "").trim(),
     metadataJson,
-    personalRating: parseOptionalNumber(formData.get("personalRating")),
+    personalRating: parseOptionalRating(formData.get("personalRating")),
     isFavorite: formData.get("isFavorite") === "on",
     genres: splitNames(formData.get("genres")),
     tags: splitNames(formData.get("tags")),
@@ -106,7 +106,7 @@ export function mediaFormInputFromCsvRow(row: CsvMediaRow): MediaFormInput {
     releaseDate: parseOptionalDate(row.releaseDate ?? ""),
     upcomingDate: parseOptionalDate(row.upcomingDate ?? ""),
     externalUrl: row.externalUrl?.trim() ?? "",
-    personalRating: parseOptionalNumber(row.personalRating ?? ""),
+    personalRating: parseOptionalRating(row.personalRating ?? ""),
     isFavorite: parseOptionalBoolean(row.isFavorite ?? ""),
     genres: splitNames(row.genres ?? ""),
     tags: splitNames(row.tags ?? ""),
@@ -119,6 +119,15 @@ function parseOptionalBoolean(value: string) {
   if (["true", "yes", "y", "1", "favorite"].includes(raw)) return true;
   if (["false", "no", "n", "0"].includes(raw)) return false;
   throw new Error(`Invalid boolean: ${value}`);
+}
+
+export function parseOptionalRating(value: FormDataEntryValue | string | null) {
+  const parsed = parseOptionalNumber(value);
+  if (parsed == null) return null;
+  if (parsed < 0 || parsed > 10) {
+    throw new Error(`Rating must be between 0 and 10: ${parsed}`);
+  }
+  return parsed;
 }
 
 export function assertExportVersion(

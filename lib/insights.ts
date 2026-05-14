@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { calculateFriendCompatibility } from "@/lib/scoring/compatibility";
 import { toMediaItemDTO } from "@/lib/media";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
 import type {
@@ -35,8 +36,11 @@ export async function getGenreInsights(): Promise<GenreInsight[]> {
       const completed = active.filter((item) => item.status === "COMPLETED");
       const averageScore =
         completed.length > 0
-          ? completed.reduce((sum, item) => sum + item.pairwiseScore, 0) /
-            completed.length
+          ? completed.reduce(
+              (sum, item) =>
+                sum + (item.computedPersonalScore ?? item.pairwiseScore / 100),
+              0,
+            ) / completed.length
           : 0;
 
       return {
@@ -111,29 +115,23 @@ export async function getFriendCompatibility(): Promise<FriendCompatibility[]> {
       (rating) =>
         rating.rating !== null && rating.media.personalRating !== null,
     );
-    const distance = overlapping.reduce(
-      (sum, rating) =>
-        sum +
-        Math.abs((rating.rating ?? 0) - (rating.media.personalRating ?? 0)),
-      0,
+    const compatibility = calculateFriendCompatibility(
+      overlapping.map((rating) => ({
+        userRating: rating.media.personalRating ?? 0,
+        friendRating: rating.rating ?? 0,
+      })),
     );
-    const averageDistance =
-      overlapping.length > 0 ? distance / overlapping.length : null;
-    const compatibilityScore =
-      averageDistance === null
-        ? 0
-        : Math.max(0, Math.round(100 - averageDistance * 12));
 
     return {
       friendId: friend.id,
       friendName: friend.name,
-      overlapCount: overlapping.length,
-      compatibilityScore,
-      averageDistance,
+      overlapCount: compatibility.overlapCount,
+      compatibilityScore: compatibility.compatibilityScore,
+      averageDistance: compatibility.averageDistance,
       explanation: buildCompatibilityExplanation(
-        overlapping.length,
-        compatibilityScore,
-        averageDistance,
+        compatibility.overlapCount,
+        compatibility.compatibilityScore,
+        compatibility.averageDistance,
       ),
     };
   });

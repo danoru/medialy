@@ -12,7 +12,6 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { getRecommendations } from "@/lib/recommendations";
-import { normalizeScoreForUi } from "@/lib/scoring";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 
@@ -107,12 +106,9 @@ export default async function WatchlistPage({
                     color="text.secondary"
                     variant="body2"
                   >
-                    Priority {Math.round(entry.score)}
+                    Medialy Match {Math.round(entry.score)}%
                   </Typography>
-                  <LinearProgress
-                    value={normalizeScoreForUi(entry.score)}
-                    variant="determinate"
-                  />
+                  <LinearProgress value={entry.score} variant="determinate" />
                 </Box>
               </Stack>
             </CardContent>

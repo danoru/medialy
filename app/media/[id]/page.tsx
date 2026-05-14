@@ -35,6 +35,7 @@ export default async function MediaDetailPage({
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
+      externalRatings: { orderBy: [{ source: "asc" }] },
       notes: { orderBy: { updatedAt: "desc" } },
       comparisonsWon: {
         include: { loser: true },
@@ -117,8 +118,41 @@ export default async function MediaDetailPage({
                 value={`${Math.round(item.pairwiseScore)} (${item.comparisonCount} comparisons)`}
               />
               <Info
-                label="Personal rating"
+                label="Your score"
+                value={
+                  item.computedPersonalScore == null
+                    ? "-"
+                    : `${formatNumber(item.computedPersonalScore)} (${Math.round(item.personalScoreConfidence * 100)}% confidence)`
+                }
+              />
+              <Info
+                label="Explicit rating"
                 value={item.personalRating ?? "-"}
+              />
+              <Info
+                label="Consensus score"
+                value={
+                  item.computedConsensusScore == null
+                    ? "-"
+                    : `${formatNumber(item.computedConsensusScore)} (${Math.round(item.consensusConfidence * 100)}% confidence)`
+                }
+              />
+              <Info
+                label="External ratings"
+                value={
+                  item.externalRatings.length > 0 ? (
+                    <Stack spacing={0.5} sx={{ alignItems: "flex-end" }}>
+                      {item.externalRatings.map((rating) => (
+                        <Typography key={rating.id}>
+                          {formatRatingSource(rating.source)}{" "}
+                          {formatExternalRating(rating.score, rating.scale)}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  ) : (
+                    "-"
+                  )
+                }
               />
               <Info
                 label="Release date"
@@ -234,6 +268,23 @@ export default async function MediaDetailPage({
       </Card>
     </Stack>
   );
+}
+
+function formatRatingSource(source: string) {
+  if (source === "METACRITIC") return "Metacritic";
+  return source
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function formatExternalRating(score: number, scale: number) {
+  return `${formatNumber(score)}/${formatNumber(scale)}`;
+}
+
+function formatNumber(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {

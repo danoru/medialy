@@ -327,7 +327,11 @@ async function getLocalAffinity(mediaType: MediaType) {
       mediaType,
       isArchived: false,
       status: MediaStatus.COMPLETED,
-      OR: [{ personalRating: { gte: 8 } }, { pairwiseScore: { gte: 1150 } }],
+      OR: [
+        { computedPersonalScore: { gte: 8 } },
+        { personalRating: { gte: 8 } },
+        { pairwiseScore: { gte: 1150 } },
+      ],
     },
     include: {
       genres: { include: { genre: true } },
@@ -339,7 +343,13 @@ async function getLocalAffinity(mediaType: MediaType) {
   const tags = new Map<string, number>();
 
   for (const item of completed) {
-    const boost = Math.max(3, Math.min(8, (item.pairwiseScore - 1000) / 25));
+    const boost = Math.max(
+      3,
+      Math.min(
+        8,
+        ((item.computedPersonalScore ?? item.pairwiseScore / 100) - 5) * 2,
+      ),
+    );
     for (const entry of item.genres)
       genres.set(
         entry.genre.name.toLowerCase(),

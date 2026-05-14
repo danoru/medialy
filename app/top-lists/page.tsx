@@ -36,7 +36,7 @@ export default async function TopListsPage({
         mediaType: selectedType,
         status: "COMPLETED",
       },
-      orderBy: { pairwiseScore: "desc" },
+      orderBy: [{ computedPersonalScore: "desc" }, { pairwiseScore: "desc" }],
       take: 10,
     }),
     prisma.mediaItem.groupBy({
@@ -51,8 +51,10 @@ export default async function TopListsPage({
   ]);
   const confidenceAdjusted = [...overall].sort(
     (a, b) =>
-      b.pairwiseScore * confidenceFromComparisons(b.comparisonCount) -
-      a.pairwiseScore * confidenceFromComparisons(a.comparisonCount),
+      (b.computedPersonalScore ?? b.pairwiseScore / 100) *
+        confidenceFromComparisons(b.comparisonCount) -
+      (a.computedPersonalScore ?? a.pairwiseScore / 100) *
+        confidenceFromComparisons(a.comparisonCount),
   );
 
   return (
@@ -88,7 +90,9 @@ export default async function TopListsPage({
                 href={`/media/${item.id}`}
                 index={index}
                 label={item.title}
-                value={Math.round(item.pairwiseScore)}
+                value={formatScore(
+                  item.computedPersonalScore ?? item.pairwiseScore / 100,
+                )}
               />
             ))}
           </ListCard>
@@ -101,8 +105,8 @@ export default async function TopListsPage({
                 href={`/media/${item.id}`}
                 index={index}
                 label={item.title}
-                value={Math.round(
-                  item.pairwiseScore *
+                value={formatScore(
+                  (item.computedPersonalScore ?? item.pairwiseScore / 100) *
                     confidenceFromComparisons(item.comparisonCount),
                 )}
               />
@@ -116,7 +120,7 @@ export default async function TopListsPage({
                 key={entry.mediaType}
                 index={index}
                 label={formatMediaType(entry.mediaType)}
-                value={entry._count}
+                value={String(entry._count)}
               />
             ))}
           </ListCard>
@@ -135,7 +139,10 @@ export default async function TopListsPage({
                   );
                 const average = completed.length
                   ? completed.reduce(
-                      (sum, item) => sum + item.pairwiseScore,
+                      (sum, item) =>
+                        sum +
+                        (item.computedPersonalScore ??
+                          item.pairwiseScore / 100),
                       0,
                     ) / completed.length
                   : 0;
@@ -149,7 +156,7 @@ export default async function TopListsPage({
                   key={entry.name}
                   index={index}
                   label={entry.name}
-                  value={Math.round(entry.average)}
+                  value={formatScore(entry.average)}
                 />
               ))}
           </ListCard>
@@ -187,7 +194,7 @@ function RankRow({
   href?: string;
   index: number;
   label: string;
-  value: number;
+  value: string;
 }) {
   const text = href ? (
     <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
@@ -207,6 +214,10 @@ function RankRow({
       <Chip label={value} size="small" />
     </Stack>
   );
+}
+
+function formatScore(value: number) {
+  return value.toFixed(1);
 }
 
 function stringParam(value: string | string[] | undefined) {

@@ -291,7 +291,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                   href={`/media/${item.id}`}
                   item={item}
                   key={item.id}
-                  score={item.pairwiseScore}
+                  score={item.computedPersonalScore ?? item.pairwiseScore / 100}
                   compact
                 />
               ))}
@@ -486,7 +486,7 @@ function RecommendationPosterCard({
               width: 34,
             }}
           >
-            {Math.round(score)}
+            {Math.round(score)}%
           </Box>
           {!item.posterUrl ? (
             <Box
@@ -545,7 +545,12 @@ function TopRankedRow({ index, item }: { index: number; item: MediaItemDTO }) {
           {formatMediaType(item.mediaType)}
         </Typography>
       </Box>
-      <Chip label={Math.round(item.pairwiseScore)} size="small" />
+      <Chip
+        label={formatDashboardScore(
+          item.computedPersonalScore ?? item.pairwiseScore / 100,
+        )}
+        size="small"
+      />
     </Stack>
   );
 }
@@ -783,7 +788,7 @@ function MediaSignalRow({
   item: MediaItemDTO;
   score: number;
 }) {
-  const normalized = Math.min(100, Math.max(0, Math.round(score / 13)));
+  const normalized = Math.min(100, Math.max(0, Math.round(score * 10)));
 
   return (
     <Link
@@ -846,7 +851,7 @@ function MediaSignalRow({
                 Score
               </Typography>
               <Typography sx={{ fontWeight: 800 }} variant="caption">
-                {Math.round(score)}
+                {formatDashboardScore(score)}
               </Typography>
             </Stack>
             <LinearProgress value={normalized} variant="determinate" />
@@ -877,6 +882,10 @@ function HealthRow({ label, value }: { label: string; value: number }) {
       />
     </Stack>
   );
+}
+
+function formatDashboardScore(value: number) {
+  return value.toFixed(1);
 }
 
 function mediaTypeIcon(mediaType: MediaType) {

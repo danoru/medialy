@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { coerceMediaStatus, parseOptionalNumber } from "@/lib/validation";
+import { coerceMediaStatus, parseOptionalRating } from "@/lib/validation";
 
 export async function createFriend(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
@@ -19,7 +19,7 @@ export async function addFriendRating(formData: FormData) {
   await prisma.friendRating.upsert({
     where: { friendId_mediaId: { friendId, mediaId } },
     update: {
-      rating: parseOptionalNumber(formData.get("rating")),
+      rating: parseOptionalRating(formData.get("rating")),
       status: formData.get("status")
         ? coerceMediaStatus(formData.get("status"))
         : null,
@@ -27,7 +27,7 @@ export async function addFriendRating(formData: FormData) {
     create: {
       friendId,
       mediaId,
-      rating: parseOptionalNumber(formData.get("rating")),
+      rating: parseOptionalRating(formData.get("rating")),
       status: formData.get("status")
         ? coerceMediaStatus(formData.get("status"))
         : null,

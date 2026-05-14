@@ -9,24 +9,28 @@ datasource db {
 }
 
 model MediaItem {
-  id              String      @id @default(cuid())
-  title           String
-  originalTitle   String?
-  mediaType       MediaType
-  status          MediaStatus @default(UNTRACKED)
-  description     String?
-  releaseDate     DateTime?
-  upcomingDate    DateTime?
-  posterUrl       String?
-  externalUrl     String?
-  metadataJson    String?
-  personalRating  Float?
-  pairwiseScore   Float       @default(1000)
-  comparisonCount Int         @default(0)
-  isFavorite      Boolean     @default(false)
-  isArchived      Boolean     @default(false)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                      String      @id @default(cuid())
+  title                   String
+  originalTitle           String?
+  mediaType               MediaType
+  status                  MediaStatus @default(UNTRACKED)
+  description             String?
+  releaseDate             DateTime?
+  upcomingDate            DateTime?
+  posterUrl               String?
+  externalUrl             String?
+  metadataJson            String?
+  personalRating          Float?
+  computedPersonalScore   Float?
+  personalScoreConfidence Float       @default(0)
+  computedConsensusScore  Float?
+  consensusConfidence     Float       @default(0)
+  pairwiseScore           Float       @default(1000)
+  comparisonCount         Int         @default(0)
+  isFavorite              Boolean     @default(false)
+  isArchived              Boolean     @default(false)
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
 
   genres          MediaGenre[]
   tags            MediaTag[]
@@ -35,11 +39,32 @@ model MediaItem {
   listItems       ListItem[]
   friendRatings   FriendRating[]
   notes           Note[]
+  externalRatings ExternalRating[]
 
   @@unique([title, mediaType])
   @@index([mediaType])
   @@index([status])
   @@index([pairwiseScore])
+  @@index([computedPersonalScore])
+  @@index([computedConsensusScore])
+}
+
+model ExternalRating {
+  id           String               @id @default(cuid())
+  mediaId      String
+  source       ExternalRatingSource
+  score        Float
+  scale        Float                @default(100)
+  sourceUrl    String?
+  metadataJson String?
+  fetchedAt    DateTime             @default(now())
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  media        MediaItem            @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaId, source])
+  @@index([source])
+  @@index([score])
 }
 
 model ReleaseCandidate {
@@ -235,6 +260,10 @@ enum ExternalReleaseSource {
   TVMAZE
   IGDB
   RAWG
+}
+
+enum ExternalRatingSource {
+  METACRITIC
 }
 
 enum ReleaseCandidateStatus {

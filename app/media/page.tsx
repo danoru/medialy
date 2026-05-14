@@ -163,7 +163,11 @@ export default async function MediaPage({
               <MenuItem value="title">Title</MenuItem>
               <MenuItem value="releaseDate">Release date</MenuItem>
               <MenuItem value="pairwiseScore">Pairwise score</MenuItem>
-              <MenuItem value="personalRating">Personal rating</MenuItem>
+              <MenuItem value="computedPersonalScore">Personal score</MenuItem>
+              <MenuItem value="computedConsensusScore">
+                Consensus score
+              </MenuItem>
+              <MenuItem value="personalRating">Explicit rating</MenuItem>
               <MenuItem value="updatedAt">Updated</MenuItem>
             </TextField>
             <Button type="submit" variant="outlined">
@@ -181,8 +185,9 @@ export default async function MediaPage({
               <TableCell>Type</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Genres</TableCell>
-              <TableCell align="right">Score</TableCell>
-              <TableCell align="right">Rating</TableCell>
+              <TableCell align="right">Personal</TableCell>
+              <TableCell align="right">Consensus</TableCell>
+              <TableCell align="right">Explicit</TableCell>
               <TableCell>Updated</TableCell>
             </TableRow>
           </TableHead>
@@ -226,7 +231,10 @@ export default async function MediaPage({
                     "Missing"}
                 </TableCell>
                 <TableCell align="right">
-                  {Math.round(item.pairwiseScore)}
+                  {formatScore(item.computedPersonalScore)}
+                </TableCell>
+                <TableCell align="right">
+                  {formatScore(item.computedConsensusScore)}
                 </TableCell>
                 <TableCell align="right">
                   {item.personalRating ?? "-"}
@@ -325,10 +333,22 @@ function orderBy(sort: string): Prisma.MediaItemOrderByWithRelationInput[] {
     return [{ releaseDate: "desc" }, { title: "asc" }];
   if (sort === "pairwiseScore")
     return [{ pairwiseScore: "desc" }, { title: "asc" }];
+  if (sort === "computedPersonalScore")
+    return [
+      { computedPersonalScore: "desc" },
+      { pairwiseScore: "desc" },
+      { title: "asc" },
+    ];
+  if (sort === "computedConsensusScore")
+    return [{ computedConsensusScore: "desc" }, { title: "asc" }];
   if (sort === "personalRating")
     return [{ personalRating: "desc" }, { title: "asc" }];
   if (sort === "updatedAt") return [{ updatedAt: "desc" }, { title: "asc" }];
   return [{ title: "asc" }];
+}
+
+function formatScore(value: number | null) {
+  return value == null ? "-" : value.toFixed(1);
 }
 
 function getPaginationItems(currentPage: number, totalPages: number) {

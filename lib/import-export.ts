@@ -2,6 +2,7 @@ import { ImportStatus } from "@prisma/client";
 import ExcelJS from "exceljs";
 import { mediaMutationData, upsertTaxonomy } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
+import { recomputeMediaScores } from "@/lib/scoring/recompute";
 import type {
   CsvMediaRow,
   ImportPreview,
@@ -487,6 +488,7 @@ export async function importMediaRowsWithSource(
         create: mediaMutationData(input),
       });
       await upsertTaxonomy(media.id, input.genres, input.tags);
+      await recomputeMediaScores(media.id);
       importedCount += 1;
     } catch (error) {
       errors.push({
@@ -548,6 +550,7 @@ export async function importLetterboxdRows(
           });
 
       await upsertTaxonomy(media.id, input.genres, input.tags);
+      await recomputeMediaScores(media.id);
       importedCount += 1;
     } catch (error) {
       errors.push({
@@ -632,6 +635,7 @@ export async function importJsonExport(
         create: mediaMutationData(input),
       });
       await upsertTaxonomy(media.id, input.genres, input.tags);
+      await recomputeMediaScores(media.id);
       importedCount += 1;
     } catch (error) {
       errors.push({

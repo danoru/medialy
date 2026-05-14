@@ -13,8 +13,10 @@ function item(
     id,
     mediaType,
     status: "COMPLETED",
+    personalRating: null,
     comparisonCount: 0,
     pairwiseScore: 1000,
+    releaseDate: null,
     genres: genres.map((name) => ({ genre: { name } })),
   };
 }
