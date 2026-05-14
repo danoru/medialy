@@ -32,6 +32,7 @@ import { candidateReasons, parseList } from "@/lib/release-candidates";
 import {
   formatUpcomingRelativeLabel,
   groupUpcomingItems,
+  startOfToday,
 } from "@/lib/upcoming";
 
 export const dynamic = "force-dynamic";
@@ -49,12 +50,14 @@ export default async function UpcomingPage({
   const selectedType = isVisibleMediaType(requestedType)
     ? requestedType
     : VISIBLE_MEDIA_TYPES[0];
+  const now = new Date();
+  const today = startOfToday(now);
   const [items, candidates] = await Promise.all([
     prisma.mediaItem.findMany({
       where: {
         isArchived: false,
         mediaType: selectedType,
-        releaseDate: { not: null },
+        releaseDate: { gte: today },
       },
       include: {
         genres: { include: { genre: true } },
@@ -82,7 +85,6 @@ export default async function UpcomingPage({
     }),
   ]);
 
-  const now = new Date();
   const groups = groupUpcomingItems(items, now);
   const futureCount = groups.next30Days.length + groups.later.length;
   const visibleCandidates = candidates.filter(
