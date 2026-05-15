@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { mediaMutationDataWithUniqueTitle, upsertTaxonomy } from "@/lib/media";
+import { normalizeComparableTitle } from "@/lib/text-normalization";
 import { splitGenresAndTags, normalizeTagName } from "@/lib/taxonomy";
 
 export type CandidateReason = {
@@ -35,6 +36,7 @@ export type ReleaseCandidateInput = {
     hypes?: number | null;
     follows?: number | null;
     rating?: number | null;
+    catalogRank?: number | null;
   };
 };
 
@@ -140,6 +142,9 @@ export async function scoreReleaseCandidate(
   const releaseBoost = upcomingBoost(input.releaseDate ?? null);
   pushReason(reasons, "Release soon", releaseBoost);
 
+  const catalogScore = catalogRankSignal(input.sourceSignals?.catalogRank);
+  pushReason(reasons, "Catalog rank", catalogScore);
+
   const duplicatePenalty = duplicate ? 100 : 0;
   if (duplicatePenalty)
     reasons.push({ label: "Already in library", value: -duplicatePenalty });
@@ -150,7 +155,8 @@ export async function scoreReleaseCandidate(
       indieSignalScore +
       qualityScore +
       confidenceScore +
-      releaseBoost -
+      releaseBoost +
+      catalogScore -
       duplicatePenalty,
     0,
     100,
@@ -261,14 +267,7 @@ export function parseList(value: string | null | undefined) {
 }
 
 export function normalizeTitle(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\b(the|a|an)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return normalizeComparableTitle(value);
 }
 
 async function findExistingMediaMatch(
@@ -415,6 +414,11 @@ function upcomingBoost(date: Date | null) {
   if (days <= 90) return 7;
   if (days <= 180) return 4;
   return 0;
+}
+
+function catalogRankSignal(rank: number | null | undefined) {
+  if (!rank || rank < 1) return 0;
+  return clamp(12 - rank * 0.15, 4, 12);
 }
 
 function stringifyList(value: string[] | undefined) {

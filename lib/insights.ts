@@ -7,7 +7,7 @@ import type {
   FriendCompatibility,
   GenreInsight,
 } from "@/lib/types";
-import { normalizeName } from "@/lib/validation";
+import { normalizeComparableTitle } from "@/lib/text-normalization";
 
 export async function getGenreInsights(): Promise<GenreInsight[]> {
   const [totalItems, genres] = await Promise.all([
@@ -86,16 +86,6 @@ export async function getDataHealthReport(): Promise<DataHealthReport> {
       .filter(([, group]) => group.length > 1)
       .map(([key, group]) => ({ key, items: group })),
   };
-}
-
-function normalizeComparableTitle(title: string) {
-  return normalizeName(title)
-    .toLowerCase()
-    .replace(/^the\s+/, "")
-    .replace(/^an?\s+/, "")
-    .replace(/[^\w\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 export async function getFriendCompatibility(): Promise<FriendCompatibility[]> {

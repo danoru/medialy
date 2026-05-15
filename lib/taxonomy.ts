@@ -25,19 +25,17 @@ export type ScreenMediaGenre = (typeof SCREEN_MEDIA_GENRES)[number];
 export const GAME_GENRES = [
   "Action",
   "Adventure",
+  "Casual",
   "Fighting",
   "Horror",
-  "MMO",
-  "Party",
   "Platformer",
   "Puzzle",
   "Racing",
+  "Rhythm",
   "RPG",
-  "Sandbox",
   "Shooter",
   "Simulation",
   "Sports",
-  "Stealth",
   "Strategy",
   "Survival",
   "Visual Novel",
@@ -46,6 +44,55 @@ export const GAME_GENRES = [
 export type GameGenre = (typeof GAME_GENRES)[number];
 
 export const MAX_GENRES_PER_ITEM = 3;
+
+export const TAG_CATEGORIES = [
+  "SUBGENRE",
+  "COUNTRY",
+  "THEME",
+  "MECHANIC",
+  "MOOD",
+  "FORMAT",
+] as const;
+
+export type TagCategory = (typeof TAG_CATEGORIES)[number];
+
+export type CanonicalTagMetadata = {
+  category: TagCategory;
+  discoverable: boolean;
+  mediaTypes?: MediaType[];
+  countryCode?: string;
+};
+
+type DiscoverSubgenreMap = Partial<
+  Record<MediaType, Record<string, readonly string[]>>
+>;
+
+export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
+  MOVIE: {
+    Animation: ["Anime"],
+    Horror: ["Body Horror", "Folk Horror", "Psychological Horror"],
+    "Science Fiction": ["Cyberpunk", "Space Opera"],
+    Thriller: ["Psychological Thriller"],
+  },
+  TV_SHOW: {
+    Animation: ["Anime"],
+    Drama: ["Prestige TV"],
+    "Science Fiction": ["Space Opera"],
+  },
+  VIDEO_GAME: {
+    Action: ["Character Action", "Stealth"],
+    Adventure: ["Metroidvania", "Open World", "Psychological Horror"],
+    Casual: ["Arcade Rhythm", "Kart Racer", "Party Game"],
+    Horror: ["Psychological Horror", "Survival Horror"],
+    Platformer: ["Metroidvania"],
+    Racing: ["Kart Racer"],
+    Rhythm: ["Arcade Rhythm"],
+    RPG: ["Action RPG", "JRPG", "Roguelike", "Soulslike", "Turn-Based RPG"],
+    Shooter: ["Tactical Shooter"],
+    Strategy: ["4X", "Real-Time Strategy", "Tactics"],
+    Survival: ["Survival Crafting", "Survival Horror"],
+  },
+};
 
 const screenMediaTypes = new Set<MediaType>(["MOVIE", "TV_SHOW"]);
 const gameMediaTypes = new Set<MediaType>(["VIDEO_GAME"]);
@@ -70,13 +117,21 @@ const genreAliases = new Map<string, string>([
   ["childrens", "Family"],
   ["role playing", "RPG"],
   ["role-playing", "RPG"],
-  ["mmo rpg", "MMO"],
-  ["mmorpg", "MMO"],
+  ["party", "Casual"],
+  ["party game", "Casual"],
 ]);
 
 const tagAliases = new Map<string, string>([
+  ["body-horror", "Body Horror"],
   ["cyber punk", "Cyberpunk"],
   ["cyber-punk", "Cyberpunk"],
+  ["japanese", "Japan"],
+  ["japan", "Japan"],
+  ["jp", "Japan"],
+  ["korean", "South Korea"],
+  ["south korean", "South Korea"],
+  ["turn based rpg", "Turn-Based RPG"],
+  ["turn-based-rpg", "Turn-Based RPG"],
   ["sci fi", "Sci-Fi"],
   ["scifi", "Sci-Fi"],
   ["science fiction", "Science Fiction"],
@@ -84,6 +139,33 @@ const tagAliases = new Map<string, string>([
   ["souls like", "Soulslike"],
   ["soul like", "Soulslike"],
   ["rogue like", "Roguelike"],
+]);
+
+const canonicalDiscoverSubgenreKeys = new Set(
+  Object.values(DISCOVER_SUBGENRES).flatMap((genreMap) =>
+    Object.values(genreMap).flatMap((tags) =>
+      tags.map((tag) => normalizeTaxonomyKey(tag)),
+    ),
+  ),
+);
+
+const countryTagsByKey = new Map<
+  string,
+  { name: string; countryCode: string }
+>([
+  ["france", { name: "France", countryCode: "FR" }],
+  ["japan", { name: "Japan", countryCode: "JP" }],
+  ["southkorea", { name: "South Korea", countryCode: "KR" }],
+  ["unitedkingdom", { name: "United Kingdom", countryCode: "GB" }],
+  ["unitedstates", { name: "United States", countryCode: "US" }],
+]);
+
+const titleCaseExceptions = new Set([
+  "4X",
+  "JRPG",
+  "RPG",
+  "Sci-Fi",
+  "Turn-Based RPG",
 ]);
 
 export function getGenresForMediaType(mediaType: MediaType) {
@@ -151,6 +233,7 @@ export function normalizeTagName(value: string) {
   if (!raw) return "";
 
   const aliased = tagAliases.get(raw.toLowerCase()) ?? raw;
+  if (titleCaseExceptions.has(aliased)) return aliased;
   if (isAllCapsTag(aliased)) return aliased;
   if (aliased.toLowerCase() === "sci fi") return "Sci-Fi";
 
@@ -158,7 +241,7 @@ export function normalizeTagName(value: string) {
     .split(" ")
     .map((word) => {
       const lower = word.toLowerCase();
-      if (["rpg", "mmo", "vr"].includes(lower)) return lower.toUpperCase();
+      if (["rpg", "vr"].includes(lower)) return lower.toUpperCase();
       if (lower === "sci-fi") return "Sci-Fi";
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
@@ -167,6 +250,63 @@ export function normalizeTagName(value: string) {
 
 export function normalizeTagKey(value: string) {
   return normalizeTaxonomyKey(normalizeTagName(value));
+}
+
+export function canonicalTagMetadataForName(
+  value: string,
+): CanonicalTagMetadata | null {
+  const name = normalizeTagName(value);
+  const key = normalizeTagKey(name);
+  const country = countryTagsByKey.get(key);
+
+  if (country) {
+    return {
+      category: "COUNTRY",
+      discoverable: true,
+      countryCode: country.countryCode,
+    };
+  }
+
+  if (canonicalDiscoverSubgenreKeys.has(key)) {
+    return {
+      category: "SUBGENRE",
+      discoverable: true,
+      mediaTypes: mediaTypesForDiscoverSubgenre(name),
+    };
+  }
+
+  return null;
+}
+
+export function getDiscoverSubgenresForGenre(
+  mediaType: MediaType,
+  genre: string,
+) {
+  return [...(DISCOVER_SUBGENRES[mediaType]?.[genre] ?? [])];
+}
+
+export function isDiscoverSubgenreForGenre(
+  mediaType: MediaType,
+  genre: string,
+  tagName: string,
+) {
+  const key = normalizeTagKey(tagName);
+  return getDiscoverSubgenresForGenre(mediaType, genre).some(
+    (name) => normalizeTagKey(name) === key,
+  );
+}
+
+function mediaTypesForDiscoverSubgenre(tagName: string) {
+  const key = normalizeTagKey(tagName);
+  const mediaTypes = Object.entries(DISCOVER_SUBGENRES)
+    .filter(([, genreMap]) =>
+      Object.values(genreMap).some((tags) =>
+        tags.some((name) => normalizeTagKey(name) === key),
+      ),
+    )
+    .map(([mediaType]) => mediaType as MediaType);
+
+  return [...new Set(mediaTypes)];
 }
 
 function normalizeTaxonomyKey(value: string) {

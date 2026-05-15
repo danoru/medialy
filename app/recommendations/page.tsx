@@ -45,6 +45,15 @@ export default async function RecommendationsPage({
 
   return (
     <Stack spacing={3}>
+      <Box>
+        <Typography component="h1" sx={{ fontWeight: 900 }} variant="h4">
+          Discovery Recommendations
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+          Unknown discoveries are prioritized, with your queue still eligible
+          when the match is strong.
+        </Typography>
+      </Box>
       <Card variant="outlined">
         <CardContent>
           <Tabs
@@ -104,7 +113,9 @@ export default async function RecommendationsPage({
                     {recommendation.reasons.map((reason) => (
                       <Chip
                         key={reason.label}
-                        label={`${reason.label} +${Math.round(reason.value)}`}
+                        label={`${reason.label} ${formatReasonValue(
+                          reason.value,
+                        )}`}
                         size="small"
                         variant="outlined"
                       />
@@ -153,4 +164,9 @@ function stringParam(value: string | string[] | undefined) {
 function buildRecommendationsHref(type: string) {
   const searchParams = new URLSearchParams({ type });
   return `/recommendations?${searchParams.toString()}`;
+}
+
+function formatReasonValue(value: number) {
+  const rounded = Math.round(value);
+  return rounded > 0 ? `+${rounded}` : String(rounded);
 }

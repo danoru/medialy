@@ -1,5 +1,6 @@
 import { MediaStatus, MediaType } from "@prisma/client";
 import type { CsvMediaRow, MediaFormInput } from "@/lib/types";
+import { normalizeSearchText } from "@/lib/text-normalization";
 import {
   MAX_GENRES_PER_ITEM,
   normalizeGenreName,
@@ -16,7 +17,7 @@ export function normalizeName(value: string) {
 }
 
 export function normalizeKey(title: string, mediaType: string) {
-  return `${normalizeName(title).toLowerCase()}::${mediaType.toUpperCase()}`;
+  return `${normalizeSearchText(normalizeName(title))}::${mediaType.toUpperCase()}`;
 }
 
 export function coerceMediaType(

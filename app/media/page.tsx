@@ -21,8 +21,13 @@ import { redirect } from "next/navigation";
 import { MediaStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatMediaType, formatStatus } from "@/lib/format";
-import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
+import {
+  isVisibleMediaType,
+  VISIBLE_MEDIA_TYPES,
+  visibleMediaTypeFilter,
+} from "@/lib/media-types";
 import { updateMediaRatings } from "@/app/media/actions";
+import { normalizeSearchText } from "@/lib/text-normalization";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Media" };
@@ -30,6 +35,10 @@ export const metadata = { title: "Media" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const PAGE_SIZE = 50;
+const ALL_MEDIA_TYPES = "ALL";
+type MediaTypeFilter =
+  | (typeof VISIBLE_MEDIA_TYPES)[number]
+  | typeof ALL_MEDIA_TYPES;
 
 export default async function MediaPage({
   searchParams,
@@ -40,22 +49,29 @@ export default async function MediaPage({
   const filter = stringParam(params.filter);
   const sort = stringParam(params.sort) || "title";
   const requestedType = stringParam(params.type);
-  const selectedType = isVisibleMediaType(requestedType)
-    ? requestedType
-    : VISIBLE_MEDIA_TYPES[0];
+  const selectedType =
+    requestedType === ALL_MEDIA_TYPES
+      ? ALL_MEDIA_TYPES
+      : isVisibleMediaType(requestedType)
+        ? requestedType
+        : filter
+          ? ALL_MEDIA_TYPES
+          : VISIBLE_MEDIA_TYPES[0];
   const page = Math.max(1, intParam(params.page) ?? 1);
-  const where: Prisma.MediaItemWhereInput = { mediaType: selectedType };
+  const where: Prisma.MediaItemWhereInput = {
+    mediaType:
+      selectedType === ALL_MEDIA_TYPES
+        ? visibleMediaTypeFilter()
+        : selectedType,
+  };
 
   if (stringParam(params.status))
     where.status = stringParam(params.status) as MediaStatus;
   if (stringParam(params.favorite) === "true") where.isFavorite = true;
   if (stringParam(params.archived) !== "true") where.isArchived = false;
   if (filter) {
-    where.OR = [
-      { genres: { some: { genre: { name: { contains: filter } } } } },
-      { tags: { some: { tag: { name: { contains: filter } } } } },
-      { title: { contains: filter } },
-    ];
+    const matchingIds = await mediaIdsMatchingFilter(where, filter);
+    where.id = { in: matchingIds };
   }
 
   const [total, items] = await Promise.all([
@@ -95,6 +111,15 @@ export default async function MediaPage({
             value={selectedType}
             variant="scrollable"
           >
+            <Tab
+              component="a"
+              href={buildMediaHref(params, {
+                page: undefined,
+                type: ALL_MEDIA_TYPES,
+              })}
+              label="All"
+              value={ALL_MEDIA_TYPES}
+            />
             {VISIBLE_MEDIA_TYPES.map((type) => (
               <Tab
                 component="a"
@@ -440,4 +465,35 @@ function buildMediaHref(
 
   const query = searchParams.toString();
   return query ? `/media?${query}` : "/media";
+}
+
+async function mediaIdsMatchingFilter(
+  baseWhere: Prisma.MediaItemWhereInput,
+  filter: string,
+) {
+  const query = normalizeSearchText(filter);
+  if (!query) return [];
+
+  const candidates = await prisma.mediaItem.findMany({
+    where: baseWhere,
+    select: {
+      id: true,
+      title: true,
+      genres: { select: { genre: { select: { name: true } } } },
+      tags: { select: { tag: { select: { name: true } } } },
+    },
+  });
+
+  return candidates
+    .filter((item) => {
+      const searchable = normalizeSearchText(
+        [
+          item.title,
+          ...item.genres.map((entry) => entry.genre.name),
+          ...item.tags.map((entry) => entry.tag.name),
+        ].join(" "),
+      );
+      return searchable.includes(query);
+    })
+    .map((item) => item.id);
 }

@@ -6,7 +6,12 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { MediaFormInput, MediaItemDTO } from "@/lib/types";
-import { normalizeTagKey, normalizeTagName } from "@/lib/taxonomy";
+import { normalizeSearchText } from "@/lib/text-normalization";
+import {
+  canonicalTagMetadataForName,
+  normalizeTagKey,
+  normalizeTagName,
+} from "@/lib/taxonomy";
 
 const includeTaxonomy = {
   genres: { include: { genre: true } },
@@ -82,13 +87,32 @@ export async function upsertTaxonomy(
   ];
 
   for (const name of normalizedTags) {
+    const metadata = canonicalTagMetadataForName(name);
     const tag = await prisma.tag.upsert({
       where: { normalizedName: normalizeTagKey(name) },
-      update: {},
+      update: metadata
+        ? {
+            category: metadata.category,
+            discoverable: metadata.discoverable,
+            mediaTypesJson: metadata.mediaTypes
+              ? JSON.stringify(metadata.mediaTypes)
+              : undefined,
+            countryCode: metadata.countryCode,
+            status: "APPROVED",
+            approvedAt: new Date(),
+          }
+        : {},
       create: {
         name,
         normalizedName: normalizeTagKey(name),
-        status: "PENDING",
+        status: metadata ? "APPROVED" : "PENDING",
+        category: metadata?.category ?? "THEME",
+        discoverable: metadata?.discoverable ?? false,
+        mediaTypesJson: metadata?.mediaTypes
+          ? JSON.stringify(metadata.mediaTypes)
+          : undefined,
+        countryCode: metadata?.countryCode,
+        approvedAt: metadata ? new Date() : undefined,
       },
     });
     await prisma.mediaTag.create({ data: { mediaId, tagId: tag.id } });
@@ -152,7 +176,7 @@ export function mediaTitleBase(value: string) {
 }
 
 export function mediaTitleKey(value: string, mediaType: MediaType | string) {
-  return `${mediaTitleBase(value).toLowerCase()}::${String(mediaType).toUpperCase()}`;
+  return `${normalizeSearchText(mediaTitleBase(value))}::${String(mediaType).toUpperCase()}`;
 }
 
 export function mediaReleaseYear(value: Date | string | null | undefined) {
