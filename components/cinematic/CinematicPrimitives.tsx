@@ -1,5 +1,4 @@
 "use client";
-
 import type { ReactNode } from "react";
 import { Box, Card, CardContent, Stack, Typography } from "@mui/material";
 import type { CardProps } from "@mui/material";
@@ -7,27 +6,33 @@ import { alpha, styled } from "@mui/material/styles";
 
 export const noirTokens = {
   accent: {
-    amber: "#F8B84E",
-    blue: "#55D8FF",
-    emerald: "#38F2BD",
-    purple: "#9B7CFF",
+    amber: "#A78BFA",
+    blue: "#22D3EE",
+    emerald: "#22D3EE",
+    purple: "#8B5CF6",
     rose: "#FF77C8",
+    violet: "#A78BFA",
   },
   background: {
-    default: "#05070E",
+    default: "#050812",
     elevated: "#0B1020",
-    panel: "#12162A",
+    panel: "#08111F",
   },
   border: {
-    subtle: "rgba(191, 219, 254, 0.14)",
-    strong: "rgba(191, 219, 254, 0.24)",
+    subtle: "rgba(255, 255, 255, 0.07)",
+    strong: "rgba(255, 255, 255, 0.14)",
   },
   text: {
-    muted: "#8EA3BD",
+    muted: "rgba(226, 232, 240, 0.68)",
     primary: "#F8FAFC",
-    secondary: "#CBD5E1",
+    secondary: "rgba(226, 232, 240, 0.78)",
   },
 };
+
+export const dashboardSurfaceRadius = 18;
+
+const dashboardPanelBackground =
+  "linear-gradient(145deg, rgba(8, 17, 31, 0.92), rgba(5, 8, 18, 0.98))";
 
 type AccentCardProps = CardProps & {
   accent?: string;
@@ -36,47 +41,43 @@ type AccentCardProps = CardProps & {
 export const CinematicCard = styled(Card, {
   shouldForwardProp: (prop) => prop !== "accent",
 })<AccentCardProps>(({ accent = noirTokens.accent.purple, theme }) => ({
-  background:
-    "radial-gradient(circle at 15% 0%, rgba(155, 124, 255, 0.13), transparent 32%), linear-gradient(145deg, rgba(20, 24, 42, 0.88), rgba(6, 8, 16, 0.94))",
+  background: `radial-gradient(circle at 18% 0%, ${alpha(accent, 0.1)}, transparent 22rem), radial-gradient(circle at 92% 12%, ${alpha(noirTokens.accent.blue, 0.045)}, transparent 20rem), ${dashboardPanelBackground}`,
   backdropFilter: "blur(20px)",
-  border: `1px solid ${alpha("#FFFFFF", 0.065)}`,
-  borderRadius: 24,
+  border: "1px solid rgba(255, 255, 255, 0.07)",
+  borderRadius: dashboardSurfaceRadius,
   boxShadow: [
-    `0 24px 80px ${alpha("#000000", 0.45)}`,
-    `inset 0 1px 0 ${alpha("#FFFFFF", 0.06)}`,
-    `0 0 42px ${alpha(accent, 0.055)}`,
+    `0 22px 70px ${alpha("#000000", 0.36)}`,
+    `inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
+    `0 0 48px ${alpha(accent, 0.055)}`,
   ].join(", "),
   overflow: "hidden",
   position: "relative",
-  transition:
-    "border-color 220ms ease, box-shadow 220ms ease, transform 220ms ease",
+  transition: "box-shadow 220ms ease, background-color 220ms ease",
   height: "100%",
   "&::before": {
-    background: `linear-gradient(90deg, transparent, ${alpha(accent, 0.44)}, transparent)`,
+    background: `linear-gradient(90deg, transparent, ${alpha(accent, 0.28)}, ${alpha(noirTokens.accent.blue, 0.12)}, transparent)`,
     content: '""',
     height: 1,
-    left: 22,
-    opacity: 0.6,
+    left: 18,
+    opacity: 0.64,
     position: "absolute",
-    right: 22,
+    right: 18,
     top: 0,
   },
   "&::after": {
     background:
-      "linear-gradient(135deg, rgba(255,255,255,0.035), transparent 42%)",
+      "linear-gradient(135deg, rgba(139, 92, 246, 0.035), transparent 38%), linear-gradient(180deg, rgba(255,255,255,0.014), transparent 22%)",
     content: '""',
     inset: 0,
     pointerEvents: "none",
     position: "absolute",
   },
   "&:hover": {
-    borderColor: alpha(accent, 0.2),
     boxShadow: [
-      `0 28px 92px ${alpha("#000000", 0.52)}`,
-      `inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
-      `0 0 50px ${alpha(accent, 0.11)}`,
+      `0 24px 76px ${alpha("#000000", 0.46)}`,
+      `inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}`,
+      `0 0 58px ${alpha(accent, 0.08)}`,
     ].join(", "),
-    transform: "translateY(-3px)",
   },
   [theme.breakpoints.down("sm")]: {
     "&:hover": {
@@ -101,38 +102,47 @@ export function DashboardSection({
   title: string;
 }) {
   return (
-    <CinematicPanel accent={accent} variant="outlined">
+    <CinematicPanel accent={accent}>
       <CardContent
         sx={{
           display: "flex",
           flexDirection: "column",
           height: "100%",
-          p: { xs: 1.35, md: 1.55 },
+          p: { xs: 1.1, md: 1.25 },
           position: "relative",
           zIndex: 1,
-          "&:last-child": { pb: { xs: 1.35, md: 1.55 } },
+          "&:last-child": { pb: { xs: 1.1, md: 1.25 } },
         }}
       >
         <Stack
           direction="row"
-          sx={{ alignItems: "center", gap: 1.5, mb: 1.15 }}
+          sx={{ alignItems: "center", gap: 1.1, mb: 0.95 }}
         >
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {kicker ? (
               <Typography
-                color="text.secondary"
+                variant="eyebrow"
                 sx={{
-                  fontSize: 10,
-                  fontWeight: 800,
-                  letterSpacing: 1.2,
-                  textTransform: "uppercase",
+                  color: "rgba(226, 232, 240, 0.68)",
+                  display: "block",
+                  mb: 0.25,
                 }}
               >
-                {kicker}
+                {kicker.toUpperCase()}
               </Typography>
             ) : null}
-            <Typography component="h2" sx={{ fontSize: 15, fontWeight: 850 }}>
-              {title}
+            <Typography
+              component="h2"
+              variant="eyebrow"
+              sx={{
+                color: "rgba(226, 232, 240, 0.68)",
+                display: "block",
+                fontSize: "0.72rem",
+                fontWeight: 850,
+                letterSpacing: "0.12em",
+              }}
+            >
+              {title.toUpperCase()}
             </Typography>
           </Box>
           {action}
@@ -169,17 +179,17 @@ export function CompactStatCard({
     <Box
       sx={{
         alignItems: "center",
-        background: `linear-gradient(145deg, ${alpha(accent, 0.095)}, rgba(8, 11, 18, 0.72))`,
+        background: `radial-gradient(circle at 16% 0%, ${alpha(accent, 0.16)}, transparent 62%), linear-gradient(145deg, rgba(12, 17, 31, 0.8), rgba(5, 7, 14, 0.88))`,
         backdropFilter: "blur(18px)",
-        border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
-        borderRadius: 3,
-        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}, 0 16px 42px ${alpha("#000000", 0.24)}`,
+        border: 0,
+        borderRadius: `${dashboardSurfaceRadius}px`,
+        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.035)}, 0 16px 42px ${alpha("#000000", 0.22)}`,
         display: "flex",
         gap: 0.9,
-        minHeight: 50,
+        minHeight: 48,
         minWidth: { xs: 132, sm: 150 },
-        px: 1.15,
-        py: 0.8,
+        px: 1.05,
+        py: 0.7,
       }}
     >
       {icon ? (

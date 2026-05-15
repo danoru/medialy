@@ -30,6 +30,7 @@ import Link from "next/link";
 import {
   CompactStatCard,
   DashboardSection,
+  dashboardSurfaceRadius,
   noirTokens,
 } from "@/components/cinematic/CinematicPrimitives";
 import { formatMediaType, formatStatus } from "@/lib/format";
@@ -88,17 +89,20 @@ const dashboardMediaTypes: MediaType[] = ["MOVIE", "TV_SHOW", "VIDEO_GAME"];
 type DashboardRecommendation = DashboardData["recommendations"][number];
 
 const premiumPanelActionSx = {
-  borderColor: alpha("#FFFFFF", 0.08),
-  borderRadius: 999,
-  color: "text.secondary",
+  background: `linear-gradient(135deg, ${alpha("#08111F", 0.86)}, ${alpha("#0B1020", 0.74)})`,
+  border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
+  borderRadius: "12px",
+  boxShadow: `0 0 18px ${alpha(noirTokens.accent.purple, 0.08)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}`,
+  color: alpha("#E2E8F0", 0.78),
   fontSize: 11,
   fontWeight: 800,
-  minHeight: 28,
-  px: 1.2,
+  minHeight: 27,
+  px: 1.05,
   textTransform: "none",
   "&:hover": {
-    bgcolor: alpha("#FFFFFF", 0.065),
-    borderColor: alpha("#FFFFFF", 0.16),
+    background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.24)}, ${alpha(noirTokens.accent.blue, 0.12)})`,
+    borderColor: alpha(noirTokens.accent.purple, 0.32),
+    boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.2)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
     color: "text.primary",
   },
 } as const;
@@ -169,7 +173,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         position: "relative",
         "&::before": {
           background:
-            "radial-gradient(circle at 12% 4%, rgba(85, 216, 255, 0.14), transparent 28rem), radial-gradient(circle at 72% 0%, rgba(155, 124, 255, 0.16), transparent 34rem), radial-gradient(circle at 90% 48%, rgba(248, 184, 78, 0.08), transparent 28rem)",
+            "radial-gradient(circle at 12% 4%, rgba(34, 211, 238, 0.13), transparent 28rem), radial-gradient(circle at 72% 0%, rgba(139, 92, 246, 0.18), transparent 34rem), radial-gradient(circle at 90% 48%, rgba(139, 92, 246, 0.08), transparent 28rem)",
           content: '""',
           inset: { xs: "-24px -12px auto", md: "-42px -28px auto" },
           minHeight: 620,
@@ -216,7 +220,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           direction="row"
           sx={{
             flexWrap: "wrap",
-            gap: 1,
+            gap: 0.75,
             justifyContent: { xs: "flex-start", lg: "flex-end" },
           }}
         >
@@ -250,7 +254,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       <Box
         sx={{
           display: "grid",
-          gap: 1.25,
+          gap: 1,
           gridTemplateAreas: {
             xs: `
               "pick"
@@ -283,7 +287,10 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               value={tonightPickType}
             />
           ) : (
-            <DashboardCard title="Tonight's Pick">
+            <DashboardCard
+              accent={noirTokens.accent.purple}
+              title="Tonight's Pick"
+            >
               <EmptyPanel
                 icon={<AutoAwesomeIcon />}
                 label="Add ratings to unlock a featured recommendation."
@@ -294,6 +301,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <Box sx={{ gridArea: "recs", minWidth: 0 }}>
           <DashboardCard
+            accent={noirTokens.accent.blue}
             action={
               <Button
                 href="/recommendations"
@@ -320,6 +328,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <Box sx={{ gridArea: "top", minWidth: 0 }}>
           <DashboardCard
+            accent={noirTokens.accent.amber}
             action={
               <Button href="/top-lists" size="small" sx={premiumPanelActionSx}>
                 Open lists
@@ -360,6 +369,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <Box sx={{ gridArea: "genre", minWidth: 0 }}>
           <DashboardCard
+            accent={noirTokens.accent.purple}
             action={
               <Button href="/insights" size="small" sx={premiumPanelActionSx}>
                 View insights
@@ -373,6 +383,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <Box sx={{ gridArea: "watch", minWidth: 0 }}>
           <DashboardCard
+            accent={noirTokens.accent.emerald}
             action={
               <Button href="/watchlist" size="small" sx={premiumPanelActionSx}>
                 Open watchlist
@@ -405,13 +416,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <Box
           sx={{
             display: "grid",
-            gap: 1.25,
+            gap: 1,
             gridArea: "side",
             minWidth: 0,
           }}
         >
           <Box sx={{ minWidth: 0 }}>
             <DashboardCard
+              accent={noirTokens.accent.blue}
               action={
                 <Button href="/upcoming" size="small" sx={premiumPanelActionSx}>
                   Open upcoming
@@ -482,12 +494,13 @@ function TonightPickCard({
     <Box
       component="section"
       sx={{
-        background: "#05070E",
-        borderRadius: { xs: "24px", md: "28px" },
+        background: "#050812",
+        border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
+        borderRadius: "18px",
         boxShadow: [
-          `0 30px 90px ${alpha("#000000", 0.52)}`,
-          `0 0 70px ${alpha(mediaTypeColor(item.mediaType), 0.1)}`,
-          `inset 0 1px 0 ${alpha("#FFFFFF", 0.07)}`,
+          `0 30px 90px ${alpha("#000000", 0.5)}`,
+          `0 0 70px ${alpha(noirTokens.accent.purple, 0.14)}`,
+          `inset 0 1px 0 ${alpha("#FFFFFF", 0.05)}`,
         ].join(", "),
         height: { xs: 430, md: 476 },
         isolation: "isolate",
@@ -554,9 +567,9 @@ function TonightPickCard({
           showCounts={false}
           sx={{
             backdropFilter: "blur(20px) saturate(1.25)",
-            bgcolor: alpha("#060A14", 0.42),
-            border: 0,
-            boxShadow: `0 12px 36px ${alpha("#000000", 0.24)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
+            bgcolor: alpha("#08111F", 0.62),
+            border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
+            boxShadow: `0 12px 36px ${alpha("#000000", 0.24)}, 0 0 24px ${alpha(noirTokens.accent.purple, 0.14)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
             p: 0.25,
             "& .MuiToggleButton-root": {
               color: alpha("#F8FAFC", 0.64),
@@ -564,8 +577,9 @@ function TonightPickCard({
               px: { xs: 0.65, sm: 0.9 },
               py: 0.35,
               "&.Mui-selected": {
-                bgcolor: alpha("#FFFFFF", 0.14),
-                boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.1)}`,
+                background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.95)}, ${alpha(noirTokens.accent.blue, 0.32)})`,
+                boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.24)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.12)}`,
+                color: "#FFFFFF",
               },
             },
           }}
@@ -598,27 +612,28 @@ function TonightPickCard({
             color: alpha("#F8FAFC", 0.7),
             fontSize: 10,
             fontWeight: 850,
-            letterSpacing: 1.2,
+            letterSpacing: "0.12em",
             lineHeight: 1,
             textShadow: `0 8px 24px ${alpha("#000000", 0.8)}`,
             textTransform: "uppercase",
           }}
         >
-          Curated for tonight / Tonight&apos;s Pick
+          CURATED FOR TONIGHT / TONIGHT&apos;S PICK
         </Typography>
         <Typography
           component="h2"
           sx={{
             color: "#FFFFFF",
-            fontSize: { xs: 36, sm: 48, md: 58 },
-            fontWeight: 920,
+            fontSize: "clamp(2.4rem, 5vw, 4.8rem)",
+            fontWeight: 850,
             letterSpacing: 0,
-            lineHeight: 0.92,
+            lineHeight: 0.9,
             maxWidth: 660,
             textShadow: `0 20px 60px ${alpha("#000000", 0.82)}`,
+            textTransform: "uppercase",
           }}
         >
-          {item.title}
+          {item.title.toUpperCase()}
         </Typography>
         <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.55, pt: 0.2 }}>
           {heroMeta.map((entry) => (
@@ -644,18 +659,18 @@ function TonightPickCard({
             href={`/media/${item.id}`}
             size="small"
             sx={{
-              bgcolor: alpha("#F8FAFC", 0.92),
-              borderRadius: 999,
-              boxShadow: `0 12px 34px ${alpha("#000000", 0.28)}`,
-              color: "#070A12",
+              background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.95)}, ${alpha(noirTokens.accent.blue, 0.34)})`,
+              borderRadius: "12px",
+              boxShadow: `0 14px 36px ${alpha(noirTokens.accent.purple, 0.26)}, 0 0 24px ${alpha(noirTokens.accent.blue, 0.12)}`,
+              color: "#FFFFFF",
               fontSize: 12,
               fontWeight: 820,
               minHeight: 32,
               px: 1.2,
               textTransform: "none",
               "&:hover": {
-                bgcolor: "#FFFFFF",
-                boxShadow: `0 14px 38px ${alpha("#000000", 0.34)}`,
+                background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 1)}, ${alpha(noirTokens.accent.blue, 0.44)})`,
+                boxShadow: `0 16px 42px ${alpha(noirTokens.accent.purple, 0.34)}, 0 0 30px ${alpha(noirTokens.accent.blue, 0.16)}`,
               },
             }}
             variant="contained"
@@ -669,9 +684,9 @@ function TonightPickCard({
             startIcon={<InfoOutlinedIcon sx={{ fontSize: 16 }} />}
             sx={{
               backdropFilter: "blur(16px)",
-              bgcolor: alpha("#FFFFFF", 0.075),
+              background: `linear-gradient(135deg, ${alpha("#08111F", 0.82)}, ${alpha("#0B1020", 0.72)})`,
               border: `1px solid ${alpha("#FFFFFF", 0.08)}`,
-              borderRadius: 999,
+              borderRadius: "12px",
               color: alpha("#F8FAFC", 0.92),
               fontSize: 12,
               fontWeight: 760,
@@ -679,8 +694,9 @@ function TonightPickCard({
               px: 1.1,
               textTransform: "none",
               "&:hover": {
-                bgcolor: alpha("#FFFFFF", 0.12),
-                borderColor: alpha("#FFFFFF", 0.12),
+                background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.22)}, ${alpha(noirTokens.accent.blue, 0.1)})`,
+                borderColor: alpha(noirTokens.accent.purple, 0.28),
+                boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.18)}`,
               },
             }}
           >
@@ -756,7 +772,7 @@ function ScoreBadge({
       sx={{
         alignItems: "center",
         backdropFilter: "blur(18px) saturate(1.25)",
-        background: alpha("#06140F", 0.46),
+        background: alpha("#08111F", 0.58),
         borderRadius: 999,
         boxShadow: [
           `0 16px 42px ${alpha("#000000", 0.34)}`,
@@ -796,9 +812,9 @@ function TonightMetaChip({ children }: { children: React.ReactNode }) {
     <Box
       sx={{
         backdropFilter: "blur(14px) saturate(1.2)",
-        bgcolor: alpha("#FFFFFF", 0.075),
-        borderRadius: 999,
-        boxShadow: `inset 0 0 0 1px ${alpha("#FFFFFF", 0.075)}`,
+        bgcolor: alpha("#08111F", 0.72),
+        borderRadius: "10px",
+        boxShadow: `inset 0 0 0 1px ${alpha("#FFFFFF", 0.075)}, 0 0 18px ${alpha(noirTokens.accent.purple, 0.08)}`,
         color: alpha("#F8FAFC", 0.82),
         fontSize: 10.5,
         fontWeight: 720,
@@ -817,9 +833,10 @@ function GlassPill({ children }: { children: React.ReactNode }) {
     <Box
       sx={{
         backdropFilter: "blur(14px)",
-        bgcolor: alpha("#FFFFFF", 0.075),
-        border: `1px solid ${alpha("#FFFFFF", 0.09)}`,
-        borderRadius: 999,
+        bgcolor: alpha("#08111F", 0.72),
+        border: 0,
+        borderRadius: "10px",
+        boxShadow: `inset 0 0 0 1px ${alpha("#D8E6FF", 0.045)}`,
         color: alpha("#F8FAFC", 0.86),
         fontSize: 10.5,
         fontWeight: 850,
@@ -846,7 +863,7 @@ function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
       <Box
         sx={{
           aspectRatio: "2 / 3",
-          borderRadius: "20px",
+          borderRadius: "16px",
           minWidth: 0,
           overflow: "hidden",
           position: "relative",
@@ -890,7 +907,7 @@ function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
         <Box
           sx={{
             border: `1px solid ${alpha("#FFFFFF", 0.045)}`,
-            borderRadius: "20px",
+            borderRadius: "16px",
             boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}, inset 0 -60px 80px ${alpha("#000000", 0.18)}`,
             inset: 0,
             pointerEvents: "none",
@@ -902,9 +919,9 @@ function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
           sx={{
             alignItems: "center",
             backdropFilter: "blur(16px) saturate(1.25)",
-            bgcolor: alpha("#05070E", 0.48),
+            bgcolor: alpha("#08111F", 0.58),
             border: `1px solid ${alpha("#FFFFFF", 0.12)}`,
-            borderRadius: 999,
+            borderRadius: "10px",
             boxShadow: `0 10px 30px ${alpha("#000000", 0.3)}`,
             color: "text.primary",
             display: "flex",
@@ -1009,24 +1026,28 @@ function GenreBarChart({
     <Box
       sx={{
         alignItems: "end",
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))",
-        borderRadius: 3,
+        background: `radial-gradient(circle at 50% 108%, ${alpha(noirTokens.accent.purple, 0.14)}, transparent 58%), linear-gradient(180deg, rgba(8, 17, 31, 0.72), rgba(5, 8, 18, 0.58))`,
+        borderRadius: `${dashboardSurfaceRadius - 2}px`,
+        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.025)}`,
         display: "grid",
         flex: 1,
         gap: 0.65,
         gridTemplateColumns: `repeat(${Math.max(genres.length, 1)}, minmax(0, 1fr))`,
         minHeight: 188,
         overflow: "hidden",
-        px: 1,
-        pt: 1.2,
+        px: 0.9,
+        pt: 1,
         position: "relative",
         "&::before": {
-          background: `radial-gradient(circle at 50% 105%, ${alpha(noirTokens.accent.purple, 0.2)}, transparent 58%)`,
+          background:
+            "linear-gradient(90deg, transparent, rgba(255,255,255,0.045), transparent)",
           content: '""',
-          inset: 0,
+          height: 1,
+          left: 14,
           pointerEvents: "none",
           position: "absolute",
+          right: 14,
+          top: 0,
         },
       }}
     >
@@ -1092,16 +1113,16 @@ function MediaTypeTabs({
   const disabledTypes = new Set(disabledMediaTypes);
   const rootSx: SxProps<Theme> = {
     backdropFilter: "blur(18px)",
-    bgcolor: alpha("#05070E", 0.42),
+    bgcolor: alpha("#08111F", 0.72),
     border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
-    borderRadius: 999,
-    boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.045)}`,
+    borderRadius: "12px",
+    boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.1)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.05)}`,
     gap: 0.25,
-    p: 0.35,
+    p: 0.28,
     "& .MuiToggleButton-root": {
       border: 0,
-      borderRadius: 999,
-      color: alpha("#E5EEF9", 0.58),
+      borderRadius: "10px",
+      color: alpha("#E2E8F0", 0.72),
       gap: 0.6,
       minHeight: 30,
       px: 0.95,
@@ -1114,12 +1135,12 @@ function MediaTypeTabs({
         color: alpha("#E5EEF9", 0.24),
       },
       "&.Mui-selected": {
-        bgcolor: alpha("#FFFFFF", 0.11),
-        boxShadow: `0 10px 28px ${alpha("#000000", 0.22)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
-        color: "text.primary",
+        background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.95)}, ${alpha(noirTokens.accent.blue, 0.32)})`,
+        boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.24)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.1)}`,
+        color: "#FFFFFF",
       },
       "&:hover": {
-        bgcolor: alpha("#FFFFFF", 0.075),
+        background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.16)}, ${alpha(noirTokens.accent.blue, 0.08)})`,
       },
     },
   };
@@ -1221,8 +1242,8 @@ function PosterCard({
     >
       <Box
         sx={{
-          background: "#05070E",
-          borderRadius: "20px",
+          background: "#050812",
+          borderRadius: "16px",
           boxShadow: `0 14px 34px ${alpha("#000000", 0.36)}`,
           display: "flex",
           flexDirection: "column",
@@ -1285,7 +1306,7 @@ function PosterCard({
         <Box
           sx={{
             border: `1px solid ${alpha("#FFFFFF", 0.035)}`,
-            borderRadius: "20px",
+            borderRadius: "16px",
             boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}`,
             inset: 0,
             pointerEvents: "none",
@@ -1297,9 +1318,9 @@ function PosterCard({
           sx={{
             alignItems: "center",
             backdropFilter: "blur(14px) saturate(1.2)",
-            bgcolor: alpha("#06140F", 0.42),
+            bgcolor: alpha("#08111F", 0.58),
             border: `1px solid ${alpha("#FFFFFF", 0.1)}`,
-            borderRadius: 999,
+            borderRadius: "10px",
             boxShadow: `0 10px 24px ${alpha("#000000", 0.28)}, 0 0 18px ${alpha(noirTokens.accent.emerald, 0.12)}`,
             color: noirTokens.accent.emerald,
             display: "flex",
@@ -1390,12 +1411,13 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
       sx={{
         alignItems: "center",
         background:
-          "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.018))",
-        border: `1px solid ${alpha("#FFFFFF", 0.055)}`,
-        borderRadius: 2.5,
-        minHeight: 48,
-        px: 0.75,
-        py: 0.65,
+          "linear-gradient(135deg, rgba(8, 17, 31, 0.74), rgba(5, 8, 18, 0.58))",
+        border: 0,
+        borderRadius: "14px",
+        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.03)}`,
+        minHeight: 46,
+        px: 0.7,
+        py: 0.58,
         transition: "background-color 180ms ease, transform 180ms ease",
         "&:hover": {
           bgcolor: alpha("#FFFFFF", 0.055),
@@ -1407,8 +1429,9 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
         sx={{
           alignItems: "center",
           bgcolor: alpha(noirTokens.accent.blue, 0.11),
-          border: `1px solid ${alpha(noirTokens.accent.blue, 0.18)}`,
-          borderRadius: 2,
+          border: 0,
+          borderRadius: "10px",
+          boxShadow: `inset 0 0 0 1px ${alpha(noirTokens.accent.blue, 0.12)}`,
           color: noirTokens.accent.blue,
           display: "flex",
           flexShrink: 0,
@@ -1448,16 +1471,18 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
 }
 
 function DashboardCard({
+  accent = noirTokens.accent.purple,
   action,
   children,
   title,
 }: {
+  accent?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
   title: string;
 }) {
   return (
-    <DashboardSection action={action} title={title}>
+    <DashboardSection accent={accent} action={action} title={title}>
       {children}
     </DashboardSection>
   );
@@ -1478,13 +1503,12 @@ function DataHealthStrip({
         </Button>
       }
       accent={noirTokens.accent.amber}
-      kicker="System integrity"
-      title="Data Health"
+      title="System Integrity"
     >
       <Box
         sx={{
           display: "grid",
-          gap: 0.75,
+          gap: 0.65,
           gridTemplateColumns: {
             xs: "1fr",
             sm: "repeat(2, minmax(0, 1fr))",
@@ -1513,14 +1537,20 @@ function HealthPill({ label, value }: { label: string; value: number }) {
     <Box
       sx={{
         alignItems: "center",
-        background: `linear-gradient(135deg, ${alpha(accent, value > 0 ? 0.12 : 0.08)}, ${alpha("#FFFFFF", 0.018)})`,
-        border: `1px solid ${alpha(accent, value > 0 ? 0.2 : 0.12)}`,
-        borderRadius: 999,
-        boxShadow: value > 0 ? `0 0 28px ${alpha(accent, 0.1)}` : "none",
+        background: `radial-gradient(circle at 10% 0%, ${alpha(accent, value > 0 ? 0.12 : 0.08)}, transparent 66%), linear-gradient(135deg, rgba(8, 17, 31, 0.7), rgba(5, 8, 18, 0.58))`,
+        border: 0,
+        borderRadius: "12px",
+        boxShadow: [
+          `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}`,
+          `inset 0 0 0 1px ${alpha(accent, value > 0 ? 0.1 : 0.065)}`,
+          value > 0 ? `0 0 24px ${alpha(accent, 0.08)}` : "",
+        ]
+          .filter(Boolean)
+          .join(", "),
         display: "flex",
         gap: 0.65,
-        minHeight: 36,
-        px: 1,
+        minHeight: 34,
+        px: 0.9,
       }}
     >
       <CheckCircleIcon sx={{ color: accent, fontSize: 15 }} />
@@ -1540,13 +1570,16 @@ function EmptyPanel({ icon, label }: { icon: React.ReactNode; label: string }) {
       spacing={0.6}
       sx={{
         alignItems: "center",
-        border: `1px dashed ${alpha("#9fb4d0", 0.14)}`,
-        borderRadius: 1,
+        background:
+          "linear-gradient(135deg, rgba(8, 17, 31, 0.62), rgba(5, 8, 18, 0.42))",
+        border: 0,
+        borderRadius: "14px",
+        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.03)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.028)}`,
         color: "text.secondary",
         flex: 1,
         justifyContent: "center",
-        mt: 0.75,
-        py: 1.4,
+        mt: 0.65,
+        py: 1.15,
       }}
     >
       {icon}
@@ -1581,12 +1614,12 @@ function MediaSignalRow({
       <Box
         sx={{
           background:
-            "linear-gradient(135deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018))",
-          border: `1px solid ${alpha("#FFFFFF", 0.06)}`,
-          borderRadius: 3,
-          boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
+            "linear-gradient(135deg, rgba(8, 17, 31, 0.74), rgba(5, 8, 18, 0.58))",
+          border: 0,
+          borderRadius: "14px",
+          boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.028)}`,
           height: "100%",
-          p: 0.8,
+          p: 0.7,
           transition: "background-color 180ms ease, transform 180ms ease",
           "&:hover": {
             bgcolor: alpha("#FFFFFF", 0.065),
@@ -1694,9 +1727,9 @@ function mediaTypeIcon(mediaType: MediaType) {
 }
 
 function mediaTypeColor(mediaType: MediaType) {
-  if (mediaType === "TV_SHOW") return "#25d0b2";
-  if (mediaType === "VIDEO_GAME") return "#ffb13d";
-  return "#7c5cff";
+  if (mediaType === "TV_SHOW") return noirTokens.accent.blue;
+  if (mediaType === "VIDEO_GAME") return "#A78BFA";
+  return noirTokens.accent.purple;
 }
 
 function designedPosterFallback(mediaType: MediaType) {
@@ -1705,7 +1738,7 @@ function designedPosterFallback(mediaType: MediaType) {
     `radial-gradient(circle at 22% 16%, ${alpha(accent, 0.34)}, transparent 27%)`,
     `radial-gradient(circle at 72% 8%, ${alpha("#FFFFFF", 0.1)}, transparent 24%)`,
     `linear-gradient(180deg, ${alpha("#FFFFFF", 0.055)}, transparent 34%)`,
-    "linear-gradient(145deg, rgba(28, 26, 44, 0.98), rgba(10, 14, 26, 0.99) 52%, rgba(5, 7, 14, 0.99))",
+    "linear-gradient(145deg, rgba(17, 23, 42, 0.98), rgba(8, 17, 31, 0.99) 52%, rgba(5, 8, 18, 0.99))",
   ].join(", ");
 }
 
@@ -1715,7 +1748,7 @@ function designedHeroFallback(mediaType: MediaType) {
     `radial-gradient(circle at 22% 26%, ${alpha(accent, 0.42)}, transparent 24rem)`,
     `radial-gradient(circle at 78% 18%, ${alpha(noirTokens.accent.blue, 0.16)}, transparent 22rem)`,
     `radial-gradient(circle at 58% 86%, ${alpha(noirTokens.accent.purple, 0.18)}, transparent 26rem)`,
-    "linear-gradient(135deg, rgba(20, 24, 42, 0.98), rgba(7, 10, 22, 0.99) 54%, rgba(3, 5, 12, 1))",
+    "linear-gradient(135deg, rgba(17, 23, 42, 0.98), rgba(8, 17, 31, 0.99) 54%, rgba(5, 8, 18, 1))",
   ].join(", ");
 }
 

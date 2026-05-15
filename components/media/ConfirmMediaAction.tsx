@@ -10,14 +10,19 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { useState } from "react";
 
 type ConfirmMediaActionProps = {
   action: () => void | Promise<void>;
   actionLabel: string;
+  buttonSx?: SxProps<Theme>;
   confirmLabel?: string;
   description: string;
+  iconButton?: boolean;
   tone?: "default" | "danger";
   variant: "archive" | "delete" | "unarchive";
 };
@@ -25,8 +30,10 @@ type ConfirmMediaActionProps = {
 export function ConfirmMediaAction({
   action,
   actionLabel,
+  buttonSx,
   confirmLabel = actionLabel,
   description,
+  iconButton = false,
   tone = "default",
   variant,
 }: ConfirmMediaActionProps) {
@@ -40,14 +47,28 @@ export function ConfirmMediaAction({
 
   return (
     <>
-      <Button
-        color={tone === "danger" ? "error" : "primary"}
-        onClick={() => setOpen(true)}
-        startIcon={<Icon />}
-        variant="outlined"
-      >
-        {actionLabel}
-      </Button>
+      {iconButton ? (
+        <Tooltip title={actionLabel}>
+          <IconButton
+            aria-label={`${actionLabel} media`}
+            color={tone === "danger" ? "error" : "primary"}
+            onClick={() => setOpen(true)}
+            sx={buttonSx}
+          >
+            <Icon />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Button
+          color={tone === "danger" ? "error" : "primary"}
+          onClick={() => setOpen(true)}
+          startIcon={<Icon />}
+          sx={buttonSx}
+          variant="outlined"
+        >
+          {actionLabel}
+        </Button>
+      )}
       <Dialog onClose={() => setOpen(false)} open={open}>
         <DialogTitle>{actionLabel}</DialogTitle>
         <DialogContent>
