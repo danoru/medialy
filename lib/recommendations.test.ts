@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   getRecommendationReleaseDateWhere,
   isRecommendationEligibleStatus,
+  recommendationPersonalScoreTrust,
   recommendationStatusSignal,
 } from "@/lib/recommendations";
 
@@ -31,6 +32,28 @@ describe("recommendation status policy", () => {
       recommendationStatusSignal("BACKLOG"),
     );
   });
+
+  it("trusts incomplete personal scores less than completed scores", () => {
+    expect(recommendationPersonalScoreTrust("COMPLETED", true)).toBe(1);
+    expect(recommendationPersonalScoreTrust("IN_PROGRESS", true)).toBeLessThan(
+      1,
+    );
+    expect(recommendationPersonalScoreTrust("PAUSED", true)).toBeLessThan(
+      recommendationPersonalScoreTrust("IN_PROGRESS", true),
+    );
+    expect(recommendationPersonalScoreTrust("DROPPED", true)).toBeLessThan(
+      recommendationPersonalScoreTrust("PAUSED", true),
+    );
+  });
+
+  it("does not treat queue status as a direct personal-rating signal without an explicit rating", () => {
+    expect(recommendationPersonalScoreTrust("UNTRACKED", false)).toBe(0);
+    expect(recommendationPersonalScoreTrust("WATCHLIST", false)).toBe(0);
+    expect(recommendationPersonalScoreTrust("BACKLOG", false)).toBe(0);
+    expect(recommendationPersonalScoreTrust("WATCHLIST", true)).toBeGreaterThan(
+      0,
+    );
+  });
 });
 
 describe("recommendation availability policy", () => {
@@ -38,14 +61,9 @@ describe("recommendation availability policy", () => {
     const tomorrow = new Date(2026, 4, 15);
 
     expect(
-      getRecommendationReleaseDateWhere(
-        new Date(2026, 4, 14, 15, 30),
-      ),
+      getRecommendationReleaseDateWhere(new Date(2026, 4, 14, 15, 30)),
     ).toEqual({
-      OR: [
-        { releaseDate: null },
-        { releaseDate: { lt: tomorrow } },
-      ],
+      OR: [{ releaseDate: null }, { releaseDate: { lt: tomorrow } }],
     });
   });
 });

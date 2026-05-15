@@ -5,11 +5,11 @@ export const SOURCE_TRUST_WEIGHTS = {
 } as const;
 
 export const MEDIALY_MATCH_WEIGHTS = {
-  personalScore: 0.38,
-  genreAffinity: 0.2,
-  tagAffinity: 0.1,
-  friendAffinity: 0.14,
-  status: 0.1,
+  personalScore: 0.22,
+  genreAffinity: 0.22,
+  tagAffinity: 0.12,
+  friendAffinity: 0.18,
+  status: 0.18,
   upcoming: 0.04,
-  consensus: 0.04,
+  consensus: 0.08,
 } as const;

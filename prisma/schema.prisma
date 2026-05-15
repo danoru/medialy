@@ -117,18 +117,25 @@ model MediaGenre {
 }
 
 model Tag {
-  id             String     @id @default(cuid())
+  id             String      @id @default(cuid())
   name           String
-  normalizedName String     @unique
-  status         TagStatus  @default(APPROVED)
+  normalizedName String      @unique
+  status         TagStatus   @default(APPROVED)
+  category       TagCategory @default(THEME)
+  discoverable   Boolean     @default(false)
+  mediaTypesJson String?
+  countryCode    String?
   createdById    String?
   approvedAt     DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
   media          MediaTag[]
 
   @@unique([name])
   @@index([status])
+  @@index([category])
+  @@index([discoverable])
+  @@index([countryCode])
 }
 
 model MediaTag {
@@ -296,4 +303,13 @@ enum TagStatus {
   APPROVED
   PENDING
   REJECTED
+}
+
+enum TagCategory {
+  SUBGENRE
+  COUNTRY
+  THEME
+  MECHANIC
+  MOOD
+  FORMAT
 }

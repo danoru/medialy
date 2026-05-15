@@ -43,7 +43,9 @@ async function main() {
     orderBy: [{ mediaType: "asc" }, { title: "asc" }],
   });
 
-  const rows = Number.isFinite(limit) ? items.slice(0, limit ?? undefined) : items;
+  const rows = Number.isFinite(limit)
+    ? items.slice(0, limit ?? undefined)
+    : items;
   const stats = {
     scanned: rows.length,
     updated: 0,
@@ -101,7 +103,10 @@ async function resolvePoster(item: MediaItemRow): Promise<PosterMatch | null> {
     if (fromMetadata) return fromMetadata;
   }
 
-  if (item.mediaType === MediaType.MOVIE || item.mediaType === MediaType.TV_SHOW) {
+  if (
+    item.mediaType === MediaType.MOVIE ||
+    item.mediaType === MediaType.TV_SHOW
+  ) {
     const fromTmdb = await posterFromTmdb(item);
     if (fromTmdb) return fromTmdb;
   }
@@ -146,7 +151,10 @@ function collectPosterSources(value: unknown): unknown[] {
 
   if (record.releaseCandidate && typeof record.releaseCandidate === "object") {
     const releaseCandidate = record.releaseCandidate as Record<string, unknown>;
-    if (releaseCandidate.source && typeof releaseCandidate.source === "object") {
+    if (
+      releaseCandidate.source &&
+      typeof releaseCandidate.source === "object"
+    ) {
       sources.push(releaseCandidate.source);
     }
   }
@@ -195,61 +203,76 @@ async function posterFromTmdb(item: MediaItemRow): Promise<PosterMatch | null> {
 
   const parsed = parseUrl(item.externalUrl);
   const id = tmdbIdFromUrl(parsed);
-  const endpoint =
-    item.mediaType === MediaType.MOVIE ? "movie" : "tv";
+  const endpoint = item.mediaType === MediaType.MOVIE ? "movie" : "tv";
 
   if (id) {
-    const json = await tmdbFetch(`https://api.themoviedb.org/3/${endpoint}/${id}`);
+    const json = await tmdbFetch(
+      `https://api.themoviedb.org/3/${endpoint}/${id}`,
+    );
     const posterPath = stringValue(json.poster_path);
     if (posterPath) {
       return { posterUrl: `${TMDB_IMAGE_BASE}${posterPath}`, source: "tmdb" };
     }
   }
 
-  const search = new URL(`https://api.themoviedb.org/3/search/${endpoint}`);
-  search.searchParams.set("query", item.title);
-  search.searchParams.set("language", "en-US");
-  search.searchParams.set("include_adult", "false");
-  if (item.releaseDate) {
-    const year = item.releaseDate.getUTCFullYear();
-    if (Number.isFinite(year)) {
-      if (endpoint === "movie") {
-        search.searchParams.set("year", String(year));
-      } else {
-        search.searchParams.set("first_air_date_year", String(year));
+  let candidate: unknown = null;
+  for (const query of titleSearchQueries(item.title)) {
+    const search = new URL(`https://api.themoviedb.org/3/search/${endpoint}`);
+    search.searchParams.set("query", query);
+    search.searchParams.set("language", "en-US");
+    search.searchParams.set("include_adult", "false");
+    if (item.releaseDate) {
+      const year = item.releaseDate.getUTCFullYear();
+      if (Number.isFinite(year)) {
+        if (endpoint === "movie") {
+          search.searchParams.set("year", String(year));
+        } else {
+          search.searchParams.set("first_air_date_year", String(year));
+        }
       }
     }
-  }
 
-  const json = await tmdbFetch(search.toString());
-  const candidate = arrayValue(json.results).find((entry) =>
-    normalizeTitle(stringValue(entry.title ?? entry.name ?? "") ?? "") ===
-    normalizeTitle(item.title),
-  );
-  const posterPath = candidate ? stringValue(candidate.poster_path) : null;
+    const json = await tmdbFetch(search.toString());
+    candidate = arrayValue(json.results).find(
+      (entry) =>
+        normalizeTitle(
+          stringValue(recordValue(entry).title ?? recordValue(entry).name) ??
+            "",
+        ) === normalizeTitle(item.title),
+    );
+    if (candidate) break;
+  }
+  const posterPath = candidate
+    ? stringValue(recordValue(candidate).poster_path)
+    : null;
   if (!posterPath) return null;
   return { posterUrl: `${TMDB_IMAGE_BASE}${posterPath}`, source: "tmdb" };
 }
 
-async function posterFromTvmaze(item: MediaItemRow): Promise<PosterMatch | null> {
-  const response = await fetch(
-    `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(item.title)}`,
-    { headers: { "user-agent": "Medialy poster backfill script" } },
-  );
-  if (!response.ok) return null;
-
+async function posterFromTvmaze(
+  item: MediaItemRow,
+): Promise<PosterMatch | null> {
   const normalizedTitle = normalizeTitle(item.title);
-  const matches = arrayValue(await response.json())
-    .map((entry) => entry?.show)
-    .filter(
-      (show) =>
-        show &&
-        typeof show === "object" &&
-        normalizeTitle(
-          stringValue((show as Record<string, unknown>).name ?? "") ?? "",
-        ) ===
-          normalizedTitle,
+  let matches: unknown[] = [];
+  for (const query of titleSearchQueries(item.title)) {
+    const response = await fetch(
+      `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`,
+      { headers: { "user-agent": "Medialy poster backfill script" } },
     );
+    if (!response.ok) return null;
+
+    matches = arrayValue(await response.json())
+      .map((entry) => recordValue(entry).show)
+      .filter(
+        (show) =>
+          show &&
+          typeof show === "object" &&
+          normalizeTitle(
+            stringValue((show as Record<string, unknown>).name ?? "") ?? "",
+          ) === normalizedTitle,
+      );
+    if (matches.length > 0) break;
+  }
 
   if (matches.length !== 1) return null;
   const show = matches[0] as Record<string, unknown>;
@@ -264,28 +287,31 @@ async function posterFromTvmaze(item: MediaItemRow): Promise<PosterMatch | null>
 async function posterFromRawg(item: MediaItemRow): Promise<PosterMatch | null> {
   if (!process.env.RAWG_API_KEY) return null;
 
-  const url = new URL("https://api.rawg.io/api/games");
-  url.searchParams.set("key", process.env.RAWG_API_KEY);
-  url.searchParams.set("search", item.title);
-  url.searchParams.set("search_precise", "true");
-  url.searchParams.set("page_size", "10");
-
-  const response = await fetch(url);
-  if (!response.ok) return null;
-
   const normalizedTitle = normalizeTitle(item.title);
-  const json = await response.json();
-  const matches = arrayValue(recordValue(json).results)
-    .map((entry) => entry)
-    .filter(
-      (game) =>
-        game &&
-        typeof game === "object" &&
-        normalizeTitle(
-          stringValue((game as Record<string, unknown>).name ?? "") ?? "",
-        ) ===
-          normalizedTitle,
-    );
+  let matches: unknown[] = [];
+  for (const query of titleSearchQueries(item.title)) {
+    const url = new URL("https://api.rawg.io/api/games");
+    url.searchParams.set("key", process.env.RAWG_API_KEY);
+    url.searchParams.set("search", query);
+    url.searchParams.set("search_precise", "true");
+    url.searchParams.set("page_size", "10");
+
+    const response = await fetch(url);
+    if (!response.ok) return null;
+
+    const json = await response.json();
+    matches = arrayValue(recordValue(json).results)
+      .map((entry) => entry)
+      .filter(
+        (game) =>
+          game &&
+          typeof game === "object" &&
+          normalizeTitle(
+            stringValue((game as Record<string, unknown>).name ?? "") ?? "",
+          ) === normalizedTitle,
+      );
+    if (matches.length > 0) break;
+  }
 
   if (matches.length !== 1) return null;
   const game = matches[0] as Record<string, unknown>;
@@ -299,24 +325,28 @@ async function posterFromIgdb(item: MediaItemRow): Promise<PosterMatch | null> {
   }
 
   const token = await getTwitchToken();
-  const title = item.title.replaceAll('"', '\\"');
-  const body = [
-    "fields name,first_release_date,cover.url;",
-    `search "${title}";`,
-    "limit 10;",
-  ].join(" ");
-
-  const json = await igdbFetch("games", body, token);
   const normalizedTitle = normalizeTitle(item.title);
-  const matches = arrayValue(json).filter(
-    (game) =>
-      game &&
-      typeof game === "object" &&
-      recordValue((game as Record<string, unknown>).cover).url &&
-      normalizeTitle(
-        stringValue((game as Record<string, unknown>).name ?? "") ?? "",
-      ) === normalizedTitle,
-  );
+  let matches: unknown[] = [];
+  for (const query of titleSearchQueries(item.title)) {
+    const title = query.replaceAll('"', '\\"');
+    const body = [
+      "fields name,first_release_date,cover.url;",
+      `search "${title}";`,
+      "limit 10;",
+    ].join(" ");
+
+    const json = await igdbFetch("games", body, token);
+    matches = arrayValue(json).filter(
+      (game) =>
+        game &&
+        typeof game === "object" &&
+        recordValue((game as Record<string, unknown>).cover).url &&
+        normalizeTitle(
+          stringValue((game as Record<string, unknown>).name ?? "") ?? "",
+        ) === normalizedTitle,
+    );
+    if (matches.length > 0) break;
+  }
 
   const match = bestDatedMatch(matches, item.releaseDate);
   if (!match) return null;
@@ -339,7 +369,9 @@ async function igdbFetch(endpoint: string, body: string, token: string) {
     body,
   });
   if (!response.ok) {
-    throw new Error(`IGDB request failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `IGDB request failed: ${response.status} ${response.statusText}`,
+    );
   }
   return response.json();
 }
@@ -351,7 +383,9 @@ async function getTwitchToken() {
   url.searchParams.set("grant_type", "client_credentials");
   const response = await fetch(url, { method: "POST" });
   if (!response.ok) {
-    throw new Error(`Twitch auth failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `Twitch auth failed: ${response.status} ${response.statusText}`,
+    );
   }
   const json = await response.json();
   return String(json.access_token);
@@ -362,7 +396,9 @@ async function tmdbFetch(url: string) {
     headers: { authorization: `Bearer ${process.env.TMDB_BEARER_TOKEN}` },
   });
   if (!response.ok) {
-    throw new Error(`TMDB request failed: ${response.status} ${response.statusText}`);
+    throw new Error(
+      `TMDB request failed: ${response.status} ${response.statusText}`,
+    );
   }
   return response.json();
 }
@@ -376,12 +412,41 @@ function tmdbIdFromUrl(url: URL | null) {
 }
 
 function normalizeTitle(value: string) {
-  return value
+  return foldDiacritics(value)
     .toLowerCase()
     .replaceAll("&", "and")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
+
+function titleSearchQueries(value: string) {
+  const folded = foldDiacritics(value);
+  return [...new Set([value, folded].map((entry) => entry.trim()))].filter(
+    Boolean,
+  );
+}
+
+function foldDiacritics(value: string) {
+  return [...value]
+    .map((character) => foldedCharacterMap.get(character) ?? character)
+    .join("")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const foldedCharacterMap = new Map([
+  ["ß", "ss"],
+  ["æ", "ae"],
+  ["Æ", "AE"],
+  ["œ", "oe"],
+  ["Œ", "OE"],
+  ["ø", "o"],
+  ["Ø", "O"],
+  ["đ", "d"],
+  ["Đ", "D"],
+  ["ł", "l"],
+  ["Ł", "L"],
+]);
 
 function parseJson(value: string | null | undefined) {
   if (!value) return null;

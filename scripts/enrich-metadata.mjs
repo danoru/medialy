@@ -44,14 +44,47 @@ const genreMap = new Map([
   ["action-adventure game", "Adventure"],
   ["puzzle video game", "Puzzle"],
   ["racing video game", "Racing"],
+  ["rhythm game", "Rhythm"],
+  ["music video game", "Rhythm"],
   ["simulation video game", "Simulation"],
   ["strategy video game", "Strategy"],
   ["sports video game", "Sports"],
+  ["party game", "Casual"],
+  ["stealth game", "Stealth"],
 ]);
 
 function sparqlString(value) {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"@en`;
 }
+
+function titleSearchQueries(value) {
+  const folded = foldDiacritics(value);
+  return [...new Set([value, folded].map((entry) => entry.trim()))].filter(
+    Boolean,
+  );
+}
+
+function foldDiacritics(value) {
+  return [...value]
+    .map((character) => foldedCharacterMap.get(character) ?? character)
+    .join("")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const foldedCharacterMap = new Map([
+  ["ß", "ss"],
+  ["æ", "ae"],
+  ["Æ", "AE"],
+  ["œ", "oe"],
+  ["Œ", "OE"],
+  ["ø", "o"],
+  ["Ø", "O"],
+  ["đ", "d"],
+  ["Đ", "D"],
+  ["ł", "l"],
+  ["Ł", "L"],
+]);
 
 function yearFromDate(value) {
   if (!value) return null;
@@ -272,19 +305,17 @@ function canonicalGenresForMediaType(mediaType) {
     return new Set([
       "Action",
       "Adventure",
+      "Casual",
       "Fighting",
       "Horror",
-      "MMO",
-      "Party",
       "Platformer",
       "Puzzle",
       "Racing",
+      "Rhythm",
       "RPG",
-      "Sandbox",
       "Shooter",
       "Simulation",
       "Sports",
-      "Stealth",
       "Strategy",
       "Survival",
       "Visual Novel",
@@ -340,15 +371,17 @@ async function main() {
     const typedItems = items.filter((item) => item.mediaType === mediaType);
     for (let index = 0; index < typedItems.length; index += chunkSize) {
       const chunk = typedItems.slice(index, index + chunkSize);
-      const titles = [...new Set(chunk.map((item) => item.title))];
+      const titles = [
+        ...new Set(chunk.flatMap((item) => titleSearchQueries(item.title))),
+      ];
       const data = await queryChunk(mediaType, titles);
       const candidatesByTitle = collectCandidates(data.results.bindings);
 
       for (const item of chunk) {
-        const { candidate, reason } = selectCandidate(
-          item,
-          candidatesByTitle.get(item.title),
-        );
+        const titleCandidates = titleSearchQueries(item.title)
+          .map((title) => candidatesByTitle.get(title))
+          .find(Boolean);
+        const { candidate, reason } = selectCandidate(item, titleCandidates);
         if (!candidate) {
           if (reason === "no_match") stats.noMatch += 1;
           else stats.ambiguous += 1;

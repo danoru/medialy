@@ -11,9 +11,11 @@ type Args = {
   days: number;
   dryRun: boolean;
   limit: number;
+  mode: "upcoming" | "popular" | "top-rated";
 };
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w500";
+const tmdbGenreCache = new Map<"movie" | "tv", Map<number, string>>();
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -25,13 +27,13 @@ async function main() {
     candidates.push(...fixtureCandidates(from));
   } else {
     if (args.types.has("movie"))
-      candidates.push(...(await fetchTmdbMovies(from, to, args.limit)));
+      candidates.push(...(await fetchTmdbMovies(from, to, args.limit, args.mode)));
     if (args.types.has("tv"))
-      candidates.push(...(await fetchTmdbTv(from, to, args.limit)));
+      candidates.push(...(await fetchTmdbTv(from, to, args.limit, args.mode)));
     if (args.types.has("game"))
       candidates.push(
-        ...(await fetchIgdbGames(from, to, args.limit)),
-        ...(await fetchRawgGames(from, to, args.limit)),
+        ...(await fetchIgdbGames(from, to, args.limit, args.mode)),
+        ...(await fetchRawgGames(from, to, args.limit, args.mode)),
       );
   }
 
@@ -47,6 +49,7 @@ async function main() {
         source: candidate.externalSource,
         title: candidate.title,
         date: candidate.releaseDate?.toISOString().slice(0, 10) ?? "-",
+        mode: args.mode,
       })),
     );
     return;
@@ -63,7 +66,7 @@ async function main() {
     imported += 1;
   }
 
-  console.log(`Upserted ${imported} release candidates.`);
+  console.log(`Upserted ${imported} ${args.mode} candidates.`);
   console.table(
     [...statusCounts.entries()]
       .sort(([first], [second]) => first.localeCompare(second))
@@ -71,7 +74,12 @@ async function main() {
   );
 }
 
-async function fetchTmdbMovies(from: Date, to: Date, limit: number) {
+async function fetchTmdbMovies(
+  from: Date,
+  to: Date,
+  limit: number,
+  mode: Args["mode"],
+) {
   if (!process.env.TMDB_BEARER_TOKEN) {
     logSkippedSource("TMDB movies", "TMDB_BEARER_TOKEN is not set");
     return [];
@@ -81,11 +89,10 @@ async function fetchTmdbMovies(from: Date, to: Date, limit: number) {
   url.searchParams.set("include_video", "false");
   url.searchParams.set("language", "en-US");
   url.searchParams.set("region", "US");
-  url.searchParams.set("sort_by", "popularity.desc");
-  url.searchParams.set("primary_release_date.gte", isoDate(from));
-  url.searchParams.set("primary_release_date.lte", isoDate(to));
+  applyTmdbMovieMode(url, from, to, mode);
   url.searchParams.set("page", "1");
 
+  const genreMap = await tmdbGenres("movie");
   const json = await tmdbFetch(url);
   return array(json.results)
     .slice(0, limit)
@@ -102,7 +109,7 @@ async function fetchTmdbMovies(from: Date, to: Date, limit: number) {
             ? `${TMDB_IMAGE_BASE}${movie.poster_path}`
             : null,
           releaseDate: parseDate(movie.release_date),
-          genres: [],
+          genres: genreNames(movie.genre_ids, genreMap),
           tags: movie.original_language
             ? [`language:${movie.original_language}`]
             : [],
@@ -113,10 +120,16 @@ async function fetchTmdbMovies(from: Date, to: Date, limit: number) {
             voteCount: numberValue(movie.vote_count),
           },
         }) satisfies ReleaseCandidateInput,
-    );
+    )
+    .map((candidate, index) => withCatalogSignal(candidate, mode, index));
 }
 
-async function fetchTmdbTv(from: Date, to: Date, limit: number) {
+async function fetchTmdbTv(
+  from: Date,
+  to: Date,
+  limit: number,
+  mode: Args["mode"],
+) {
   if (!process.env.TMDB_BEARER_TOKEN) {
     logSkippedSource("TMDB TV", "TMDB_BEARER_TOKEN is not set");
     return [];
@@ -125,11 +138,10 @@ async function fetchTmdbTv(from: Date, to: Date, limit: number) {
   url.searchParams.set("include_adult", "false");
   url.searchParams.set("include_null_first_air_dates", "false");
   url.searchParams.set("language", "en-US");
-  url.searchParams.set("sort_by", "popularity.desc");
-  url.searchParams.set("first_air_date.gte", isoDate(from));
-  url.searchParams.set("first_air_date.lte", isoDate(to));
+  applyTmdbTvMode(url, from, to, mode);
   url.searchParams.set("page", "1");
 
+  const genreMap = await tmdbGenres("tv");
   const json = await tmdbFetch(url);
   return array(json.results)
     .slice(0, limit)
@@ -146,7 +158,7 @@ async function fetchTmdbTv(from: Date, to: Date, limit: number) {
             ? `${TMDB_IMAGE_BASE}${show.poster_path}`
             : null,
           releaseDate: parseDate(show.first_air_date),
-          genres: [],
+          genres: genreNames(show.genre_ids, genreMap),
           tags: show.original_language
             ? [`language:${show.original_language}`]
             : [],
@@ -157,10 +169,16 @@ async function fetchTmdbTv(from: Date, to: Date, limit: number) {
             voteCount: numberValue(show.vote_count),
           },
         }) satisfies ReleaseCandidateInput,
-    );
+    )
+    .map((candidate, index) => withCatalogSignal(candidate, mode, index));
 }
 
-async function fetchIgdbGames(from: Date, to: Date, limit: number) {
+async function fetchIgdbGames(
+  from: Date,
+  to: Date,
+  limit: number,
+  mode: Args["mode"],
+) {
   if (!process.env.TWITCH_CLIENT_ID || !process.env.TWITCH_CLIENT_SECRET) {
     logSkippedSource(
       "IGDB games",
@@ -171,63 +189,70 @@ async function fetchIgdbGames(from: Date, to: Date, limit: number) {
   const token = await getTwitchToken();
   const body = [
     "fields name,summary,url,first_release_date,hypes,follows,total_rating,total_rating_count,genres.name,themes.name,involved_companies.company.name,cover.url,platforms.name;",
-    `where first_release_date >= ${unixSeconds(from)} & first_release_date <= ${unixSeconds(to)} & category = 0;`,
-    "sort hypes desc;",
+    igdbWhereClause(from, to, mode),
+    igdbSortClause(mode),
     `limit ${limit};`,
   ].join(" ");
 
   const json = await igdbFetch("games", body, token);
-  return array(json).map(
-    (game) =>
-      ({
-        mediaType: MediaType.VIDEO_GAME,
-        title: String(game.name ?? ""),
-        externalSource: ExternalReleaseSource.IGDB,
-        externalId: String(game.id),
-        externalUrl: game.url ? String(game.url) : null,
-        description: game.summary ? String(game.summary) : null,
-        posterUrl: coverUrl(game.cover),
-        releaseDate: parseUnixDate(game.first_release_date),
-        genres: array(game.genres)
-          .map((genre) => String(genre.name))
-          .filter(Boolean),
-        tags: array(game.themes)
-          .map((theme) => String(theme.name))
-          .filter(Boolean),
-        companies: array(game.involved_companies)
-          .map((entry) => String(recordValue(entry.company).name))
-          .filter(Boolean),
-        platforms: array(game.platforms)
-          .map((platform) => String(platform.name))
-          .filter(Boolean),
-        metadata: game,
-        sourceSignals: {
-          hypes: numberValue(game.hypes),
-          follows: numberValue(game.follows),
-          rating: numberValue(game.total_rating),
-          voteCount: numberValue(game.total_rating_count),
-        },
-      }) satisfies ReleaseCandidateInput,
-  );
+  return array(json)
+    .map(
+      (game) =>
+        ({
+          mediaType: MediaType.VIDEO_GAME,
+          title: String(game.name ?? ""),
+          externalSource: ExternalReleaseSource.IGDB,
+          externalId: String(game.id),
+          externalUrl: game.url ? String(game.url) : null,
+          description: game.summary ? String(game.summary) : null,
+          posterUrl: coverUrl(game.cover),
+          releaseDate: parseUnixDate(game.first_release_date),
+          genres: array(game.genres)
+            .map((genre) => String(genre.name))
+            .filter(Boolean),
+          tags: array(game.themes)
+            .map((theme) => String(theme.name))
+            .filter(Boolean),
+          companies: array(game.involved_companies)
+            .map((entry) => String(recordValue(entry.company).name))
+            .filter(Boolean),
+          platforms: array(game.platforms)
+            .map((platform) => String(platform.name))
+            .filter(Boolean),
+          metadata: game,
+          sourceSignals: {
+            hypes: numberValue(game.hypes),
+            follows: numberValue(game.follows),
+            rating: numberValue(game.total_rating),
+            voteCount: numberValue(game.total_rating_count),
+          },
+        }) satisfies ReleaseCandidateInput,
+    )
+    .map((candidate, index) => withCatalogSignal(candidate, mode, index));
 }
 
-async function fetchRawgGames(from: Date, to: Date, limit: number) {
+async function fetchRawgGames(
+  from: Date,
+  to: Date,
+  limit: number,
+  mode: Args["mode"],
+) {
   if (!process.env.RAWG_API_KEY) {
     logSkippedSource("RAWG games", "RAWG_API_KEY is not set");
     return [];
   }
   const url = new URL("https://api.rawg.io/api/games");
   url.searchParams.set("key", process.env.RAWG_API_KEY);
-  url.searchParams.set("dates", `${isoDate(from)},${isoDate(to)}`);
-  url.searchParams.set("ordering", "-added");
+  applyRawgMode(url, from, to, mode);
   url.searchParams.set("page_size", String(limit));
 
   const response = await fetch(url);
   if (!response.ok) return [];
   const json = await response.json();
-  return array(json.results).map(
-    (game) =>
-      ({
+  return array(json.results)
+    .map(
+      (game) =>
+        ({
         mediaType: MediaType.VIDEO_GAME,
         title: String(game.name ?? ""),
         externalSource: ExternalReleaseSource.RAWG,
@@ -248,11 +273,12 @@ async function fetchRawgGames(from: Date, to: Date, limit: number) {
         metadata: game,
         sourceSignals: {
           popularity: numberValue(game.added),
-          rating: numberValue(game.rating),
+          rating: numberValue(game.metacritic) ?? numberValue(game.rating),
           voteCount: numberValue(game.ratings_count),
         },
       }) satisfies ReleaseCandidateInput,
-  );
+    )
+    .map((candidate, index) => withCatalogSignal(candidate, mode, index));
 }
 
 async function tmdbFetch(url: URL) {
@@ -264,6 +290,23 @@ async function tmdbFetch(url: URL) {
       `TMDB request failed: ${response.status} ${response.statusText}`,
     );
   return response.json();
+}
+
+async function tmdbGenres(endpoint: "movie" | "tv") {
+  const cached = tmdbGenreCache.get(endpoint);
+  if (cached) return cached;
+
+  const url = new URL(`https://api.themoviedb.org/3/genre/${endpoint}/list`);
+  url.searchParams.set("language", "en-US");
+  const json = await tmdbFetch(url);
+  const map = new Map<number, string>();
+  for (const genre of array(json.genres)) {
+    const id = numberValue(genre.id);
+    const name = stringValue(genre.name);
+    if (id && name) map.set(id, name);
+  }
+  tmdbGenreCache.set(endpoint, map);
+  return map;
 }
 
 async function igdbFetch(endpoint: string, body: string, token: string) {
@@ -335,6 +378,7 @@ function fixtureCandidates(from: Date): ReleaseCandidateInput[] {
 
 function parseArgs(argv: string[]): Args {
   const typesArg = valueFor(argv, "--types") ?? "movie,tv,game";
+  const mode = parseMode(valueFor(argv, "--mode") ?? valueFor(argv, "--kind"));
   return {
     types: new Set(
       typesArg
@@ -345,10 +389,25 @@ function parseArgs(argv: string[]): Args {
     days: Number(valueFor(argv, "--days") ?? 180),
     dryRun: argv.includes("--dry-run"),
     limit: Number(valueFor(argv, "--limit") ?? 40),
+    mode,
   };
 }
 
+function parseMode(value: string | undefined): Args["mode"] {
+  if (!value) return "upcoming";
+  const normalized = value.trim().toLowerCase();
+  if (["upcoming", "future", "new"].includes(normalized)) return "upcoming";
+  if (["popular", "popularity"].includes(normalized)) return "popular";
+  if (["top", "top-rated", "top_rated", "rated"].includes(normalized)) {
+    return "top-rated";
+  }
+  throw new Error("Unsupported mode. Use --mode=upcoming, popular, or top-rated.");
+}
+
 function valueFor(argv: string[], key: string) {
+  const equalsArg = argv.find((arg) => arg.startsWith(`${key}=`));
+  if (equalsArg) return equalsArg.slice(key.length + 1);
+
   const index = argv.indexOf(key);
   return index >= 0 ? argv[index + 1] : undefined;
 }
@@ -376,6 +435,108 @@ function stringValue(value: unknown) {
 function numberValue(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function applyTmdbMovieMode(
+  url: URL,
+  from: Date,
+  to: Date,
+  mode: Args["mode"],
+) {
+  if (mode === "upcoming") {
+    url.searchParams.set("sort_by", "popularity.desc");
+    url.searchParams.set("primary_release_date.gte", isoDate(from));
+    url.searchParams.set("primary_release_date.lte", isoDate(to));
+    return;
+  }
+
+  url.searchParams.set(
+    "sort_by",
+    mode === "top-rated" ? "vote_average.desc" : "popularity.desc",
+  );
+  url.searchParams.set("primary_release_date.lte", isoDate(from));
+  if (mode === "top-rated") url.searchParams.set("vote_count.gte", "500");
+}
+
+function applyTmdbTvMode(
+  url: URL,
+  from: Date,
+  to: Date,
+  mode: Args["mode"],
+) {
+  if (mode === "upcoming") {
+    url.searchParams.set("sort_by", "popularity.desc");
+    url.searchParams.set("first_air_date.gte", isoDate(from));
+    url.searchParams.set("first_air_date.lte", isoDate(to));
+    return;
+  }
+
+  url.searchParams.set(
+    "sort_by",
+    mode === "top-rated" ? "vote_average.desc" : "popularity.desc",
+  );
+  url.searchParams.set("first_air_date.lte", isoDate(from));
+  if (mode === "top-rated") url.searchParams.set("vote_count.gte", "200");
+}
+
+function igdbWhereClause(from: Date, to: Date, mode: Args["mode"]) {
+  if (mode === "upcoming") {
+    return `where first_release_date >= ${unixSeconds(from)} & first_release_date <= ${unixSeconds(to)} & category = 0;`;
+  }
+  const released = `first_release_date <= ${unixSeconds(from)}`;
+  if (mode === "top-rated") {
+    return `where ${released} & total_rating_count >= 20 & category = 0;`;
+  }
+  return `where ${released} & follows >= 25 & category = 0;`;
+}
+
+function igdbSortClause(mode: Args["mode"]) {
+  if (mode === "top-rated") return "sort total_rating desc;";
+  if (mode === "popular") return "sort follows desc;";
+  return "sort hypes desc;";
+}
+
+function applyRawgMode(
+  url: URL,
+  from: Date,
+  to: Date,
+  mode: Args["mode"],
+) {
+  if (mode === "upcoming") {
+    url.searchParams.set("dates", `${isoDate(from)},${isoDate(to)}`);
+    url.searchParams.set("ordering", "-added");
+    return;
+  }
+
+  url.searchParams.set("dates", `1970-01-01,${isoDate(from)}`);
+  url.searchParams.set("ordering", mode === "top-rated" ? "-metacritic" : "-added");
+  if (mode === "top-rated") url.searchParams.set("metacritic", "80,100");
+}
+
+function genreNames(value: unknown, genreMap: Map<number, string>) {
+  return array(value)
+    .map((id) => genreMap.get(Number(id)))
+    .filter((name): name is string => Boolean(name));
+}
+
+function withCatalogSignal(
+  candidate: ReleaseCandidateInput,
+  mode: Args["mode"],
+  index: number,
+) {
+  if (mode === "upcoming") return candidate;
+  return {
+    ...candidate,
+    metadata: {
+      ...(recordValue(candidate.metadata)),
+      medialyCandidateMode: mode,
+      medialyCatalogRank: index + 1,
+    },
+    sourceSignals: {
+      ...candidate.sourceSignals,
+      catalogRank: index + 1,
+    },
+  } satisfies ReleaseCandidateInput;
 }
 
 function parseDate(value: unknown) {

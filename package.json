@@ -20,6 +20,7 @@
     "metadata:backfill": "tsx scripts/backfill-metadata.ts",
     "ratings:fetch": "node scripts/enrich-ratings.mjs",
     "ratings:recompute": "node scripts/recompute-ratings.mjs",
+    "candidates:fetch": "tsx scripts/fetch-upcoming.ts",
     "upcoming:fetch": "tsx scripts/fetch-upcoming.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

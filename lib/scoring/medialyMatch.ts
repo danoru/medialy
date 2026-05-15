@@ -4,6 +4,7 @@ import { MEDIALY_MATCH_WEIGHTS } from "@/lib/scoring/weights";
 
 export type MedialyMatchSignals = {
   personalScore: number | null;
+  personalScoreTrust?: number;
   genreAffinity: number;
   tagAffinity: number;
   friendAffinity: number;
@@ -20,6 +21,7 @@ export function calculateMedialyMatch(signals: MedialyMatchSignals) {
     reasons,
     "Personal score",
     normalizedTenPoint(signals.personalScore) *
+      clamp(signals.personalScoreTrust ?? 1, 0, 1) *
       MEDIALY_MATCH_WEIGHTS.personalScore,
   );
   addReason(
@@ -40,8 +42,8 @@ export function calculateMedialyMatch(signals: MedialyMatchSignals) {
   );
   addReason(
     reasons,
-    "List status",
-    clamp(signals.status, 0, 100) * MEDIALY_MATCH_WEIGHTS.status,
+    signals.status >= 0 ? "Discovery signal" : "Queue signal",
+    clamp(signals.status, -100, 100) * MEDIALY_MATCH_WEIGHTS.status,
   );
   addReason(
     reasons,

@@ -8,12 +8,41 @@ const limit = limitArg
   : null;
 
 function normalizeTitle(value) {
-  return value
+  return foldDiacritics(value)
     .toLowerCase()
     .replaceAll("&", "and")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
+
+function titleSearchQueries(value) {
+  const folded = foldDiacritics(value);
+  return [...new Set([value, folded].map((entry) => entry.trim()))].filter(
+    Boolean,
+  );
+}
+
+function foldDiacritics(value) {
+  return [...value]
+    .map((character) => foldedCharacterMap.get(character) ?? character)
+    .join("")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const foldedCharacterMap = new Map([
+  ["ß", "ss"],
+  ["æ", "ae"],
+  ["Æ", "AE"],
+  ["œ", "oe"],
+  ["Œ", "OE"],
+  ["ø", "o"],
+  ["Ø", "O"],
+  ["đ", "d"],
+  ["Đ", "D"],
+  ["ł", "l"],
+  ["Ł", "L"],
+]);
 
 function titleCase(value) {
   return value
@@ -44,23 +73,28 @@ function normalizeTagKey(value) {
 }
 
 async function searchShow(title) {
-  const response = await fetch(
-    `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(title)}`,
-    { headers: { "user-agent": "Medialy metadata enrichment local script" } },
-  );
-  if (!response.ok) {
-    throw new Error(
-      `TVMaze request failed: ${response.status} ${response.statusText}`,
+  const normalized = normalizeTitle(title);
+
+  for (const query of titleSearchQueries(title)) {
+    const response = await fetch(
+      `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`,
+      { headers: { "user-agent": "Medialy metadata enrichment local script" } },
     );
+    if (!response.ok) {
+      throw new Error(
+        `TVMaze request failed: ${response.status} ${response.statusText}`,
+      );
+    }
+
+    const results = await response.json();
+    const exact = results
+      .map((entry) => entry.show)
+      .filter((show) => normalizeTitle(show.name) === normalized);
+
+    if (exact.length > 0) return exact.length === 1 ? exact[0] : null;
   }
 
-  const results = await response.json();
-  const normalized = normalizeTitle(title);
-  const exact = results
-    .map((entry) => entry.show)
-    .filter((show) => normalizeTitle(show.name) === normalized);
-
-  return exact.length === 1 ? exact[0] : null;
+  return null;
 }
 
 async function connectGenres(mediaId, names) {

@@ -108,6 +108,7 @@ describe("medialy match", () => {
   it("returns a bounded percentage and explainable reasons", () => {
     const match = calculateMedialyMatch({
       personalScore: 9,
+      personalScoreTrust: 1,
       genreAffinity: 80,
       tagAffinity: 50,
       friendAffinity: 70,
@@ -119,6 +120,111 @@ describe("medialy match", () => {
     expect(match.score).toBeGreaterThan(0);
     expect(match.score).toBeLessThanOrEqual(100);
     expect(match.reasons.length).toBeGreaterThan(0);
+  });
+
+  it("lets the discovery signal lift an unknown item over a similar queued item", () => {
+    const untracked = calculateMedialyMatch({
+      personalScore: null,
+      personalScoreTrust: 0,
+      genreAffinity: 55,
+      tagAffinity: 35,
+      friendAffinity: 30,
+      status: 100,
+      upcoming: 0,
+      consensusScore: 8,
+    });
+    const watchlist = calculateMedialyMatch({
+      personalScore: null,
+      personalScoreTrust: 0,
+      genreAffinity: 55,
+      tagAffinity: 35,
+      friendAffinity: 30,
+      status: 30,
+      upcoming: 0,
+      consensusScore: 8,
+    });
+
+    expect(untracked.score).toBeGreaterThan(watchlist.score);
+  });
+
+  it("dampens personal score for unfinished recommendation candidates", () => {
+    const completedTrust = calculateMedialyMatch({
+      personalScore: 9,
+      personalScoreTrust: 1,
+      genreAffinity: 0,
+      tagAffinity: 0,
+      friendAffinity: 0,
+      status: 0,
+      upcoming: 0,
+      consensusScore: null,
+    });
+    const queueTrust = calculateMedialyMatch({
+      personalScore: 9,
+      personalScoreTrust: 0.25,
+      genreAffinity: 0,
+      tagAffinity: 0,
+      friendAffinity: 0,
+      status: 0,
+      upcoming: 0,
+      consensusScore: null,
+    });
+
+    expect(queueTrust.score).toBeLessThan(completedTrust.score);
+  });
+
+  it("uses consensus and friend signals to lift unknown items", () => {
+    const weakUnknown = calculateMedialyMatch({
+      personalScore: null,
+      personalScoreTrust: 0,
+      genreAffinity: 0,
+      tagAffinity: 0,
+      friendAffinity: 0,
+      status: 100,
+      upcoming: 0,
+      consensusScore: null,
+    });
+    const supportedUnknown = calculateMedialyMatch({
+      personalScore: null,
+      personalScoreTrust: 0,
+      genreAffinity: 0,
+      tagAffinity: 0,
+      friendAffinity: 80,
+      status: 100,
+      upcoming: 0,
+      consensusScore: 9,
+    });
+
+    expect(supportedUnknown.score).toBeGreaterThan(weakUnknown.score);
+  });
+
+  it("labels status explanations with discovery or queue language", () => {
+    const discovery = calculateMedialyMatch({
+      personalScore: null,
+      personalScoreTrust: 0,
+      genreAffinity: 0,
+      tagAffinity: 0,
+      friendAffinity: 0,
+      status: 100,
+      upcoming: 0,
+      consensusScore: null,
+    });
+    const queuePenalty = calculateMedialyMatch({
+      personalScore: null,
+      personalScoreTrust: 0,
+      genreAffinity: 0,
+      tagAffinity: 0,
+      friendAffinity: 0,
+      status: -45,
+      upcoming: 0,
+      consensusScore: null,
+    });
+
+    expect(discovery.reasons.map((reason) => reason.label)).toContain(
+      "Discovery signal",
+    );
+    expect(queuePenalty.reasons.map((reason) => reason.label)).toContain(
+      "Queue signal",
+    );
   });
 });
 

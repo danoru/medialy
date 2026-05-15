@@ -126,6 +126,31 @@ describe("media title disambiguation", () => {
       ),
     ).resolves.toBeNull();
   });
+
+  it("matches existing titles across accent differences", async () => {
+    const client = {
+      mediaItem: {
+        findMany: async () => [
+          {
+            id: "accented",
+            title: "Ghost of Yōtei",
+            releaseDate: new Date("2025-10-02T00:00:00.000Z"),
+          },
+        ],
+      },
+    };
+
+    await expect(
+      findExistingMediaItem(
+        client as never,
+        mediaInput({
+          title: "Ghost of Yotei",
+          mediaType: "VIDEO_GAME",
+          releaseDate: new Date("2025-01-01T00:00:00.000Z"),
+        }),
+      ),
+    ).resolves.toMatchObject({ id: "accented" });
+  });
 });
 
 function mediaInput(overrides: Partial<MediaFormInput> = {}): MediaFormInput {

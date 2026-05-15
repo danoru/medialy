@@ -254,20 +254,24 @@ async function findTmdb(
 ): Promise<MetadataMatch | null> {
   if (!process.env.TMDB_BEARER_TOKEN) return null;
 
-  const search = new URL(`https://api.themoviedb.org/3/search/${endpoint}`);
-  search.searchParams.set("query", item.title);
-  search.searchParams.set("language", "en-US");
-  search.searchParams.set("include_adult", "false");
-  if (item.releaseDate) {
-    const year = String(item.releaseDate.getUTCFullYear());
-    search.searchParams.set(
-      endpoint === "movie" ? "year" : "first_air_date_year",
-      year,
-    );
-  }
+  let candidate: unknown = null;
+  for (const query of titleSearchQueries(item.title)) {
+    const search = new URL(`https://api.themoviedb.org/3/search/${endpoint}`);
+    search.searchParams.set("query", query);
+    search.searchParams.set("language", "en-US");
+    search.searchParams.set("include_adult", "false");
+    if (item.releaseDate) {
+      const year = String(item.releaseDate.getUTCFullYear());
+      search.searchParams.set(
+        endpoint === "movie" ? "year" : "first_air_date_year",
+        year,
+      );
+    }
 
-  const json = await tmdbFetch(search);
-  const candidate = bestTitleMatch(arrayValue(recordValue(json).results), item);
+    const json = await tmdbFetch(search);
+    candidate = bestTitleMatch(arrayValue(recordValue(json).results), item);
+    if (candidate) break;
+  }
   if (!candidate) return null;
 
   const id = String(recordValue(candidate).id);
@@ -310,19 +314,23 @@ async function findTmdb(
 }
 
 async function findTvmaze(item: MediaItemRow): Promise<MetadataMatch | null> {
-  const response = await fetch(
-    `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(item.title)}`,
-    { headers: { "user-agent": "Medialy metadata backfill script" } },
-  );
-  if (!response.ok) return null;
-
-  const matches = arrayValue(await response.json())
-    .map((entry) => recordValue(entry).show)
-    .filter(
-      (show) =>
-        normalizeTitle(stringValue(recordValue(show).name) ?? "") ===
-        normalizeTitle(item.title),
+  let matches: unknown[] = [];
+  for (const query of titleSearchQueries(item.title)) {
+    const response = await fetch(
+      `https://api.tvmaze.com/search/shows?q=${encodeURIComponent(query)}`,
+      { headers: { "user-agent": "Medialy metadata backfill script" } },
     );
+    if (!response.ok) return null;
+
+    matches = arrayValue(await response.json())
+      .map((entry) => recordValue(entry).show)
+      .filter(
+        (show) =>
+          normalizeTitle(stringValue(recordValue(show).name) ?? "") ===
+          normalizeTitle(item.title),
+      );
+    if (matches.length > 0) break;
+  }
   if (matches.length !== 1) return null;
 
   const show = recordValue(matches[0]);
@@ -349,13 +357,17 @@ async function findIgdb(item: MediaItemRow): Promise<MetadataMatch | null> {
   }
 
   const token = await getTwitchToken();
-  const body = [
-    "fields name,summary,url,first_release_date,genres.name,themes.name,cover.url;",
-    `search "${item.title.replaceAll('"', '\\"')}";`,
-    "limit 10;",
-  ].join(" ");
-  const json = await igdbFetch("games", body, token);
-  const candidate = bestTitleMatch(arrayValue(json), item);
+  let candidate: unknown = null;
+  for (const query of titleSearchQueries(item.title)) {
+    const body = [
+      "fields name,summary,url,first_release_date,genres.name,themes.name,cover.url;",
+      `search "${query.replaceAll('"', '\\"')}";`,
+      "limit 10;",
+    ].join(" ");
+    const json = await igdbFetch("games", body, token);
+    candidate = bestTitleMatch(arrayValue(json), item);
+    if (candidate) break;
+  }
   if (!candidate) return null;
 
   const game = recordValue(candidate);
@@ -385,14 +397,18 @@ async function findRawg(item: MediaItemRow): Promise<MetadataMatch | null> {
 
   const url = new URL("https://api.rawg.io/api/games");
   url.searchParams.set("key", process.env.RAWG_API_KEY);
-  url.searchParams.set("search", item.title);
-  url.searchParams.set("search_precise", "true");
-  url.searchParams.set("page_size", "10");
+  let candidate: unknown = null;
+  for (const query of titleSearchQueries(item.title)) {
+    url.searchParams.set("search", query);
+    url.searchParams.set("search_precise", "true");
+    url.searchParams.set("page_size", "10");
 
-  const response = await fetch(url);
-  if (!response.ok) return null;
-  const json = await response.json();
-  const candidate = bestTitleMatch(arrayValue(recordValue(json).results), item);
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const json = await response.json();
+    candidate = bestTitleMatch(arrayValue(recordValue(json).results), item);
+    if (candidate) break;
+  }
   if (!candidate) return null;
 
   const game = recordValue(candidate);
@@ -604,12 +620,41 @@ function normalizeTagKey(value: string) {
 }
 
 function normalizeTitle(value: string) {
-  return value
+  return foldDiacritics(value)
     .toLowerCase()
     .replaceAll("&", "and")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
+
+function titleSearchQueries(value: string) {
+  const folded = foldDiacritics(value);
+  return [...new Set([value, folded].map((entry) => entry.trim()))].filter(
+    Boolean,
+  );
+}
+
+function foldDiacritics(value: string) {
+  return [...value]
+    .map((character) => foldedCharacterMap.get(character) ?? character)
+    .join("")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const foldedCharacterMap = new Map([
+  ["ß", "ss"],
+  ["æ", "ae"],
+  ["Æ", "AE"],
+  ["œ", "oe"],
+  ["Œ", "OE"],
+  ["ø", "o"],
+  ["Ø", "O"],
+  ["đ", "d"],
+  ["Đ", "D"],
+  ["ł", "l"],
+  ["Ł", "L"],
+]);
 
 function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object"

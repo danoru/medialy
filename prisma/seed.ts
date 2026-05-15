@@ -1,5 +1,9 @@
 import { PrismaClient, type MediaStatus, type MediaType } from "@prisma/client";
-import { normalizeTagKey, normalizeTagName } from "../lib/taxonomy";
+import {
+  canonicalTagMetadataForName,
+  normalizeTagKey,
+  normalizeTagName,
+} from "../lib/taxonomy";
 
 const prisma = new PrismaClient();
 
@@ -96,13 +100,29 @@ async function connectGenres(mediaId: string, names: string[]) {
 async function connectTags(mediaId: string, names: string[]) {
   for (const rawName of names) {
     const name = normalizeTagName(rawName);
+    const metadata = canonicalTagMetadataForName(name);
     const tag = await prisma.tag.upsert({
       where: { normalizedName: normalizeTagKey(name) },
-      update: {},
+      update: metadata
+        ? {
+            category: metadata.category,
+            discoverable: metadata.discoverable,
+            mediaTypesJson: metadata.mediaTypes
+              ? JSON.stringify(metadata.mediaTypes)
+              : undefined,
+            countryCode: metadata.countryCode,
+          }
+        : {},
       create: {
         name,
         normalizedName: normalizeTagKey(name),
         status: "APPROVED",
+        category: metadata?.category ?? "THEME",
+        discoverable: metadata?.discoverable ?? false,
+        mediaTypesJson: metadata?.mediaTypes
+          ? JSON.stringify(metadata.mediaTypes)
+          : undefined,
+        countryCode: metadata?.countryCode,
         approvedAt: new Date(),
       },
     });
