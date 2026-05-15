@@ -179,10 +179,10 @@ function CandidateQueue({
         <Stack direction={{ xs: "column", sm: "row" }} sx={{ mb: 1.5 }}>
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontWeight: 800 }} variant="h6">
-              Upcoming Candidates
+              Discovery Candidates
             </Typography>
             <Typography color="text.secondary" variant="body2">
-              Fetched releases staged or auto-muted before they enter
+              Fetched catalog items staged or auto-muted before they enter
               recommendations.
             </Typography>
           </Box>
@@ -207,8 +207,8 @@ function CandidateQueue({
             color="text.secondary"
             sx={{ py: 3, textAlign: "center" }}
           >
-            No staged {formatMediaType(selectedType).toLowerCase()} candidates
-            yet.
+            No staged {formatMediaType(selectedType).toLowerCase()} discovery
+            candidates yet.
           </Typography>
         )}
       </CardContent>

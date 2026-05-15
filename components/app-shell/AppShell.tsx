@@ -68,11 +68,11 @@ const navItems = [
     label: "Upcoming",
     href: "/upcoming",
     icon: <CalendarMonthIcon />,
-    description: "Track upcoming dates and review release candidates.",
+    description: "Track release dates and review discovery candidates.",
   },
   {
-    label: "Top Lists",
-    href: "/top-lists",
+    label: "Discover",
+    href: "/discover",
     icon: <FavoriteIcon />,
     description: "Top items by score, type, genre, and confidence.",
   },
@@ -117,7 +117,6 @@ const navItems = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const header = getHeader(pathname);
   const showAddMedia = pathname !== "/media/new";
 
   return (
@@ -149,8 +148,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             }}
           >
             <Box
-              component="a"
-              href="/media"
+              action="/media"
+              component="form"
+              method="get"
               sx={{
                 alignItems: "center",
                 border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
@@ -173,10 +173,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <SearchIcon fontSize="small" />
               <InputBase
-                inputProps={{ "aria-label": "Browse media library" }}
-                placeholder={`Search ${header.title.toLowerCase()}...`}
-                readOnly
-                sx={{ color: "inherit", flex: 1, pointerEvents: "none" }}
+                inputProps={{ "aria-label": "Search media library" }}
+                name="filter"
+                placeholder="Search media library..."
+                sx={{ color: "inherit", flex: 1 }}
               />
             </Box>
             <IconButton
@@ -381,36 +381,4 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </Box>
     </Box>
   );
-}
-
-function getHeader(pathname: string) {
-  if (pathname === "/media/new") {
-    return {
-      title: "Add Media",
-      description: "Create a local library item.",
-    };
-  }
-
-  if (pathname.startsWith("/media/") && pathname.endsWith("/edit")) {
-    return {
-      title: "Edit Media",
-      description: "Update details, tags, genres, notes, and ratings.",
-    };
-  }
-
-  if (pathname.startsWith("/media/")) {
-    return {
-      title: "Media Details",
-      description: "Review metadata, notes, comparisons, and library status.",
-    };
-  }
-
-  const activeItem = navItems.find(
-    (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
-  ) ?? {
-    label: "Medialy",
-    description: "Local recommendations, rankings, watchlist, and data health.",
-  };
-
-  return { title: activeItem.label, description: activeItem.description };
 }

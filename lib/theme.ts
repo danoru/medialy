@@ -103,7 +103,7 @@ export const medialyTheme = createTheme({
   },
 
   shape: {
-    borderRadius: 18,
+    borderRadius: 6,
   },
 
   typography: {
@@ -234,7 +234,7 @@ export const medialyTheme = createTheme({
     MuiButton: {
       styleOverrides: {
         root: {
-          borderRadius: 14,
+          borderRadius: 8,
           boxShadow: "none",
           minHeight: 38,
           paddingInline: 18,
@@ -260,7 +260,7 @@ export const medialyTheme = createTheme({
           background:
             "linear-gradient(145deg, rgba(15, 20, 38, 0.92), rgba(6, 9, 18, 0.96))",
           border: "1px solid rgba(255, 255, 255, 0.07)",
-          borderRadius: 24,
+          borderRadius: 8,
           boxShadow:
             "0 24px 80px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
         },
@@ -270,7 +270,7 @@ export const medialyTheme = createTheme({
     MuiChip: {
       styleOverrides: {
         root: {
-          borderRadius: 999,
+          borderRadius: 6,
           fontSize: "0.72rem",
           fontWeight: 750,
           height: 26,
@@ -337,7 +337,7 @@ export const medialyTheme = createTheme({
         root: {
           "& .MuiOutlinedInput-root": {
             backgroundColor: "rgba(5, 8, 18, 0.55)",
-            borderRadius: 14,
+            borderRadius: 8,
 
             "& fieldset": {
               borderColor: "rgba(255, 255, 255, 0.11)",
@@ -361,7 +361,7 @@ export const medialyTheme = createTheme({
         tooltip: {
           backgroundColor: "rgba(8, 12, 24, 0.96)",
           border: "1px solid rgba(255, 255, 255, 0.1)",
-          borderRadius: 10,
+          borderRadius: 6,
           color: "#F8FAFC",
           fontSize: "0.72rem",
           fontWeight: 700,
@@ -376,7 +376,7 @@ export const glassPanelSx: SxProps<Theme> = {
     "linear-gradient(145deg, rgba(15, 20, 38, 0.78), rgba(6, 9, 18, 0.92))",
   backdropFilter: "blur(22px)",
   border: "1px solid rgba(255, 255, 255, 0.07)",
-  borderRadius: 4,
+  borderRadius: "8px",
   boxShadow:
     "0 24px 80px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05)",
 };
@@ -386,7 +386,7 @@ export const mediaPosterSx: SxProps<Theme> = {
   background:
     "linear-gradient(145deg, rgba(139, 92, 246, 0.2), rgba(34, 211, 238, 0.08) 45%, rgba(5, 8, 18, 0.96))",
   border: "1px solid rgba(255, 255, 255, 0.08)",
-  borderRadius: 4,
+  borderRadius: "8px",
   boxShadow:
     "0 28px 90px rgba(0, 0, 0, 0.55), 0 0 42px rgba(124, 92, 255, 0.22)",
   overflow: "hidden",
@@ -396,7 +396,7 @@ export const mediaCardSx: SxProps<Theme> = {
   background:
     "linear-gradient(180deg, rgba(32, 28, 72, 0.78), rgba(5, 8, 18, 0.96))",
   border: "1px solid rgba(255, 255, 255, 0.07)",
-  borderRadius: 3,
+  borderRadius: "8px",
   boxShadow: "0 18px 50px rgba(0, 0, 0, 0.36)",
   overflow: "hidden",
   position: "relative",

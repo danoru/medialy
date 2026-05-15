@@ -632,7 +632,7 @@ function glassPanelSx(accent: string) {
   return {
     background: `radial-gradient(circle at 18% 0%, ${alpha(accent, 0.13)}, transparent 22rem), radial-gradient(circle at 92% 12%, ${alpha(detailTokens.accent.cyan, 0.055)}, transparent 20rem), linear-gradient(155deg, rgba(17, 22, 39, 0.84) 0%, rgba(9, 13, 25, 0.92) 54%, rgba(5, 8, 18, 0.96) 100%)`,
     backdropFilter: "blur(20px)",
-    borderRadius: 3,
+    borderRadius: "8px",
     boxShadow: [
       `0 22px 70px ${alpha("#000000", 0.38)}`,
       `inset 0 1px 0 ${alpha("#FFFFFF", 0.06)}`,
@@ -666,7 +666,7 @@ const comparisonRowSx: SxProps<Theme> = {
   alignItems: { xs: "flex-start", sm: "center" },
   backgroundColor: alpha(detailTokens.text.frost, 0.055),
   border: `1px solid ${alpha(detailTokens.text.frost, 0.075)}`,
-  borderRadius: 2,
+  borderRadius: "8px",
   display: "flex",
   flexDirection: { xs: "column", sm: "row" },
   gap: 0.75,
@@ -701,7 +701,7 @@ const dataCalloutSx: SxProps<Theme> = {
   alignItems: "center",
   background: `linear-gradient(145deg, ${alpha(detailTokens.accent.purple, 0.2)}, ${alpha(detailTokens.background.panel, 0.84)})`,
   border: `1px solid ${alpha(detailTokens.accent.violet, 0.18)}`,
-  borderRadius: 3,
+  borderRadius: "8px",
   boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.06)}, 0 18px 44px ${alpha("#000000", 0.2)}`,
   display: "flex",
   gap: 1,
@@ -751,7 +751,7 @@ const actionGroupSx: SxProps<Theme> = {
   alignSelf: { xs: "flex-start", lg: "flex-end" },
   backgroundColor: alpha(detailTokens.background.panelDeep, 0.5),
   border: `1px solid ${alpha(detailTokens.text.frost, 0.09)}`,
-  borderRadius: 999,
+  borderRadius: "8px",
   boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.045)}`,
   flexShrink: 0,
   flexWrap: "wrap",
@@ -774,7 +774,7 @@ const kickerSx: SxProps<Theme> = {
 const pageSx: SxProps<Theme> = {
   background:
     "radial-gradient(circle at 18% 8%, rgba(55, 120, 255, 0.12), transparent 34%), radial-gradient(circle at 82% 0%, rgba(154, 92, 255, 0.16), transparent 30%), radial-gradient(circle at 52% 22%, rgba(90, 231, 255, 0.055), transparent 34%), linear-gradient(180deg, #050816 0%, #070B18 46%, #050816 100%)",
-  borderRadius: { xs: 0, md: 4 },
+  borderRadius: { xs: 0, md: "8px" },
   boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
   mx: { xs: -2, sm: -3 },
   my: { xs: -1, md: -2 },
@@ -874,7 +874,7 @@ const scoreValueSx: SxProps<Theme> = {
 
 const posterFrameSx: SxProps<Theme> = {
   aspectRatio: "2 / 3",
-  borderRadius: { xs: 3, md: 4 },
+  borderRadius: { xs: "8px", md: "10px" },
   boxShadow: "0 28px 90px rgba(0,0,0,0.55), 0 0 42px rgba(124,92,255,0.22)",
   justifySelf: { xs: "center", lg: "stretch" },
   maxWidth: { xs: 270, sm: 320, lg: "none" },
@@ -902,7 +902,7 @@ const scorePanelSx: SxProps<Theme> = {
 const textareaSx: SxProps<Theme> = {
   "& .MuiOutlinedInput-root": {
     backgroundColor: alpha("#020617", 0.48),
-    borderRadius: 2,
+    borderRadius: "8px",
   },
   "& textarea": {
     lineHeight: 1.6,

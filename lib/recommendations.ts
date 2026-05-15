@@ -5,21 +5,19 @@ import { visibleMediaTypeFilter } from "@/lib/media-types";
 import type { Recommendation, RecommendationReason } from "@/lib/types";
 import { GENRE_WEIGHT, TAG_WEIGHT } from "@/lib/scoring/taxonomySimilarity";
 import { startOfToday } from "@/lib/upcoming";
-import type { MediaStatus, Prisma } from "@prisma/client";
+import {
+  EXCLUDED_RECOMMENDATION_STATUSES,
+  isRecommendationEligibleStatus,
+  recommendationPersonalScoreTrust,
+  recommendationStatusSignal,
+} from "@/lib/recommendation-policy";
+import type { Prisma } from "@prisma/client";
 
-export const EXCLUDED_RECOMMENDATION_STATUSES: MediaStatus[] = [
-  "IN_PROGRESS",
-  "COMPLETED",
-];
-
-const RECOMMENDATION_STATUS_SIGNALS: Record<MediaStatus, number> = {
-  UNTRACKED: 100,
-  WATCHLIST: 85,
-  BACKLOG: 75,
-  PAUSED: 20,
-  DROPPED: 5,
-  IN_PROGRESS: 0,
-  COMPLETED: 0,
+export {
+  EXCLUDED_RECOMMENDATION_STATUSES,
+  isRecommendationEligibleStatus,
+  recommendationPersonalScoreTrust,
+  recommendationStatusSignal,
 };
 
 export async function getRecommendations(
@@ -57,14 +55,18 @@ export async function getRecommendations(
       const friendAffinity = averageFriendBoost(item.friendRatings);
       const statusSignal = recommendationStatusSignal(item.status);
       const upcomingSignal =
-        item.releaseDate && item.releaseDate.getTime() >= Date.now()
-          ? 100
-          : 0;
+        item.releaseDate && item.releaseDate.getTime() >= Date.now() ? 100 : 0;
+      const hasExplicitRating = item.personalRating != null;
+      const personalScoreTrust = recommendationPersonalScoreTrust(
+        item.status,
+        hasExplicitRating,
+      );
       const match = calculateMedialyMatch({
         personalScore:
-          item.computedPersonalScore ??
           item.personalRating ??
+          item.computedPersonalScore ??
           item.pairwiseScore / 100,
+        personalScoreTrust,
         genreAffinity,
         tagAffinity,
         friendAffinity,
@@ -85,19 +87,18 @@ export async function getRecommendations(
         reasons: match.reasons as RecommendationReason[],
       };
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      const scoreDelta = b.score - a.score;
+      if (scoreDelta !== 0) return scoreDelta;
+      return (
+        recommendationStatusSignal(b.media.status) -
+        recommendationStatusSignal(a.media.status)
+      );
+    });
 
   return typeof limit === "number"
     ? recommendations.slice(0, limit)
     : recommendations;
-}
-
-export function isRecommendationEligibleStatus(status: MediaStatus) {
-  return !EXCLUDED_RECOMMENDATION_STATUSES.includes(status);
-}
-
-export function recommendationStatusSignal(status: MediaStatus) {
-  return RECOMMENDATION_STATUS_SIGNALS[status];
 }
 
 export function getRecommendationReleaseDateWhere(
