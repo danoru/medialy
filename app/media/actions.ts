@@ -109,7 +109,7 @@ export async function updateMediaRatings(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/media");
   revalidatePath("/recommendations");
-  revalidatePath("/top-lists");
+  revalidatePath("/discover");
   redirect(returnTo.startsWith("/media") ? returnTo : "/media");
 }
 
