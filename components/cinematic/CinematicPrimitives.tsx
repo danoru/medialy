@@ -29,7 +29,7 @@ export const noirTokens = {
   },
 };
 
-export const dashboardSurfaceRadius = 18;
+export const dashboardSurfaceRadius = 8;
 
 const dashboardPanelBackground =
   "linear-gradient(145deg, rgba(8, 17, 31, 0.92), rgba(5, 8, 18, 0.98))";
@@ -241,7 +241,7 @@ export function AmbientIcon({
         alignItems: "center",
         background: `linear-gradient(145deg, ${alpha(accent, 0.24)}, ${alpha("#FFFFFF", 0.035)})`,
         border: `1px solid ${alpha(accent, 0.32)}`,
-        borderRadius: 2,
+        borderRadius: "8px",
         boxShadow: `0 0 28px ${alpha(accent, 0.16)}`,
         color: accent,
         display: "flex",

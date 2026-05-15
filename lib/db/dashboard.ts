@@ -5,6 +5,7 @@ import { getFriendCompatibility } from "@/lib/insights";
 import { toMediaItemDTO } from "@/lib/media";
 import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
 import { getRecommendations } from "@/lib/recommendations";
+import type { MediaItemDTO } from "@/lib/types";
 import { startOfToday } from "@/lib/upcoming";
 
 export function getDashboardUpcomingWhere(
@@ -21,6 +22,77 @@ export const dashboardUpcomingOrderBy = [
   { releaseDate: "asc" },
   { title: "asc" },
 ] satisfies Prisma.MediaItemOrderByWithRelationInput[];
+
+type DashboardRecommendationEntry = Awaited<
+  ReturnType<typeof getRecommendations>
+>[number];
+
+export function getDashboardTopRecommendationsByMediaType(
+  recommendations: DashboardRecommendationEntry[],
+) {
+  return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
+    mediaType,
+    items: recommendations
+      .filter((recommendation) => recommendation.media.mediaType === mediaType)
+      .slice(0, 10),
+  }));
+}
+
+export function dashboardQualityScore(
+  item: Pick<
+    MediaItemDTO,
+    | "computedConsensusScore"
+    | "computedPersonalScore"
+    | "pairwiseScore"
+    | "personalRating"
+  >,
+) {
+  const scoreParts = [
+    item.computedConsensusScore,
+    item.computedPersonalScore,
+  ].filter((score): score is number => typeof score === "number");
+
+  if (scoreParts.length > 0) {
+    return (
+      scoreParts.reduce((total, score) => total + score, 0) / scoreParts.length
+    );
+  }
+
+  return item.personalRating ?? item.pairwiseScore / 100;
+}
+
+export function getDashboardOverallTopItemsByMediaType(
+  items: MediaItemDTO[],
+) {
+  return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
+    mediaType,
+    items: items
+      .filter((item) => !item.isArchived && item.mediaType === mediaType)
+      .map((media) => ({
+        media,
+        score: dashboardQualityScore(media),
+      }))
+      .sort((first, second) => {
+        const scoreDelta = second.score - first.score;
+        if (scoreDelta !== 0) return scoreDelta;
+        return first.media.title.localeCompare(second.media.title);
+      })
+      .slice(0, 10),
+  }));
+}
+
+export function getDashboardTonightPicksByMediaType(
+  recommendations: DashboardRecommendationEntry[],
+) {
+  return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
+    mediaType,
+    recommendations: recommendations
+      .filter(
+        (recommendation) => recommendation.media.mediaType === mediaType,
+      )
+      .slice(0, 5),
+  }));
+}
 
 export async function getDashboardData() {
   const today = startOfToday();
@@ -39,8 +111,9 @@ export async function getDashboardData() {
     recentItems,
     friendCompatibility,
     friendCount,
-    topItemsByMediaType,
+    personalTopItemsByMediaType,
     upcomingItemsByMediaType,
+    overallTopItems,
   ] = await Promise.all([
     prisma.mediaItem.count({
       where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
@@ -148,18 +221,20 @@ export async function getDashboardData() {
         }),
       })),
     ),
+    prisma.mediaItem.findMany({
+      where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
+      include: {
+        genres: { include: { genre: true } },
+        tags: { include: { tag: true } },
+      },
+    }),
   ]);
 
-  const tonightPickStatuses = new Set(["UNTRACKED", "WATCHLIST", "BACKLOG"]);
-  const tonightPicksByMediaType = VISIBLE_MEDIA_TYPES.map((mediaType) => ({
-    mediaType,
-    recommendation:
-      recommendations.find(
-        (recommendation) =>
-          recommendation.media.mediaType === mediaType &&
-          tonightPickStatuses.has(recommendation.media.status),
-      ) ?? null,
-  }));
+  const topItemsByMediaType = getDashboardOverallTopItemsByMediaType(
+    overallTopItems.map(toMediaItemDTO),
+  );
+  const tonightPicksByMediaType =
+    getDashboardTonightPicksByMediaType(recommendations);
 
   return {
     totalItems,
@@ -171,7 +246,8 @@ export async function getDashboardData() {
       healthReport.missingPosters.length,
     duplicateCount: healthReport.duplicateCandidates.length,
     topItems: topItems.map(toMediaItemDTO),
-    topItemsByMediaType: topItemsByMediaType.map((entry) => ({
+    topItemsByMediaType,
+    personalTopItemsByMediaType: personalTopItemsByMediaType.map((entry) => ({
       mediaType: entry.mediaType,
       items: entry.items.map(toMediaItemDTO),
     })),

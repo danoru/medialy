@@ -51,11 +51,11 @@ type DashboardData = {
   }>;
   tonightPicksByMediaType: Array<{
     mediaType: MediaType;
-    recommendation: {
+    recommendations: Array<{
       media: MediaItemDTO;
       score: number;
       confidence: number;
-    } | null;
+    }>;
   }>;
   genreInsights: Array<{
     name: string;
@@ -66,7 +66,17 @@ type DashboardData = {
     needsData: boolean;
   }>;
   mediaTypeCounts: Array<{ mediaType: MediaType; count: number }>;
-  topItemsByMediaType: Array<{ mediaType: MediaType; items: MediaItemDTO[] }>;
+  topItemsByMediaType: Array<{
+    mediaType: MediaType;
+    items: Array<{
+      media: MediaItemDTO;
+      score: number;
+    }>;
+  }>;
+  personalTopItemsByMediaType: Array<{
+    mediaType: MediaType;
+    items: MediaItemDTO[];
+  }>;
   upcomingItems: MediaItemDTO[];
   upcomingItemsByMediaType: Array<{
     mediaType: MediaType;
@@ -89,10 +99,10 @@ const dashboardMediaTypes: MediaType[] = ["MOVIE", "TV_SHOW", "VIDEO_GAME"];
 type DashboardRecommendation = DashboardData["recommendations"][number];
 
 const premiumPanelActionSx = {
-  background: `linear-gradient(135deg, ${alpha("#08111F", 0.86)}, ${alpha("#0B1020", 0.74)})`,
-  border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
-  borderRadius: "12px",
-  boxShadow: `0 0 18px ${alpha(noirTokens.accent.purple, 0.08)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}`,
+  background: `linear-gradient(135deg, ${alpha("#08111F", 0.9)}, ${alpha("#0B1020", 0.78)})`,
+  border: `1px solid ${alpha("#9CCBFF", 0.12)}`,
+  borderRadius: "8px",
+  boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.05)}`,
   color: alpha("#E2E8F0", 0.78),
   fontSize: 11,
   fontWeight: 800,
@@ -111,7 +121,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const initialTonightPickType =
     dashboardMediaTypes.find((mediaType) =>
       data.tonightPicksByMediaType.some(
-        (entry) => entry.mediaType === mediaType && entry.recommendation,
+        (entry) => entry.mediaType === mediaType && entry.recommendations[0],
       ),
     ) ?? "MOVIE";
   const [topMediaType, setTopMediaType] = useState<MediaType>("MOVIE");
@@ -141,25 +151,29 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
     for (const entry of data.tonightPicksByMediaType) {
       if (
-        !entry.recommendation ||
+        entry.recommendations.length === 0 ||
         !dashboardMediaTypes.includes(entry.mediaType)
       ) {
         continue;
       }
 
-      picks.set(entry.mediaType, entry.recommendation);
+      picks.set(entry.mediaType, entry.recommendations[0]);
     }
 
     return picks;
   }, [data.tonightPicksByMediaType]);
 
+  const tonightRecommendationsForType =
+    data.tonightPicksByMediaType.find(
+      (entry) => entry.mediaType === tonightPickType,
+    )?.recommendations ?? [];
   const heroRecommendation = tonightPicksByType.get(tonightPickType);
-  const recommendationRailItems = data.recommendations
+  const recommendationRailItems = tonightRecommendationsForType
     .filter(
       (recommendation) =>
         recommendation.media.id !== heroRecommendation?.media.id,
     )
-    .slice(0, 5);
+    .slice(0, 4);
   const tonightPickCounts = dashboardMediaTypes.map((mediaType) => ({
     mediaType,
     count: tonightPicksByType.has(mediaType) ? 1 : 0,
@@ -281,7 +295,6 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               counts={tonightPickCounts}
               confidence={heroRecommendation.confidence}
               item={heroRecommendation.media}
-              likedItems={data.topItems.slice(0, 5)}
               onTypeChange={setTonightPickType}
               score={heroRecommendation.score}
               value={tonightPickType}
@@ -311,18 +324,25 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 View all
               </Button>
             }
-            title="Top Recommendations For You"
+            title={`${shortMediaTypeLabel(tonightPickType)} Up Next`}
           >
-            <MediaRail>
-              {recommendationRailItems.map((recommendation) => (
-                <PosterCard
-                  href={`/media/${recommendation.media.id}`}
-                  item={recommendation.media}
-                  key={recommendation.media.id}
-                  score={recommendation.score}
-                />
-              ))}
-            </MediaRail>
+            {recommendationRailItems.length > 0 ? (
+              <MediaRail>
+                {recommendationRailItems.map((recommendation) => (
+                  <PosterCard
+                    href={`/media/${recommendation.media.id}`}
+                    item={recommendation.media}
+                    key={recommendation.media.id}
+                    score={recommendation.score}
+                  />
+                ))}
+              </MediaRail>
+            ) : (
+              <EmptyPanel
+                icon={<AutoAwesomeIcon />}
+                label={`No additional ${formatMediaType(tonightPickType).toLowerCase()} recommendations yet.`}
+              />
+            )}
           </DashboardCard>
         </Box>
 
@@ -330,15 +350,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <DashboardCard
             accent={noirTokens.accent.amber}
             action={
-              <Button href="/top-lists" size="small" sx={premiumPanelActionSx}>
+              <Button href="/discover" size="small" sx={premiumPanelActionSx}>
                 Open lists
               </Button>
             }
-            title="Top 10 By Media Type"
+            title="Overall Top 10"
           >
             <MediaTypeTabs
               counts={data.mediaTypeCounts}
               onChange={setTopMediaType}
+              showCounts={false}
               value={topMediaType}
             />
             {topItemsForType.length > 0 ? (
@@ -354,14 +375,18 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                   mt: 1,
                 }}
               >
-                {topItemsForType.slice(0, 10).map((item, index) => (
-                  <TopPosterTile index={index} item={item} key={item.id} />
+                {topItemsForType.slice(0, 10).map((recommendation) => (
+                  <TopPosterTile
+                    item={recommendation.media}
+                    key={recommendation.media.id}
+                    score={recommendation.score}
+                  />
                 ))}
               </Box>
             ) : (
               <EmptyPanel
                 icon={<PlaylistAddCheckIcon />}
-                label={`No completed ${formatMediaType(topMediaType).toLowerCase()} ranked yet.`}
+                label={`No ${formatMediaType(topMediaType).toLowerCase()} items yet.`}
               />
             )}
           </DashboardCard>
@@ -470,7 +495,6 @@ function TonightPickCard({
   counts,
   confidence,
   item,
-  likedItems,
   onTypeChange,
   score,
   value,
@@ -478,7 +502,6 @@ function TonightPickCard({
   counts: Array<{ mediaType: MediaType; count: number }>;
   confidence: number;
   item: MediaItemDTO;
-  likedItems: MediaItemDTO[];
   onTypeChange: (value: MediaType) => void;
   score: number;
   value: MediaType;
@@ -496,7 +519,7 @@ function TonightPickCard({
       sx={{
         background: "#050812",
         border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
-        borderRadius: "18px",
+        borderRadius: "8px",
         boxShadow: [
           `0 30px 90px ${alpha("#000000", 0.5)}`,
           `0 0 70px ${alpha(noirTokens.accent.purple, 0.14)}`,
@@ -569,7 +592,7 @@ function TonightPickCard({
             backdropFilter: "blur(20px) saturate(1.25)",
             bgcolor: alpha("#08111F", 0.62),
             border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
-            boxShadow: `0 12px 36px ${alpha("#000000", 0.24)}, 0 0 24px ${alpha(noirTokens.accent.purple, 0.14)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
+            boxShadow: `0 12px 28px ${alpha("#000000", 0.22)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
             p: 0.25,
             "& .MuiToggleButton-root": {
               color: alpha("#F8FAFC", 0.64),
@@ -660,7 +683,7 @@ function TonightPickCard({
             size="small"
             sx={{
               background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.95)}, ${alpha(noirTokens.accent.blue, 0.34)})`,
-              borderRadius: "12px",
+              borderRadius: "8px",
               boxShadow: `0 14px 36px ${alpha(noirTokens.accent.purple, 0.26)}, 0 0 24px ${alpha(noirTokens.accent.blue, 0.12)}`,
               color: "#FFFFFF",
               fontSize: 12,
@@ -686,7 +709,7 @@ function TonightPickCard({
               backdropFilter: "blur(16px)",
               background: `linear-gradient(135deg, ${alpha("#08111F", 0.82)}, ${alpha("#0B1020", 0.72)})`,
               border: `1px solid ${alpha("#FFFFFF", 0.08)}`,
-              borderRadius: "12px",
+              borderRadius: "8px",
               color: alpha("#F8FAFC", 0.92),
               fontSize: 12,
               fontWeight: 760,
@@ -703,56 +726,6 @@ function TonightPickCard({
             Why this pick?
           </Button>
         </Stack>
-        {likedItems.length > 0 ? (
-          <Stack
-            direction="row"
-            sx={{
-              alignItems: "center",
-              gap: 0.65,
-              maxWidth: "100%",
-              minWidth: 0,
-              pt: 0.3,
-            }}
-          >
-            <Typography
-              sx={{
-                color: alpha("#F8FAFC", 0.58),
-                flexShrink: 0,
-                fontSize: 10,
-                fontWeight: 720,
-              }}
-            >
-              Because you liked
-            </Typography>
-            <Box
-              sx={{
-                display: "flex",
-                gap: 0.45,
-                minWidth: 0,
-                overflow: "hidden",
-              }}
-            >
-              {likedItems.map((liked) => (
-                <Box
-                  key={liked.id}
-                  sx={{
-                    backgroundImage: liked.posterUrl
-                      ? `linear-gradient(180deg, transparent, ${alpha("#05070E", 0.45)}), url(${liked.posterUrl})`
-                      : designedPosterFallback(liked.mediaType),
-                    backgroundPosition: "center",
-                    backgroundSize: "cover",
-                    borderRadius: 1,
-                    boxShadow: `inset 0 0 0 1px ${alpha("#FFFFFF", 0.06)}`,
-                    flex: "0 0 54px",
-                    height: 30,
-                    opacity: 0.86,
-                  }}
-                  title={liked.title}
-                />
-              ))}
-            </Box>
-          </Stack>
-        ) : null}
       </Stack>
     </Box>
   );
@@ -773,18 +746,19 @@ function ScoreBadge({
         alignItems: "center",
         backdropFilter: "blur(18px) saturate(1.25)",
         background: alpha("#08111F", 0.58),
-        borderRadius: 999,
+        border: `1px solid ${alpha("#9CCBFF", 0.12)}`,
+        borderRadius: "8px",
         boxShadow: [
-          `0 16px 42px ${alpha("#000000", 0.34)}`,
-          `0 0 24px ${alpha(noirTokens.accent.emerald, 0.16)}`,
-          `inset 0 0 0 1px ${alpha("#FFFFFF", 0.11)}`,
+          `0 14px 34px ${alpha("#000000", 0.32)}`,
+          `0 0 18px ${alpha(noirTokens.accent.emerald, 0.12)}`,
+          `inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}`,
         ].join(", "),
-        color: noirTokens.accent.emerald,
+        color: noirTokens.accent.blue,
         display: "flex",
         flexDirection: "column",
-        height: { xs: 58, sm: 64 },
+        height: { xs: 54, sm: 58 },
         justifyContent: "center",
-        width: { xs: 58, sm: 64 },
+        width: { xs: 54, sm: 58 },
         ...sx,
       }}
     >
@@ -812,9 +786,9 @@ function TonightMetaChip({ children }: { children: React.ReactNode }) {
     <Box
       sx={{
         backdropFilter: "blur(14px) saturate(1.2)",
-        bgcolor: alpha("#08111F", 0.72),
-        borderRadius: "10px",
-        boxShadow: `inset 0 0 0 1px ${alpha("#FFFFFF", 0.075)}, 0 0 18px ${alpha(noirTokens.accent.purple, 0.08)}`,
+        bgcolor: alpha("#07101D", 0.78),
+        borderRadius: "8px",
+        boxShadow: `inset 0 0 0 1px ${alpha("#9CCBFF", 0.095)}`,
         color: alpha("#F8FAFC", 0.82),
         fontSize: 10.5,
         fontWeight: 720,
@@ -835,7 +809,7 @@ function GlassPill({ children }: { children: React.ReactNode }) {
         backdropFilter: "blur(14px)",
         bgcolor: alpha("#08111F", 0.72),
         border: 0,
-        borderRadius: "10px",
+        borderRadius: "8px",
         boxShadow: `inset 0 0 0 1px ${alpha("#D8E6FF", 0.045)}`,
         color: alpha("#F8FAFC", 0.86),
         fontSize: 10.5,
@@ -849,7 +823,13 @@ function GlassPill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
+function TopPosterTile({
+  item,
+  score,
+}: {
+  item: MediaItemDTO;
+  score?: number;
+}) {
   const releaseYear = releaseYearLabel(item.releaseDate);
   const meta = [shortMediaTypeLabel(item.mediaType), releaseYear].filter(
     Boolean,
@@ -863,15 +843,17 @@ function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
       <Box
         sx={{
           aspectRatio: "2 / 3",
-          borderRadius: "16px",
+          borderRadius: "8px",
           minWidth: 0,
           overflow: "hidden",
           position: "relative",
           transform: "translateZ(0)",
-          transition: "box-shadow 260ms ease, transform 260ms ease",
+          background: alpha("#050812", 0.4),
+          boxShadow: `inset 0 0 0 1px ${alpha("#9CCBFF", 0.11)}`,
+          transition: "box-shadow 220ms ease, transform 220ms ease",
           "&:hover": {
-            boxShadow: `0 24px 56px ${alpha("#000000", 0.48)}, 0 0 36px ${alpha(noirTokens.accent.purple, 0.2)}, 0 0 44px ${alpha(noirTokens.accent.blue, 0.12)}`,
-            transform: "translateY(-6px)",
+            boxShadow: `0 18px 42px ${alpha("#000000", 0.46)}, 0 0 24px ${alpha(noirTokens.accent.blue, 0.12)}`,
+            transform: "translateY(-3px)",
             "& .tile-poster": {
               transform: "scale(1.07)",
             },
@@ -906,8 +888,8 @@ function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
         />
         <Box
           sx={{
-            border: `1px solid ${alpha("#FFFFFF", 0.045)}`,
-            borderRadius: "16px",
+            border: `1px solid ${alpha("#9CCBFF", 0.12)}`,
+            borderRadius: "8px",
             boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.08)}, inset 0 -60px 80px ${alpha("#000000", 0.18)}`,
             inset: 0,
             pointerEvents: "none",
@@ -915,30 +897,32 @@ function TopPosterTile({ index, item }: { index: number; item: MediaItemDTO }) {
             zIndex: 3,
           }}
         />
-        <Box
-          sx={{
-            alignItems: "center",
-            backdropFilter: "blur(16px) saturate(1.25)",
-            bgcolor: alpha("#08111F", 0.58),
-            border: `1px solid ${alpha("#FFFFFF", 0.12)}`,
-            borderRadius: "10px",
-            boxShadow: `0 10px 30px ${alpha("#000000", 0.3)}`,
-            color: "text.primary",
-            display: "flex",
-            fontSize: 10,
-            fontWeight: 950,
-            height: 24,
-            justifyContent: "center",
-            minWidth: 24,
-            px: 0.65,
-            position: "absolute",
-            right: 8,
-            top: 8,
-            zIndex: 4,
-          }}
-        >
-          {index + 1}
-        </Box>
+        {typeof score === "number" ? (
+          <Box
+            sx={{
+              alignItems: "center",
+              backdropFilter: "blur(16px) saturate(1.25)",
+              bgcolor: alpha("#07101D", 0.72),
+              border: `1px solid ${alpha(noirTokens.accent.blue, 0.2)}`,
+              borderRadius: "8px",
+              boxShadow: `0 10px 30px ${alpha("#000000", 0.3)}`,
+              color: noirTokens.accent.blue,
+              display: "flex",
+              fontSize: 10,
+              fontWeight: 950,
+              height: 24,
+              justifyContent: "center",
+              right: 8,
+              minWidth: 38,
+              px: 0.65,
+              position: "absolute",
+              top: 8,
+              zIndex: 4,
+            }}
+          >
+            {formatDashboardScore(score)}
+          </Box>
+        ) : null}
         {!item.posterUrl ? (
           <Box
             sx={{
@@ -1026,9 +1010,9 @@ function GenreBarChart({
     <Box
       sx={{
         alignItems: "end",
-        background: `radial-gradient(circle at 50% 108%, ${alpha(noirTokens.accent.purple, 0.14)}, transparent 58%), linear-gradient(180deg, rgba(8, 17, 31, 0.72), rgba(5, 8, 18, 0.58))`,
+        background: `radial-gradient(circle at 50% 108%, ${alpha(noirTokens.accent.purple, 0.1)}, transparent 58%), linear-gradient(180deg, rgba(7, 15, 28, 0.62), rgba(4, 8, 18, 0.48))`,
         borderRadius: `${dashboardSurfaceRadius - 2}px`,
-        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.025)}`,
+        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}, inset 0 0 0 1px ${alpha("#9CCBFF", 0.055)}`,
         display: "grid",
         flex: 1,
         gap: 0.65,
@@ -1068,8 +1052,8 @@ function GenreBarChart({
               sx={{
                 background: `linear-gradient(180deg, ${noirTokens.accent.purple}, ${alpha(noirTokens.accent.purple, 0.34)})`,
                 border: `1px solid ${alpha("#FFFFFF", 0.1)}`,
-                borderRadius: "999px 999px 0 0",
-                boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.22)}`,
+                borderRadius: "4px 4px 0 0",
+                boxShadow: `0 0 18px ${alpha(noirTokens.accent.purple, 0.18)}`,
                 height,
                 width: "60%",
               }}
@@ -1113,16 +1097,22 @@ function MediaTypeTabs({
   const disabledTypes = new Set(disabledMediaTypes);
   const rootSx: SxProps<Theme> = {
     backdropFilter: "blur(18px)",
-    bgcolor: alpha("#08111F", 0.72),
-    border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
-    borderRadius: "12px",
-    boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.1)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.05)}`,
+    bgcolor: alpha("#07101D", 0.76),
+    border: `1px solid ${alpha("#9CCBFF", 0.11)}`,
+    borderRadius: "8px",
+    boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.05)}`,
+    alignSelf: "flex-start",
+    display: "inline-flex",
+    flex: "0 0 auto",
     gap: 0.25,
+    maxWidth: "max-content",
     p: 0.28,
+    width: "max-content",
     "& .MuiToggleButton-root": {
       border: 0,
-      borderRadius: "10px",
+      borderRadius: "6px",
       color: alpha("#E2E8F0", 0.72),
+      flex: "0 0 auto",
       gap: 0.6,
       minHeight: 30,
       px: 0.95,
@@ -1136,7 +1126,7 @@ function MediaTypeTabs({
       },
       "&.Mui-selected": {
         background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.95)}, ${alpha(noirTokens.accent.blue, 0.32)})`,
-        boxShadow: `0 0 24px ${alpha(noirTokens.accent.purple, 0.24)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.1)}`,
+        boxShadow: `0 0 18px ${alpha(noirTokens.accent.purple, 0.2)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.1)}`,
         color: "#FFFFFF",
       },
       "&:hover": {
@@ -1148,7 +1138,6 @@ function MediaTypeTabs({
   return (
     <ToggleButtonGroup
       exclusive
-      fullWidth
       onChange={(_, nextValue: MediaType | null) => {
         if (nextValue) onChange(nextValue);
       }}
@@ -1188,17 +1177,17 @@ function MediaRail({ children }: { children: React.ReactNode }) {
         alignItems: "stretch",
         display: "grid",
         flex: 1,
-        gap: "10px",
-        gridAutoColumns: { xs: "min(62vw, 170px)", sm: "auto" },
-        gridAutoFlow: { xs: "column", sm: "row" },
-        gridTemplateColumns: { xs: "none", sm: "repeat(5, minmax(0, 1fr))" },
+        gap: { xs: "10px", md: "12px" },
+        gridAutoColumns: { xs: "min(42vw, 138px)", sm: "auto" },
+        gridAutoFlow: { xs: "column", md: "row" },
+        gridTemplateColumns: { xs: "none", md: "repeat(4, minmax(0, 1fr))" },
         height: "100%",
         maskImage: {
           xs: "linear-gradient(90deg, black calc(100% - 28px), transparent)",
-          sm: "none",
+          md: "none",
         },
         minHeight: { xs: 258, sm: 318, xl: 346 },
-        overflowX: { xs: "auto", sm: "hidden" },
+        overflowX: { xs: "auto", md: "hidden" },
         pb: 0.35,
         pt: 0.15,
         scrollSnapType: "x proximity",
@@ -1242,9 +1231,9 @@ function PosterCard({
     >
       <Box
         sx={{
-          background: "#050812",
-          borderRadius: "16px",
-          boxShadow: `0 14px 34px ${alpha("#000000", 0.36)}`,
+          background: alpha("#050812", 0.92),
+          borderRadius: "8px",
+          boxShadow: `0 12px 28px ${alpha("#000000", 0.34)}, inset 0 0 0 1px ${alpha("#9CCBFF", 0.1)}`,
           display: "flex",
           flexDirection: "column",
           height: "100%",
@@ -1257,9 +1246,9 @@ function PosterCard({
             "box-shadow 240ms ease, filter 240ms ease, transform 240ms ease",
           width: "100%",
           "&:hover": {
-            boxShadow: `0 24px 56px ${alpha("#000000", 0.5)}, 0 0 34px ${alpha(noirTokens.accent.blue, 0.12)}, 0 0 28px ${alpha(noirTokens.accent.purple, 0.09)}`,
+            boxShadow: `0 18px 42px ${alpha("#000000", 0.48)}, 0 0 24px ${alpha(noirTokens.accent.blue, 0.12)}`,
             filter: "saturate(1.04)",
-            transform: "translateY(-5px)",
+            transform: "translateY(-3px)",
             "& .poster-art": {
               transform: "scale(1.055)",
             },
@@ -1305,8 +1294,8 @@ function PosterCard({
         />
         <Box
           sx={{
-            border: `1px solid ${alpha("#FFFFFF", 0.035)}`,
-            borderRadius: "16px",
+            border: `1px solid ${alpha("#9CCBFF", 0.11)}`,
+            borderRadius: "8px",
             boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}`,
             inset: 0,
             pointerEvents: "none",
@@ -1318,11 +1307,11 @@ function PosterCard({
           sx={{
             alignItems: "center",
             backdropFilter: "blur(14px) saturate(1.2)",
-            bgcolor: alpha("#08111F", 0.58),
-            border: `1px solid ${alpha("#FFFFFF", 0.1)}`,
-            borderRadius: "10px",
+            bgcolor: alpha("#07101D", 0.72),
+            border: `1px solid ${alpha(noirTokens.accent.blue, 0.18)}`,
+            borderRadius: "8px",
             boxShadow: `0 10px 24px ${alpha("#000000", 0.28)}, 0 0 18px ${alpha(noirTokens.accent.emerald, 0.12)}`,
-            color: noirTokens.accent.emerald,
+            color: noirTokens.accent.blue,
             display: "flex",
             fontSize: 10,
             fontWeight: 820,
@@ -1413,7 +1402,7 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
         background:
           "linear-gradient(135deg, rgba(8, 17, 31, 0.74), rgba(5, 8, 18, 0.58))",
         border: 0,
-        borderRadius: "14px",
+        borderRadius: "8px",
         boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.03)}`,
         minHeight: 46,
         px: 0.7,
@@ -1430,7 +1419,7 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
           alignItems: "center",
           bgcolor: alpha(noirTokens.accent.blue, 0.11),
           border: 0,
-          borderRadius: "10px",
+          borderRadius: "8px",
           boxShadow: `inset 0 0 0 1px ${alpha(noirTokens.accent.blue, 0.12)}`,
           color: noirTokens.accent.blue,
           display: "flex",
@@ -1539,7 +1528,7 @@ function HealthPill({ label, value }: { label: string; value: number }) {
         alignItems: "center",
         background: `radial-gradient(circle at 10% 0%, ${alpha(accent, value > 0 ? 0.12 : 0.08)}, transparent 66%), linear-gradient(135deg, rgba(8, 17, 31, 0.7), rgba(5, 8, 18, 0.58))`,
         border: 0,
-        borderRadius: "12px",
+        borderRadius: "8px",
         boxShadow: [
           `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}`,
           `inset 0 0 0 1px ${alpha(accent, value > 0 ? 0.1 : 0.065)}`,
@@ -1573,7 +1562,7 @@ function EmptyPanel({ icon, label }: { icon: React.ReactNode; label: string }) {
         background:
           "linear-gradient(135deg, rgba(8, 17, 31, 0.62), rgba(5, 8, 18, 0.42))",
         border: 0,
-        borderRadius: "14px",
+        borderRadius: "8px",
         boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.03)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.028)}`,
         color: "text.secondary",
         flex: 1,
@@ -1616,7 +1605,7 @@ function MediaSignalRow({
           background:
             "linear-gradient(135deg, rgba(8, 17, 31, 0.74), rgba(5, 8, 18, 0.58))",
           border: 0,
-          borderRadius: "14px",
+          borderRadius: "8px",
           boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.035)}, inset 0 0 0 1px ${alpha("#D8E6FF", 0.028)}`,
           height: "100%",
           p: 0.7,
@@ -1627,12 +1616,12 @@ function MediaSignalRow({
           },
           "& .MuiLinearProgress-root": {
             bgcolor: alpha("#FFFFFF", 0.08),
-            borderRadius: 999,
+            borderRadius: "5px",
             height: 5,
           },
           "& .MuiLinearProgress-bar": {
             background: `linear-gradient(90deg, ${noirTokens.accent.emerald}, ${noirTokens.accent.blue})`,
-            borderRadius: 999,
+            borderRadius: "5px",
           },
         }}
       >
