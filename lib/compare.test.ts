@@ -17,6 +17,7 @@ function item(
     comparisonCount: 0,
     pairwiseScore: 1000,
     releaseDate: null,
+    posterUrl: null,
     genres: genres.map((name) => ({ genre: { name } })),
   };
 }
@@ -53,6 +54,25 @@ describe("comparison selection", () => {
     const completed = item("completed", "MOVIE", ["Drama"]);
 
     const pair = selectComparisonPair([watchlist, backlog, completed], [], {
+      random: () => 0,
+    });
+
+    expect(pair).toBeNull();
+  });
+
+  it("does not select unreleased items", () => {
+    const currentDate = new Date("2026-05-16T12:00:00.000Z");
+    const released = {
+      ...item("released", "VIDEO_GAME", ["Action"]),
+      releaseDate: new Date("2026-05-15T12:00:00.000Z"),
+    };
+    const future = {
+      ...item("future", "VIDEO_GAME", ["Action"]),
+      releaseDate: new Date("2026-05-17T12:00:00.000Z"),
+    };
+
+    const pair = selectComparisonPair([released, future], [], {
+      currentDate,
       random: () => 0,
     });
 

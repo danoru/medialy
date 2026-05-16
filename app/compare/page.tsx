@@ -4,28 +4,38 @@ import {
   Card,
   CardContent,
   Chip,
+  Divider,
   Grid,
   MenuItem,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import Link from "next/link";
+import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
+import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
+import EventOutlinedIcon from "@mui/icons-material/EventOutlined";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import { alpha } from "@mui/material/styles";
 import { ComparisonContext, MediaType, Prisma } from "@prisma/client";
+import Link from "next/link";
 import { saveComparison } from "@/app/compare/actions";
 import {
   comparisonEligibleWhere,
   comparisonKey,
   getComparisonPair,
 } from "@/lib/compare";
-import { prisma } from "@/lib/prisma";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Compare" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+type CompareItem = NonNullable<
+  Awaited<ReturnType<typeof getComparisonPair>>
+>[0];
 
 export default async function ComparePage({
   searchParams,
@@ -35,6 +45,7 @@ export default async function ComparePage({
   const params = await searchParams;
   const selectedType = coerceMediaTypeParam(stringParam(params.mediaType));
   const selectedGenre = stringParam(params.genre);
+  const selectedTag = stringParam(params.tag);
   const focusId = stringParam(params.focus);
   const skipPairKey = stringParam(params.skip);
   const historyItemId = stringParam(params.historyItem);
@@ -48,12 +59,20 @@ export default async function ComparePage({
       : {}),
     ...(historyContext ? { context: historyContext } : {}),
   };
+  const taxonomyMediaWhere: Prisma.MediaItemWhereInput = {
+    ...comparisonEligibleWhere(),
+    ...(selectedType ? { mediaType: selectedType } : {}),
+    ...(selectedGenre
+      ? { genres: { some: { genre: { name: selectedGenre } } } }
+      : {}),
+  };
 
-  const [pair, history, typeCounts, genres, focus, historyMedia] =
+  const [pair, history, typeCounts, genres, tags, focus, historyMedia] =
     await Promise.all([
       getComparisonPair({
         mediaType: selectedType,
         genre: selectedGenre,
+        tag: selectedTag,
         focusId,
         skipPairKey,
       }),
@@ -83,6 +102,13 @@ export default async function ComparePage({
           : { media: { some: { media: comparisonEligibleWhere() } } },
         orderBy: { name: "asc" },
       }),
+      prisma.tag.findMany({
+        where: {
+          status: "APPROVED",
+          media: { some: { media: taxonomyMediaWhere } },
+        },
+        orderBy: { name: "asc" },
+      }),
       focusId ? prisma.mediaItem.findUnique({ where: { id: focusId } }) : null,
       prisma.mediaItem.findMany({
         where: {
@@ -95,68 +121,111 @@ export default async function ComparePage({
         orderBy: { title: "asc" },
       }),
     ]);
+
   const first = pair?.[0];
   const second = pair?.[1];
+  const sharedGenres = first && second ? getSharedGenres(first, second) : [];
+  const sharedTags = first && second ? getSharedTags(first, second) : [];
   const compareHref = buildCompareHref({
     mediaType: selectedType,
     genre: selectedGenre,
+    tag: selectedTag,
     focus: focusId,
     skip: first && second ? comparisonKey(first.id, second.id) : undefined,
   });
 
   return (
-    <Stack spacing={3}>
+    <Stack spacing={2.5}>
       <Card variant="outlined">
-        <CardContent>
+        <CardContent sx={{ p: { xs: 2, md: 2.4 } }}>
           <Stack
             component="form"
-            direction={{ xs: "column", md: "row" }}
-            spacing={2}
+            direction={{ xs: "column", lg: "row" }}
+            spacing={1.5}
+            sx={{
+              alignItems: { xs: "stretch", lg: "center" },
+              justifyContent: "space-between",
+            }}
           >
-            <TextField
-              defaultValue={selectedType ?? ""}
-              label="Media type"
-              name="mediaType"
-              select
-              sx={{ minWidth: 180 }}
+            <Box sx={{ minWidth: { lg: 210 } }}>
+              <Typography color="text.secondary" variant="overline">
+                Pair rules
+              </Typography>
+              <Typography sx={{ fontWeight: 850, lineHeight: 1.2 }}>
+                Match similar titles by type, genre, and tags.
+              </Typography>
+            </Box>
+            <Stack
+              direction={{ xs: "column", md: "row" }}
+              spacing={1.5}
+              sx={{
+                alignItems: { xs: "stretch", md: "center" },
+                justifyContent: { xs: "flex-start", lg: "flex-end" },
+                ml: { lg: "auto" },
+              }}
             >
-              <MenuItem value="">Auto</MenuItem>
-              {typeCounts
-                .filter((entry) => entry._count >= 2)
-                .map((entry) => (
-                  <MenuItem key={entry.mediaType} value={entry.mediaType}>
-                    {formatMediaType(entry.mediaType)} ({entry._count})
+              <TextField
+                defaultValue={selectedType ?? ""}
+                label="Media type"
+                name="mediaType"
+                select
+                size="small"
+                sx={{ minWidth: { lg: 180 } }}
+              >
+                <MenuItem value="">Auto</MenuItem>
+                {typeCounts
+                  .filter((entry) => entry._count >= 2)
+                  .map((entry) => (
+                    <MenuItem key={entry.mediaType} value={entry.mediaType}>
+                      {formatMediaType(entry.mediaType)} ({entry._count})
+                    </MenuItem>
+                  ))}
+              </TextField>
+              <TextField
+                defaultValue={selectedGenre ?? ""}
+                label="Genre"
+                name="genre"
+                select
+                size="small"
+                sx={{ minWidth: { lg: 180 } }}
+              >
+                <MenuItem value="">Prefer shared genres</MenuItem>
+                {genres.map((genre) => (
+                  <MenuItem key={genre.id} value={genre.name}>
+                    {genre.name}
                   </MenuItem>
                 ))}
-            </TextField>
-            <TextField
-              defaultValue={selectedGenre ?? ""}
-              label="Genre"
-              name="genre"
-              select
-              sx={{ minWidth: 180 }}
-            >
-              <MenuItem value="">Prefer shared genres</MenuItem>
-              {genres.map((genre) => (
-                <MenuItem key={genre.id} value={genre.name}>
-                  {genre.name}
-                </MenuItem>
-              ))}
-            </TextField>
-            {focusId ? (
-              <input name="focus" type="hidden" value={focusId} />
-            ) : null}
-            <Button type="submit" variant="contained">
-              Apply
-            </Button>
-            <Button href="/compare" variant="outlined">
-              Clear
-            </Button>
+              </TextField>
+              <TextField
+                defaultValue={selectedTag ?? ""}
+                label="Tags"
+                name="tag"
+                select
+                size="small"
+                sx={{ minWidth: { lg: 180 } }}
+              >
+                <MenuItem value="">Prefer shared tags</MenuItem>
+                {tags.map((tag) => (
+                  <MenuItem key={tag.id} value={tag.name}>
+                    {tag.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+              {focusId ? (
+                <input name="focus" type="hidden" value={focusId} />
+              ) : null}
+              <Button type="submit" variant="contained">
+                Apply
+              </Button>
+              <Button href="/compare" variant="outlined">
+                Clear
+              </Button>
+            </Stack>
           </Stack>
           {focus ? (
-            <Typography color="text.secondary" sx={{ mt: 2 }} variant="body2">
-              Focused on {focus.title}. The other item will use the same media
-              type and closest available genre match.
+            <Typography color="text.secondary" sx={{ mt: 1.5 }} variant="body2">
+              Focused on {focus.title}. The other title will stay in the same
+              media type and use the closest available taxonomy match.
             </Typography>
           ) : null}
         </CardContent>
@@ -164,28 +233,136 @@ export default async function ComparePage({
 
       {first && second ? (
         <Stack spacing={2}>
-          <Button
-            href={compareHref}
-            sx={{ alignSelf: "flex-start" }}
+          <Card
             variant="outlined"
+            sx={{
+              background:
+                "linear-gradient(135deg, rgba(139, 92, 246, 0.16), rgba(6, 9, 18, 0.92) 42%, rgba(34, 211, 238, 0.08))",
+            }}
           >
-            Different pair
-          </Button>
-          <Grid container spacing={2}>
+            <CardContent sx={{ p: { xs: 2, md: 2.4 } }}>
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                spacing={2}
+                sx={{
+                  alignItems: { xs: "stretch", md: "center" },
+                  justifyContent: "space-between",
+                }}
+              >
+                <Stack direction="row" spacing={1.4} sx={{ minWidth: 0 }}>
+                  <Box
+                    sx={{
+                      alignItems: "center",
+                      bgcolor: alpha("#8B5CF6", 0.14),
+                      border: `1px solid ${alpha("#A78BFA", 0.3)}`,
+                      borderRadius: 2,
+                      color: "primary.light",
+                      display: "flex",
+                      height: 44,
+                      justifyContent: "center",
+                      width: 44,
+                    }}
+                  >
+                    <CompareArrowsRoundedIcon />
+                  </Box>
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="overline">Compare</Typography>
+                    <Typography variant="h4">
+                      Which did you like better?
+                    </Typography>
+                    <Typography color="text.secondary" variant="body2">
+                      Similar {formatMediaType(first.mediaType).toLowerCase()}{" "}
+                      selected from shared taxonomy and low comparison coverage.
+                    </Typography>
+                  </Box>
+                </Stack>
+                <Button
+                  href={compareHref}
+                  startIcon={<SwapHorizRoundedIcon />}
+                  sx={{ alignSelf: { xs: "flex-start", md: "center" } }}
+                  variant="outlined"
+                >
+                  Different pair
+                </Button>
+              </Stack>
+              <Stack
+                direction="row"
+                sx={{
+                  flexWrap: "wrap",
+                  gap: 1,
+                  ml: { xs: "55px", sm: "55px" },
+                  mt: 2,
+                }}
+              >
+                <Chip label={formatMediaType(first.mediaType)} />
+                <Chip label="Overall" variant="outlined" />
+                {selectedGenre ? (
+                  <Chip label={selectedGenre} variant="outlined" />
+                ) : null}
+                {selectedTag ? (
+                  <Chip label={selectedTag} variant="outlined" />
+                ) : null}
+                {sharedGenres.slice(0, 3).map((name) => (
+                  <Chip key={name} label={name} variant="outlined" />
+                ))}
+                {sharedTags.slice(0, 3).map((name) => (
+                  <Chip key={name} label={name} variant="outlined" />
+                ))}
+              </Stack>
+            </CardContent>
+          </Card>
+
+          <Grid container spacing={2} sx={{ alignItems: "stretch" }}>
             {[first, second].map((item, index) => {
               const opponent = index === 0 ? second : first;
+              const taxonomyChips = getItemTaxonomyChips(
+                item,
+                sharedGenres,
+                sharedTags,
+              );
               return (
                 <Grid key={item.id} size={{ xs: 12, md: 6 }}>
-                  <form action={saveComparison}>
-                    <Stack spacing={2}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          <Stack spacing={2}>
+                  <form action={saveComparison} style={{ height: "100%" }}>
+                    <Card
+                      variant="outlined"
+                      sx={{
+                        height: "100%",
+                        position: "relative",
+                        "&::before": {
+                          background:
+                            index === 0
+                              ? "linear-gradient(180deg, rgba(139, 92, 246, 0.34), transparent)"
+                              : "linear-gradient(180deg, rgba(34, 211, 238, 0.18), transparent)",
+                          content: '""',
+                          height: 3,
+                          inset: "0 0 auto",
+                          position: "absolute",
+                        },
+                      }}
+                    >
+                      <CardContent sx={{ p: { xs: 2, md: 2.25 } }}>
+                        <Stack spacing={2}>
+                          <Stack
+                            direction="row"
+                            spacing={1}
+                            sx={{
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <Typography
+                              color="text.secondary"
+                              variant="overline"
+                            >
+                              Option {index + 1}
+                            </Typography>
                             <TextField
                               defaultValue="OVERALL"
                               label="Context"
                               name="context"
                               select
+                              size="small"
+                              sx={{ minWidth: 164 }}
                             >
                               {Object.values(ComparisonContext).map(
                                 (context) => (
@@ -195,74 +372,148 @@ export default async function ComparePage({
                                 ),
                               )}
                             </TextField>
-                            <Box>
-                              <Link
-                                href={`/media/${item.id}`}
-                                style={{ textDecoration: "none" }}
-                              >
-                                <Typography
-                                  sx={{
-                                    color: "primary.main",
-                                    fontWeight: 800,
-                                  }}
-                                  variant="h5"
+                          </Stack>
+
+                          <Stack
+                            direction={{ xs: "column", sm: "row" }}
+                            spacing={1.6}
+                            sx={{
+                              alignItems: { xs: "stretch", sm: "flex-start" },
+                            }}
+                          >
+                            <PosterThumb item={item} />
+                            <Stack spacing={1.4} sx={{ flex: 1, minWidth: 0 }}>
+                              <Box>
+                                <Link
+                                  href={`/media/${item.id}`}
+                                  style={{ textDecoration: "none" }}
                                 >
-                                  {item.title}
+                                  <Typography
+                                    sx={{
+                                      color: "primary.main",
+                                      fontWeight: 850,
+                                      overflowWrap: "anywhere",
+                                    }}
+                                    variant="h5"
+                                  >
+                                    {item.title}
+                                  </Typography>
+                                </Link>
+                                <Typography
+                                  color="text.secondary"
+                                  sx={{ mt: 0.6 }}
+                                  variant="body2"
+                                >
+                                  {formatMediaType(item.mediaType)} -{" "}
+                                  {formatStatus(item.status)} -{" "}
+                                  {item.comparisonCount} comparisons
                                 </Typography>
-                              </Link>
+                              </Box>
+
                               <Stack
                                 direction="row"
-                                sx={{ flexWrap: "wrap", gap: 1, mt: 1 }}
+                                sx={{
+                                  gap: 0.75,
+                                  height: 32,
+                                  maxWidth: "100%",
+                                  minWidth: 0,
+                                  overflow: "hidden",
+                                  whiteSpace: "nowrap",
+                                }}
                               >
-                                <Chip label={formatMediaType(item.mediaType)} />
+                                <Chip
+                                  label={formatMediaType(item.mediaType)}
+                                  sx={{ flex: "0 0 auto" }}
+                                />
                                 <Chip
                                   label={formatStatus(item.status)}
+                                  sx={{ flex: "0 0 auto" }}
                                   variant="outlined"
                                 />
-                                <Chip
-                                  label={`${item.comparisonCount} comparisons`}
-                                  variant="outlined"
-                                />
-                                {item.genres.map((entry) => (
+                                {taxonomyChips.map((entry) => (
                                   <Chip
-                                    key={entry.genreId}
-                                    label={entry.genre.name}
-                                    variant="outlined"
+                                    key={`${entry.kind}:${entry.name}`}
+                                    label={entry.name}
+                                    sx={{
+                                      bgcolor: entry.shared
+                                        ? alpha("#22D3EE", 0.12)
+                                        : "transparent",
+                                      borderColor: entry.shared
+                                        ? alpha("#67E8F9", 0.44)
+                                        : alpha("#FFFFFF", 0.16),
+                                      color: entry.shared
+                                        ? "primary.light"
+                                        : "text.secondary",
+                                      flex: "0 0 auto",
+                                      maxWidth: 160,
+                                      "& .MuiChip-label": {
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                      },
+                                    }}
+                                    variant={
+                                      entry.shared ? "filled" : "outlined"
+                                    }
                                   />
                                 ))}
                               </Stack>
-                            </Box>
-                            <Typography color="text.secondary">
-                              {item.description ||
-                                item.genres
-                                  .map((entry) => entry.genre.name)
-                                  .join(", ") ||
-                                "No description yet."}
-                            </Typography>
-                            <input
-                              name="winnerId"
-                              type="hidden"
-                              value={item.id}
-                            />
-                            <input
-                              name="loserId"
-                              type="hidden"
-                              value={opponent.id}
-                            />
-                            <TextField
-                              fullWidth
-                              label="Comparison note"
-                              minRows={2}
-                              multiline
-                              name="notes"
-                            />
-                            <Button type="submit" variant="contained">
-                              Choose winner
-                            </Button>
+
+                              <Divider />
+
+                              <Box>
+                                <Typography
+                                  color="text.secondary"
+                                  variant="overline"
+                                >
+                                  Shared tags
+                                </Typography>
+                                <Typography sx={{ mt: 0.4 }}>
+                                  {formatSharedTaxonomy(
+                                    getItemSharedTaxonomy(
+                                      item,
+                                      sharedGenres,
+                                      sharedTags,
+                                    ),
+                                  )}
+                                </Typography>
+                              </Box>
+
+                              <Typography
+                                color="text.secondary"
+                                variant="body2"
+                              >
+                                {item.description ||
+                                  item.genres
+                                    .map((entry) => entry.genre.name)
+                                    .join(", ") ||
+                                  "No description yet."}
+                              </Typography>
+                            </Stack>
                           </Stack>
-                        </CardContent>
-                      </Card>
-                    </Stack>
+
+                          <input
+                            name="winnerId"
+                            type="hidden"
+                            value={item.id}
+                          />
+                          <input
+                            name="loserId"
+                            type="hidden"
+                            value={opponent.id}
+                          />
+                          <TextField
+                            fullWidth
+                            label="Comparison note"
+                            minRows={2}
+                            multiline
+                            name="notes"
+                          />
+                          <Button type="submit" variant="contained">
+                            Choose winner
+                          </Button>
+                        </Stack>
+                      </CardContent>
+                    </Card>
                   </form>
                 </Grid>
               );
@@ -274,22 +525,27 @@ export default async function ComparePage({
           <CardContent>
             <Typography>
               Add at least two watched or played items in the same media type,
-              or loosen the selected genre filter.
+              or loosen the selected genre and tag filters.
             </Typography>
           </CardContent>
         </Card>
       )}
 
       <Card variant="outlined">
-        <CardContent>
+        <CardContent sx={{ p: { xs: 2, md: 2.4 } }}>
           <Stack
-            direction={{ xs: "column", md: "row" }}
+            direction={{ xs: "column", lg: "row" }}
             spacing={2}
             sx={{ justifyContent: "space-between", mb: 2 }}
           >
-            <Typography sx={{ fontWeight: 700 }} variant="h6">
-              Recent Comparisons
-            </Typography>
+            <Box>
+              <Typography sx={{ fontWeight: 850 }} variant="h6">
+                Recent Comparisons
+              </Typography>
+              <Typography color="text.secondary" variant="body2">
+                Latest pairwise choices that are shaping your rankings.
+              </Typography>
+            </Box>
             <Stack
               component="form"
               direction={{ xs: "column", md: "row" }}
@@ -331,6 +587,9 @@ export default async function ComparePage({
               {selectedGenre ? (
                 <input name="genre" type="hidden" value={selectedGenre} />
               ) : null}
+              {selectedTag ? (
+                <input name="tag" type="hidden" value={selectedTag} />
+              ) : null}
               {focusId ? (
                 <input name="focus" type="hidden" value={focusId} />
               ) : null}
@@ -339,52 +598,214 @@ export default async function ComparePage({
               </Button>
             </Stack>
           </Stack>
-          <Stack spacing={1.25}>
+
+          <Box
+            sx={{
+              border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
+              borderRadius: "8px",
+              overflow: "hidden",
+            }}
+          >
             {history.map((entry) => (
-              <Box key={entry.id}>
-                <Typography>
-                  <Link
-                    href={`/media/${entry.winner.id}`}
-                    style={{ textDecoration: "none" }}
-                  >
-                    <strong>{entry.winner.title}</strong>
-                  </Link>{" "}
-                  beat{" "}
-                  <Link
-                    href={`/media/${entry.loser.id}`}
-                    style={{ textDecoration: "none" }}
-                  >
-                    {entry.loser.title}
-                  </Link>{" "}
-                  on {entry.createdAt.toLocaleDateString()}
-                </Typography>
+              <Box
+                key={entry.id}
+                sx={{
+                  alignItems: "center",
+                  bgcolor: alpha("#FFFFFF", 0.018),
+                  borderBottom: `1px solid ${alpha("#FFFFFF", 0.07)}`,
+                  columnGap: 2,
+                  display: "grid",
+                  gridTemplateColumns: {
+                    xs: "1fr",
+                    md: "minmax(0, 1fr) minmax(180px, 0.42fr) 128px 72px",
+                  },
+                  px: { xs: 1.4, md: 1.6 },
+                  py: 1.05,
+                  rowGap: 1,
+                  "&:last-of-type": {
+                    borderBottom: 0,
+                  },
+                  "&:hover": {
+                    bgcolor: alpha("#8B5CF6", 0.045),
+                  },
+                }}
+              >
+                <Stack direction="row" spacing={1.1} sx={{ minWidth: 0 }}>
+                  <EventOutlinedIcon
+                    sx={{
+                      color: "text.secondary",
+                      flex: "0 0 auto",
+                      fontSize: 18,
+                      mt: 0.25,
+                    }}
+                  />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ overflowWrap: "anywhere" }}>
+                      <MediaTitleLink
+                        href={`/media/${entry.winner.id}`}
+                        tone="winner"
+                      >
+                        {entry.winner.title}
+                      </MediaTitleLink>{" "}
+                      <Typography
+                        color="text.secondary"
+                        component="span"
+                        variant="body2"
+                      >
+                        vs
+                      </Typography>{" "}
+                      <MediaTitleLink href={`/media/${entry.loser.id}`}>
+                        {entry.loser.title}
+                      </MediaTitleLink>
+                    </Typography>
+                    <Stack
+                      direction="row"
+                      sx={{ flexWrap: "wrap", gap: 0.8, mt: 0.65 }}
+                    >
+                      {entry.context ? (
+                        <Chip
+                          label={formatStatus(entry.context)}
+                          size="small"
+                          variant="outlined"
+                        />
+                      ) : null}
+                      {entry.notes ? (
+                        <Chip
+                          label={entry.notes}
+                          size="small"
+                          variant="outlined"
+                        />
+                      ) : null}
+                    </Stack>
+                  </Box>
+                </Stack>
+
                 <Stack
                   direction="row"
-                  sx={{ flexWrap: "wrap", gap: 1, mt: 0.75 }}
+                  spacing={0.8}
+                  sx={{ alignItems: "center", minWidth: 0 }}
                 >
-                  {entry.context ? (
-                    <Chip
-                      label={formatStatus(entry.context)}
-                      size="small"
-                      variant="outlined"
-                    />
-                  ) : null}
-                  {entry.notes ? (
-                    <Chip label={entry.notes} size="small" variant="outlined" />
-                  ) : null}
+                  <EmojiEventsOutlinedIcon
+                    sx={{ color: "#FBBF24", flex: "0 0 auto", fontSize: 17 }}
+                  />
+                  <Typography color="text.secondary" variant="body2">
+                    Winner:
+                  </Typography>
+                  <MediaTitleLink
+                    href={`/media/${entry.winner.id}`}
+                    tone="winner"
+                  >
+                    {entry.winner.title}
+                  </MediaTitleLink>
                 </Stack>
+
+                <Typography
+                  color="text.secondary"
+                  sx={{ whiteSpace: "nowrap" }}
+                  variant="body2"
+                >
+                  {entry.createdAt.toLocaleDateString(undefined, {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </Typography>
+
+                <Button
+                  href={`/media/${entry.winner.id}`}
+                  size="small"
+                  sx={{
+                    justifySelf: { xs: "flex-start", md: "end" },
+                    minHeight: 32,
+                    px: 1.5,
+                  }}
+                  variant="outlined"
+                >
+                  View
+                </Button>
               </Box>
             ))}
             {history.length === 0 ? (
-              <Typography color="text.secondary">
-                No comparisons yet.
-              </Typography>
+              <Box sx={{ px: 1.6, py: 1.4 }}>
+                <Typography color="text.secondary">
+                  No comparisons yet.
+                </Typography>
+              </Box>
             ) : null}
-          </Stack>
+          </Box>
         </CardContent>
       </Card>
     </Stack>
   );
+}
+
+function MediaTitleLink({
+  children,
+  href,
+  tone = "default",
+}: {
+  children: React.ReactNode;
+  href: string;
+  tone?: "default" | "winner";
+}) {
+  return (
+    <Link
+      href={href}
+      style={{
+        color: tone === "winner" ? "#A78BFA" : "#60A5FA",
+        fontWeight: tone === "winner" ? 850 : 750,
+        textDecoration: "none",
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+
+function PosterThumb({ item }: { item: CompareItem }) {
+  return (
+    <Box
+      component="a"
+      href={`/media/${item.id}`}
+      sx={{
+        alignSelf: "flex-start",
+        aspectRatio: "2 / 3",
+        backgroundImage: item.posterUrl
+          ? `linear-gradient(180deg, transparent 56%, ${alpha("#050812", 0.62)}), url(${item.posterUrl})`
+          : posterFallback(item.mediaType),
+        backgroundPosition: "center",
+        backgroundSize: "cover",
+        border: `1px solid ${alpha("#FFFFFF", 0.1)}`,
+        borderRadius: "8px",
+        boxShadow: `0 18px 54px ${alpha("#000000", 0.42)}`,
+        display: "block",
+        flex: "0 0 auto",
+        minHeight: { xs: 168, sm: 198 },
+        overflow: "hidden",
+        position: "relative",
+        textDecoration: "none",
+        width: { xs: 112, sm: 132 },
+        "&::after": {
+          background: `linear-gradient(180deg, ${alpha("#FFFFFF", 0.12)}, transparent 34%)`,
+          content: '""',
+          inset: 0,
+          pointerEvents: "none",
+          position: "absolute",
+        },
+        "&:hover": {
+          boxShadow: `0 24px 72px ${alpha("#000000", 0.58)}, 0 0 36px ${alpha("#8B5CF6", 0.22)}`,
+          transform: "translateY(-2px)",
+        },
+      }}
+    />
+  );
+}
+
+function posterFallback(mediaType: MediaType) {
+  return `linear-gradient(145deg, ${alpha("#8B5CF6", 0.22)}, ${alpha(
+    "#22D3EE",
+    mediaType === "VIDEO_GAME" ? 0.18 : 0.1,
+  )} 46%, ${alpha("#050812", 0.98)})`;
 }
 
 function stringParam(value: string | string[] | undefined) {
@@ -402,15 +823,84 @@ function coerceComparisonContextParam(value: string | undefined) {
     : undefined;
 }
 
+function getSharedGenres(first: CompareItem, second: CompareItem) {
+  const secondGenres = new Set(second.genres.map((entry) => entry.genre.name));
+  return first.genres
+    .map((entry) => entry.genre.name)
+    .filter((name) => secondGenres.has(name));
+}
+
+function getSharedTags(first: CompareItem, second: CompareItem) {
+  const secondTags = new Set(
+    (second.tags ?? []).map((entry) => entry.tag.name),
+  );
+  return (first.tags ?? [])
+    .map((entry) => entry.tag.name)
+    .filter((name) => secondTags.has(name));
+}
+
+function getItemSharedTaxonomy(
+  item: CompareItem,
+  sharedGenres: string[],
+  sharedTags: string[],
+) {
+  const itemGenres = new Set(item.genres.map((entry) => entry.genre.name));
+  const itemTags = new Set((item.tags ?? []).map((entry) => entry.tag.name));
+  return [
+    ...sharedGenres.filter((name) => itemGenres.has(name)),
+    ...sharedTags.filter((name) => itemTags.has(name)),
+  ];
+}
+
+function getItemTaxonomyChips(
+  item: CompareItem,
+  sharedGenres: string[],
+  sharedTags: string[],
+) {
+  const sharedGenreSet = new Set(sharedGenres);
+  const sharedTagSet = new Set(sharedTags);
+  const shared = [
+    ...item.genres
+      .map((entry) => entry.genre.name)
+      .filter((name) => sharedGenreSet.has(name))
+      .map((name) => ({ kind: "genre", name, shared: true })),
+    ...(item.tags ?? [])
+      .map((entry) => entry.tag.name)
+      .filter((name) => sharedTagSet.has(name))
+      .map((name) => ({ kind: "tag", name, shared: true })),
+  ];
+  const sharedNames = new Set(shared.map((entry) => entry.name));
+  const additional = [
+    ...item.genres
+      .map((entry) => entry.genre.name)
+      .filter((name) => !sharedNames.has(name))
+      .map((name) => ({ kind: "genre", name, shared: false })),
+    ...(item.tags ?? [])
+      .map((entry) => entry.tag.name)
+      .filter((name) => !sharedNames.has(name))
+      .map((name) => ({ kind: "tag", name, shared: false })),
+  ];
+
+  return [...shared, ...additional].slice(0, 8);
+}
+
+function formatSharedTaxonomy(values: string[]) {
+  return values.length > 0
+    ? values.slice(0, 5).join(", ")
+    : "No shared tags yet. This pair is being matched by media type and ranking coverage.";
+}
+
 function buildCompareHref(params: {
   mediaType?: MediaType;
   genre?: string;
+  tag?: string;
   focus?: string;
   skip?: string;
 }) {
   const searchParams = new URLSearchParams();
   if (params.mediaType) searchParams.set("mediaType", params.mediaType);
   if (params.genre) searchParams.set("genre", params.genre);
+  if (params.tag) searchParams.set("tag", params.tag);
   if (params.focus) searchParams.set("focus", params.focus);
   if (params.skip) searchParams.set("skip", params.skip);
   const query = searchParams.toString();

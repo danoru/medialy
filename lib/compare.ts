@@ -11,7 +11,9 @@ export type ComparisonSelectionItem = {
   comparisonCount: number;
   pairwiseScore: number;
   releaseDate: Date | string | null;
+  posterUrl: string | null;
   genres: Array<{ genre: { name: string } }>;
+  tags?: Array<{ tag: { name: string } }>;
 };
 
 type PairCandidate<TItem extends ComparisonSelectionItem> = {
@@ -24,6 +26,7 @@ type PairCandidate<TItem extends ComparisonSelectionItem> = {
 export type ComparisonPairOptions = {
   mediaType?: MediaType;
   genre?: string;
+  tag?: string;
   focusId?: string;
   skipPairKey?: string;
 };
@@ -31,6 +34,7 @@ export type ComparisonPairOptions = {
 type SelectionOptions = {
   focusId?: string;
   genre?: string;
+  currentDate?: Date;
   skipPairKey?: string;
   random?: () => number;
 };
@@ -41,14 +45,18 @@ export async function getComparisonPair(options: ComparisonPairOptions = {}) {
   const focus = options.focusId
     ? await prisma.mediaItem.findUnique({
         where: { id: options.focusId },
-        include: { genres: { include: { genre: true } } },
+        include: {
+          genres: { include: { genre: true } },
+          tags: { include: { tag: true } },
+        },
       })
     : null;
 
   if (
     focus &&
     (!isVisibleMediaType(focus.mediaType) ||
-      !isComparisonEligibleStatus(focus.status))
+      !isComparisonEligibleStatus(focus.status) ||
+      !isReleasedForComparison(focus.releaseDate))
   )
     return null;
 
@@ -57,7 +65,7 @@ export async function getComparisonPair(options: ComparisonPairOptions = {}) {
   if (!mediaType) return null;
 
   const [items, recentComparisons] = await Promise.all([
-    loadComparisonItems(mediaType, options.genre),
+    loadComparisonItems(mediaType, options.genre, options.tag),
     prisma.pairwiseComparison.findMany({
       select: { winnerId: true, loserId: true },
       orderBy: { createdAt: "desc" },
@@ -90,14 +98,22 @@ async function selectDefaultMediaType() {
   )[0]?.mediaType;
 }
 
-function loadComparisonItems(mediaType: MediaType, genre?: string) {
+function loadComparisonItems(
+  mediaType: MediaType,
+  genre?: string,
+  tag?: string,
+) {
   return prisma.mediaItem.findMany({
     where: {
       ...comparisonEligibleWhere(),
       mediaType,
       ...(genre ? { genres: { some: { genre: { name: genre } } } } : {}),
+      ...(tag ? { tags: { some: { tag: { name: tag } } } } : {}),
     },
-    include: { genres: { include: { genre: true } } },
+    include: {
+      genres: { include: { genre: true } },
+      tags: { include: { tag: true } },
+    },
     orderBy: [{ comparisonCount: "asc" }, { updatedAt: "asc" }],
     take: 36,
   });
@@ -108,8 +124,10 @@ export function selectComparisonPair<TItem extends ComparisonSelectionItem>(
   recentComparisons: Array<{ winnerId: string; loserId: string }>,
   options: SelectionOptions = {},
 ) {
-  const eligibleItems = items.filter((item) =>
-    isComparisonEligibleStatus(item.status),
+  const eligibleItems = items.filter(
+    (item) =>
+      isComparisonEligibleStatus(item.status) &&
+      isReleasedForComparison(item.releaseDate, options.currentDate),
   );
   const focusItem = options.focusId
     ? eligibleItems.find((item) => item.id === options.focusId)
@@ -211,10 +229,21 @@ export function isComparisonEligibleStatus(status: MediaStatus) {
   return !EXCLUDED_COMPARISON_STATUSES.includes(status);
 }
 
+export function isReleasedForComparison(
+  releaseDate: Date | string | null,
+  currentDate = new Date(),
+) {
+  if (!releaseDate) return true;
+  return new Date(releaseDate).getTime() <= currentDate.getTime();
+}
+
 export function comparisonEligibleWhere() {
   return {
     isArchived: false,
     mediaType: visibleMediaTypeFilter(),
+    AND: [
+      { OR: [{ releaseDate: null }, { releaseDate: { lte: new Date() } }] },
+    ],
     status: { notIn: EXCLUDED_COMPARISON_STATUSES },
   };
 }

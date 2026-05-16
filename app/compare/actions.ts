@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { isComparisonEligibleStatus } from "@/lib/compare";
+import {
+  isComparisonEligibleStatus,
+  isReleasedForComparison,
+} from "@/lib/compare";
 import {
   calculateComparisonRelevance,
   relevanceToEloWeight,
@@ -33,10 +36,12 @@ export async function saveComparison(formData: FormData) {
       loser.isArchived ||
       !isComparisonEligibleStatus(winner.status) ||
       !isComparisonEligibleStatus(loser.status) ||
+      !isReleasedForComparison(winner.releaseDate) ||
+      !isReleasedForComparison(loser.releaseDate) ||
       winner.mediaType !== loser.mediaType
     ) {
       throw new Error(
-        "Comparisons must use two active, eligible items from the same media type.",
+        "Comparisons must use two active, released items from the same media type.",
       );
     }
     const relevance = calculateComparisonRelevance(winner, loser);
