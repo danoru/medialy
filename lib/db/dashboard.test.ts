@@ -129,6 +129,38 @@ describe("dashboard overall top 10", () => {
     ).toEqual(["completed", "watchlist", "backlog"]);
   });
 
+  it("excludes items without computed personal or consensus scores", () => {
+    const grouped = getDashboardOverallTopItemsByMediaType([
+      media("personal", "MOVIE", "WATCHLIST", {
+        computedPersonalScore: 8,
+      }),
+      media("consensus", "MOVIE", "WATCHLIST", {
+        computedConsensusScore: 7.5,
+      }),
+      media("explicit-only", "MOVIE", "WATCHLIST", {
+        personalRating: 10,
+      }),
+      media("pairwise-only", "MOVIE", "WATCHLIST", {
+        pairwiseScore: 1400,
+      }),
+    ]);
+
+    expect(
+      grouped.find((entry) => entry.mediaType === "MOVIE")?.items.map(
+        (entry) => entry.media.id,
+      ),
+    ).toEqual(["personal", "consensus"]);
+  });
+
+  it("returns null for quality score when computed scores are missing", () => {
+    expect(
+      dashboardQualityScore(
+        media("rating", "MOVIE", "WATCHLIST", { personalRating: 7.5 }),
+      ),
+    ).toBeNull();
+    expect(dashboardQualityScore(media("pairwise", "MOVIE"))).toBeNull();
+  });
+
   it("excludes archived and hidden media types", () => {
     const grouped = getDashboardOverallTopItemsByMediaType([
       media("active", "VIDEO_GAME", "WATCHLIST", {
@@ -177,14 +209,6 @@ describe("dashboard overall top 10", () => {
     ).toHaveLength(1);
   });
 
-  it("falls back to personal rating or pairwise score when computed scores are missing", () => {
-    expect(
-      dashboardQualityScore(
-        media("rating", "MOVIE", "WATCHLIST", { personalRating: 7.5 }),
-      ),
-    ).toBe(7.5);
-    expect(dashboardQualityScore(media("pairwise", "MOVIE"))).toBe(10);
-  });
 });
 
 describe("dashboard tonight picks", () => {

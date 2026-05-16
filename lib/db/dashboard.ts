@@ -41,10 +41,7 @@ export function getDashboardTopRecommendationsByMediaType(
 export function dashboardQualityScore(
   item: Pick<
     MediaItemDTO,
-    | "computedConsensusScore"
-    | "computedPersonalScore"
-    | "pairwiseScore"
-    | "personalRating"
+    "computedConsensusScore" | "computedPersonalScore"
   >,
 ) {
   const scoreParts = [
@@ -58,7 +55,7 @@ export function dashboardQualityScore(
     );
   }
 
-  return item.personalRating ?? item.pairwiseScore / 100;
+  return null;
 }
 
 export function getDashboardOverallTopItemsByMediaType(
@@ -68,10 +65,10 @@ export function getDashboardOverallTopItemsByMediaType(
     mediaType,
     items: items
       .filter((item) => !item.isArchived && item.mediaType === mediaType)
-      .map((media) => ({
-        media,
-        score: dashboardQualityScore(media),
-      }))
+      .flatMap((media) => {
+        const score = dashboardQualityScore(media);
+        return score == null ? [] : [{ media, score }];
+      })
       .sort((first, second) => {
         const scoreDelta = second.score - first.score;
         if (scoreDelta !== 0) return scoreDelta;
