@@ -9,6 +9,7 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
 import ImportExportIcon from "@mui/icons-material/ImportExport";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import MovieIcon from "@mui/icons-material/Movie";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import PeopleIcon from "@mui/icons-material/People";
 import PersonIcon from "@mui/icons-material/Person";
@@ -47,6 +48,12 @@ const navItems = [
     icon: <DashboardIcon />,
     description:
       "Your library, recommendations, watchlist, and health signals.",
+  },
+  {
+    label: "Media",
+    href: "/media",
+    icon: <MovieIcon />,
+    description: "Browse, filter, add, and edit your local media.",
   },
   {
     label: "Discover",
