@@ -1,6 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getDataHealthReport, getGenreInsights } from "@/lib/insights";
+import {
+  getDataHealthReport,
+  getGenreInsightsByMediaType,
+} from "@/lib/insights";
 import { getFriendCompatibility } from "@/lib/insights";
 import { toMediaItemDTO } from "@/lib/media";
 import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
@@ -39,10 +42,7 @@ export function getDashboardTopRecommendationsByMediaType(
 }
 
 export function dashboardQualityScore(
-  item: Pick<
-    MediaItemDTO,
-    "computedConsensusScore" | "computedPersonalScore"
-  >,
+  item: Pick<MediaItemDTO, "computedConsensusScore" | "computedPersonalScore">,
 ) {
   const scoreParts = [
     item.computedConsensusScore,
@@ -58,9 +58,7 @@ export function dashboardQualityScore(
   return null;
 }
 
-export function getDashboardOverallTopItemsByMediaType(
-  items: MediaItemDTO[],
-) {
+export function getDashboardOverallTopItemsByMediaType(items: MediaItemDTO[]) {
   return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
     mediaType,
     items: items
@@ -84,9 +82,7 @@ export function getDashboardTonightPicksByMediaType(
   return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
     mediaType,
     recommendations: recommendations
-      .filter(
-        (recommendation) => recommendation.media.mediaType === mediaType,
-      )
+      .filter((recommendation) => recommendation.media.mediaType === mediaType)
       .slice(0, 5),
   }));
 }
@@ -140,7 +136,7 @@ export async function getDashboardData() {
     }),
     getRecommendations(),
     getDataHealthReport(),
-    getGenreInsights(),
+    getGenreInsightsByMediaType(),
     prisma.mediaItem.groupBy({
       by: ["mediaType"],
       where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
@@ -250,7 +246,7 @@ export async function getDashboardData() {
     })),
     recommendations: recommendations.slice(0, 18),
     tonightPicksByMediaType,
-    genreInsights: genreInsights.slice(0, 8),
+    genreInsights,
     mediaTypeCounts: mediaTypeCounts.map((entry) => ({
       mediaType: entry.mediaType,
       count: entry._count._all,

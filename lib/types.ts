@@ -71,9 +71,49 @@ export type GenreInsight = {
   name: string;
   count: number;
   completedCount: number;
+  ratedCount: number;
   averageScore: number;
   share: number;
   needsData: boolean;
+};
+
+export type InsightScoreBand = {
+  label: string;
+  count: number;
+  share: number;
+};
+
+export type InsightMomentumGenre = {
+  name: string;
+  averageScore: number;
+  recentAverageScore: number;
+  momentum: number;
+  ratedCount: number;
+  recentRatedCount: number;
+};
+
+export type InsightStandoutTitle = {
+  id: string;
+  title: string;
+  mediaType: MediaType;
+  releaseYear: number | null;
+  posterUrl?: string | null;
+  score: number;
+  genres: string[];
+};
+
+export type MediaTypeGenreInsights = {
+  mediaType: MediaType;
+  totalCount: number;
+  completedCount: number;
+  ratedCount: number;
+  averageScore: number;
+  coverage: number;
+  completedRatio: number;
+  genres: GenreInsight[];
+  scoreBands: InsightScoreBand[];
+  risingGenres: InsightMomentumGenre[];
+  standoutTitles: InsightStandoutTitle[];
 };
 
 export type DataHealthReport = {

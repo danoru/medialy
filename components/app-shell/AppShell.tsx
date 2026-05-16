@@ -1,7 +1,6 @@
 "use client";
 
 import AddIcon from "@mui/icons-material/Add";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
@@ -9,13 +8,14 @@ import DashboardIcon from "@mui/icons-material/Dashboard";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
 import ImportExportIcon from "@mui/icons-material/ImportExport";
-import MovieIcon from "@mui/icons-material/Movie";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import PeopleIcon from "@mui/icons-material/People";
+import PersonIcon from "@mui/icons-material/Person";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import SearchIcon from "@mui/icons-material/Search";
 import SettingsIcon from "@mui/icons-material/Settings";
-import TuneIcon from "@mui/icons-material/Tune";
+import { useState } from "react";
 import {
   AppBar,
   Avatar,
@@ -29,6 +29,8 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Menu,
+  MenuItem,
   Toolbar,
   Typography,
 } from "@mui/material";
@@ -47,41 +49,10 @@ const navItems = [
       "Your library, recommendations, watchlist, and health signals.",
   },
   {
-    label: "Media",
-    href: "/media",
-    icon: <MovieIcon />,
-    description: "Browse, filter, add, and edit your local media.",
-  },
-  {
-    label: "Compare",
-    href: "/compare",
-    icon: <CompareArrowsIcon />,
-    description: "Make pairwise picks that sharpen your rankings.",
-  },
-  {
-    label: "Recommendations",
-    href: "/recommendations",
-    icon: <AutoAwesomeIcon />,
-    description: "Ranked local picks with scoring reasons.",
-  },
-  {
-    label: "Upcoming",
-    href: "/upcoming",
-    icon: <CalendarMonthIcon />,
-    description: "Track release dates and review discovery candidates.",
-  },
-  {
     label: "Discover",
     href: "/discover",
     icon: <FavoriteIcon />,
     description: "Top items by score, type, genre, and confidence.",
-  },
-  {
-    label: "Insights",
-    href: "/insights",
-    icon: <BarChartIcon />,
-    description:
-      "Genre distribution, strengths, low-data areas, and media mix.",
   },
   {
     label: "Watchlist",
@@ -90,10 +61,29 @@ const navItems = [
     description: "Prioritized backlog and watchlist items.",
   },
   {
+    label: "Upcoming",
+    href: "/upcoming",
+    icon: <CalendarMonthIcon />,
+    description: "Track release dates and review discovery candidates.",
+  },
+  {
+    label: "Compare",
+    href: "/compare",
+    icon: <CompareArrowsIcon />,
+    description: "Make pairwise picks that sharpen your rankings.",
+  },
+  {
     label: "Friends",
     href: "/friends",
     icon: <PeopleIcon />,
     description: "Local friend ratings, overlap, and compatibility.",
+  },
+  {
+    label: "Insights",
+    href: "/insights",
+    icon: <BarChartIcon />,
+    description:
+      "Genre distribution, strengths, low-data areas, and media mix.",
   },
   {
     label: "Data Health",
@@ -107,17 +97,14 @@ const navItems = [
     icon: <ImportExportIcon />,
     description: "Local JSON, CSV, and XLSX workflows.",
   },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: <SettingsIcon />,
-    description: "Manage local app preferences and database setup details.",
-  },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const showAddMedia = pathname !== "/media/new";
+  const [profileMenuAnchor, setProfileMenuAnchor] =
+    useState<HTMLElement | null>(null);
+  const profileMenuOpen = Boolean(profileMenuAnchor);
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -130,95 +117,171 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           width: { md: `calc(100% - ${drawerWidth}px)` },
         }}
       >
-        <Toolbar sx={{ minHeight: 60, px: { xs: 1, md: 1.5 }, py: 0.75 }}>
+        <Toolbar
+          sx={{
+            alignItems: "center",
+            borderBottom: `1px solid ${alpha("#BFDBFE", 0.08)}`,
+            gap: { xs: 0.75, md: 1 },
+            minHeight: 60,
+            px: { xs: 1, md: 1.5 },
+            py: 0.75,
+          }}
+        >
           <Box
+            action="/media"
+            component="form"
+            method="get"
             sx={{
               alignItems: "center",
-              backdropFilter: "blur(18px)",
-              background:
-                "linear-gradient(135deg, rgba(11, 16, 32, 0.68), rgba(8, 11, 18, 0.7))",
-              border: `1px solid ${alpha("#BFDBFE", 0.13)}`,
-              borderRadius: 1,
-              boxShadow: `0 10px 34px ${alpha("#000000", 0.26)}`,
+              backdropFilter: "blur(16px)",
+              background: alpha("#050812", 0.36),
+              border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
+              borderRadius: "8px",
+              color: "text.secondary",
               display: "flex",
-              gap: 1.2,
-              minHeight: 42,
-              px: { xs: 0.75, md: 1 },
-              width: "100%",
+              flex: { xs: 1, lg: "0 1 632px" },
+              gap: 1,
+              maxWidth: { lg: 632 },
+              minHeight: 38,
+              minWidth: 0,
+              px: 1.2,
+              textDecoration: "none",
+              transition: "border-color 160ms ease, color 160ms ease",
+              "&:hover": {
+                borderColor: alpha(noirTokens.accent.blue, 0.34),
+                color: "text.primary",
+              },
             }}
           >
-            <Box
-              action="/media"
-              component="form"
-              method="get"
+            <SearchIcon fontSize="small" />
+            <InputBase
+              inputProps={{ "aria-label": "Search media library" }}
+              name="filter"
+              placeholder="Search for movies, shows, games..."
+              sx={{ color: "inherit", flex: 1, minWidth: 0 }}
+            />
+          </Box>
+          <Box sx={{ flex: 1 }} />
+          {showAddMedia ? (
+            <Button
+              href="/media/new"
+              startIcon={<AddIcon />}
               sx={{
-                alignItems: "center",
-                border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
-                borderRadius: 0.85,
-                color: "text.secondary",
-                display: "flex",
-                flex: 1,
-                gap: 1,
-                maxWidth: { lg: 430 },
-                ml: "auto",
-                px: 1.2,
-                py: 0.45,
-                textDecoration: "none",
-                transition: "border-color 160ms ease, color 160ms ease",
+                background: alpha("#050812", 0.34),
+                border: `1px solid ${alpha("#BFDBFE", 0.13)}`,
+                boxShadow: "none",
+                color: "text.primary",
+                fontSize: 12,
+                minHeight: 36,
+                minWidth: 0,
+                px: { xs: 1, sm: 1.2 },
+                whiteSpace: "nowrap",
                 "&:hover": {
-                  borderColor: alpha(noirTokens.accent.blue, 0.34),
-                  color: "text.primary",
+                  background: alpha("#FFFFFF", 0.055),
+                  borderColor: alpha(noirTokens.accent.purple, 0.36),
+                  boxShadow: "none",
                 },
               }}
+              variant="outlined"
             >
-              <SearchIcon fontSize="small" />
-              <InputBase
-                inputProps={{ "aria-label": "Search media library" }}
-                name="filter"
-                placeholder="Search media library..."
-                sx={{ color: "inherit", flex: 1 }}
-              />
-            </Box>
-            <IconButton
-              aria-label="Notifications"
+              Add
+            </Button>
+          ) : null}
+          <IconButton
+            aria-label="Notifications"
+            sx={{
+              bgcolor: "transparent",
+              border: 0,
+              color: "text.secondary",
+              display: { xs: "none", sm: "inline-flex" },
+              height: 36,
+              width: 36,
+              "&:hover": {
+                bgcolor: alpha("#FFFFFF", 0.055),
+                boxShadow: "none",
+              },
+            }}
+          >
+            <NotificationsNoneIcon fontSize="small" />
+          </IconButton>
+          <Button
+            aria-controls={profileMenuOpen ? "profile-menu" : undefined}
+            aria-expanded={profileMenuOpen ? "true" : undefined}
+            aria-haspopup="true"
+            onClick={(event) => setProfileMenuAnchor(event.currentTarget)}
+            sx={{
+              bgcolor: "transparent",
+              border: 0,
+              boxShadow: "none",
+              color: "text.primary",
+              display: { xs: "none", sm: "inline-flex" },
+              gap: 0.7,
+              minHeight: 38,
+              minWidth: 0,
+              px: 0.35,
+              "&:hover": {
+                bgcolor: "transparent",
+                boxShadow: "none",
+              },
+            }}
+          >
+            <Avatar
               sx={{
-                border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
-                color: "text.secondary",
-                display: { xs: "none", sm: "inline-flex" },
+                bgcolor: alpha(noirTokens.accent.purple, 0.18),
+                border: `1px solid ${alpha(noirTokens.accent.purple, 0.28)}`,
+                color: noirTokens.accent.blue,
+                fontSize: 12,
+                fontWeight: 900,
+                height: 28,
+                width: 28,
               }}
             >
-              <NotificationsNoneIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              aria-label="Tune dashboard"
-              sx={{
-                border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
-                color: "text.secondary",
-                display: { xs: "none", sm: "inline-flex" },
-              }}
+              D
+            </Avatar>
+            <Typography sx={{ fontSize: 12.5, fontWeight: 850 }}>
+              Daniel
+            </Typography>
+            <KeyboardArrowDownIcon
+              sx={{ color: "text.secondary", fontSize: 17 }}
+            />
+          </Button>
+          <Menu
+            anchorEl={profileMenuAnchor}
+            id="profile-menu"
+            onClose={() => setProfileMenuAnchor(null)}
+            open={profileMenuOpen}
+            slotProps={{
+              paper: {
+                sx: {
+                  bgcolor: alpha("#08111F", 0.98),
+                  border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
+                  borderRadius: "8px",
+                  minWidth: 176,
+                },
+              },
+            }}
+          >
+            <MenuItem
+              component="a"
+              href="/profile"
+              onClick={() => setProfileMenuAnchor(null)}
             >
-              <TuneIcon fontSize="small" />
-            </IconButton>
-            {showAddMedia ? (
-              <Button
-                href="/media/new"
-                startIcon={<AddIcon />}
-                sx={{
-                  background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.92)}, ${alpha(noirTokens.accent.blue, 0.78)})`,
-                  border: `1px solid ${alpha("#FFFFFF", 0.16)}`,
-                  boxShadow: `0 0 32px ${alpha(noirTokens.accent.purple, 0.22)}`,
-                  color: "text.primary",
-                  minWidth: 0,
-                  px: { xs: 1, sm: 1.35 },
-                  py: 0.45,
-                  whiteSpace: "nowrap",
-                }}
-                variant="contained"
-              >
-                Add Media
-              </Button>
-            ) : null}
-          </Box>
+              <ListItemIcon>
+                <PersonIcon fontSize="small" />
+              </ListItemIcon>
+              Profile
+            </MenuItem>
+            <MenuItem
+              component="a"
+              href="/settings"
+              onClick={() => setProfileMenuAnchor(null)}
+            >
+              <ListItemIcon>
+                <SettingsIcon fontSize="small" />
+              </ListItemIcon>
+              Settings
+            </MenuItem>
+          </Menu>
         </Toolbar>
       </AppBar>
 
@@ -267,9 +330,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 variant="h6"
               >
                 MEDIALY
-              </Typography>
-              <Typography color="text.secondary" variant="caption">
-                Personal media universe
               </Typography>
             </Box>
           </Toolbar>
@@ -329,41 +389,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               );
             })}
           </List>
-          <Box sx={{ p: 1, position: "relative" }}>
-            <Box
-              sx={{
-                alignItems: "center",
-                background: alpha("#BFDBFE", 0.055),
-                border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
-                borderRadius: 1,
-                display: "flex",
-                gap: 0.9,
-                p: 0.8,
-              }}
-            >
-              <Avatar
-                sx={{
-                  bgcolor: alpha(noirTokens.accent.purple, 0.2),
-                  border: `1px solid ${alpha(noirTokens.accent.purple, 0.3)}`,
-                  color: noirTokens.accent.blue,
-                  fontSize: 13,
-                  fontWeight: 900,
-                  height: 28,
-                  width: 28,
-                }}
-              >
-                M
-              </Avatar>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography noWrap sx={{ fontSize: 12, fontWeight: 850 }}>
-                  Local Profile
-                </Typography>
-                <Typography color="text.secondary" noWrap variant="caption">
-                  SQLite intelligence
-                </Typography>
-              </Box>
-            </Box>
-          </Box>
         </Box>
       </Drawer>
 

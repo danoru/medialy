@@ -58,12 +58,19 @@ type DashboardData = {
     }>;
   }>;
   genreInsights: Array<{
-    name: string;
-    count: number;
+    mediaType: MediaType;
+    totalCount: number;
     completedCount: number;
-    averageScore: number;
-    share: number;
-    needsData: boolean;
+    ratedCount: number;
+    genres: Array<{
+      name: string;
+      count: number;
+      completedCount: number;
+      ratedCount: number;
+      averageScore: number;
+      share: number;
+      needsData: boolean;
+    }>;
   }>;
   mediaTypeCounts: Array<{ mediaType: MediaType; count: number }>;
   topItemsByMediaType: Array<{
@@ -125,6 +132,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       ),
     ) ?? "MOVIE";
   const [topMediaType, setTopMediaType] = useState<MediaType>("MOVIE");
+  const [genreMediaType, setGenreMediaType] = useState<MediaType>("MOVIE");
   const [tonightPickType, setTonightPickType] = useState<MediaType>(
     initialTonightPickType,
   );
@@ -144,6 +152,13 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         (entry) => entry.mediaType === upcomingMediaType,
       )?.items ?? [],
     [data.upcomingItemsByMediaType, upcomingMediaType],
+  );
+
+  const genreInsightsForType = useMemo(
+    () =>
+      data.genreInsights.find((entry) => entry.mediaType === genreMediaType)
+        ?.genres ?? [],
+    [data.genreInsights, genreMediaType],
   );
 
   const tonightPicksByType = useMemo(() => {
@@ -400,9 +415,26 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 View insights
               </Button>
             }
-            title="Genre Breakdown"
+            title="Media Breakdown"
           >
-            <GenreBarChart genres={data.genreInsights.slice(0, 7)} />
+            <MediaTypeTabs
+              counts={data.mediaTypeCounts}
+              onChange={setGenreMediaType}
+              showCounts={false}
+              value={genreMediaType}
+            />
+            {genreInsightsForType.some((genre) => genre.ratedCount > 0) ? (
+              <GenreBarChart
+                genres={genreInsightsForType
+                  .filter((genre) => genre.ratedCount > 0)
+                  .slice(0, 7)}
+              />
+            ) : (
+              <EmptyPanel
+                icon={<InfoOutlinedIcon />}
+                label={`No rated ${formatMediaType(genreMediaType).toLowerCase()} genres yet.`}
+              />
+            )}
           </DashboardCard>
         </Box>
 
@@ -998,13 +1030,11 @@ function GenreBarChart({
     averageScore: number;
     count: number;
     name: string;
+    ratedCount: number;
     share: number;
   }>;
 }) {
-  const maxScore = Math.max(
-    100,
-    ...genres.map((genre) => Math.round(genre.averageScore * 10)),
-  );
+  const maxScore = Math.max(10, ...genres.map((genre) => genre.averageScore));
 
   return (
     <Box
@@ -1036,8 +1066,10 @@ function GenreBarChart({
       }}
     >
       {genres.map((genre) => {
-        const score = Math.round(genre.averageScore * 10);
-        const height = Math.max(18, Math.round((score / maxScore) * 132));
+        const height = Math.max(
+          18,
+          Math.round((genre.averageScore / maxScore) * 132),
+        );
 
         return (
           <Stack
@@ -1046,7 +1078,7 @@ function GenreBarChart({
             sx={{ alignItems: "center", justifyContent: "end", minWidth: 0 }}
           >
             <Typography sx={{ fontSize: 10, fontWeight: 800 }}>
-              {score}
+              {genre.averageScore.toFixed(1)}
             </Typography>
             <Box
               sx={{
@@ -1068,6 +1100,9 @@ function GenreBarChart({
               title={genre.name}
             >
               {genre.name}
+            </Typography>
+            <Typography color="text.secondary" sx={{ fontSize: 9 }}>
+              {genre.ratedCount}
             </Typography>
           </Stack>
         );
