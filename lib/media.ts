@@ -4,11 +4,13 @@ import type {
   Prisma,
   PrismaClient,
 } from "@prisma/client";
+import { replaceMediaCredits, type CreditDTO } from "@/lib/credits";
 import { prisma } from "@/lib/prisma";
 import type { MediaFormInput, MediaItemDTO } from "@/lib/types";
 import { normalizeSearchText } from "@/lib/text-normalization";
 import {
   canonicalTagMetadataForName,
+  isTagApplicableForMediaType,
   normalizeTagKey,
   normalizeTagName,
 } from "@/lib/taxonomy";
@@ -16,12 +18,18 @@ import {
 const includeTaxonomy = {
   genres: { include: { genre: true } },
   tags: { include: { tag: true } },
+  credits: { include: { contributor: true }, orderBy: { order: "asc" } },
 } as const;
 
 type MediaWithTaxonomy = MediaItem & {
   genres: Array<{ genre: { name: string } }>;
   tags: Array<{
     tag: { name: string; status: "APPROVED" | "PENDING" | "REJECTED" };
+  }>;
+  credits?: Array<{
+    role: CreditDTO["role"];
+    order: number;
+    contributor: { name: string; kind: CreditDTO["kind"] };
   }>;
 };
 
@@ -38,6 +46,17 @@ export function toMediaItemDTO(item: MediaWithTaxonomy): MediaItemDTO {
         status: entry.tag.status,
       }))
       .sort((first, second) => first.name.localeCompare(second.name)),
+    credits: (item.credits ?? [])
+      .map((credit) => ({
+        role: credit.role,
+        kind: credit.contributor.kind,
+        name: credit.contributor.name,
+        order: credit.order,
+      }))
+      .sort(
+        (first, second) =>
+          first.role.localeCompare(second.role) || first.order - second.order,
+      ),
   };
 }
 
@@ -64,6 +83,7 @@ export async function upsertTaxonomy(
   mediaId: string,
   genres: string[],
   tags: string[],
+  mediaType?: MediaType,
 ) {
   await prisma.mediaGenre.deleteMany({ where: { mediaId } });
   await prisma.mediaTag.deleteMany({ where: { mediaId } });
@@ -88,35 +108,43 @@ export async function upsertTaxonomy(
 
   for (const name of normalizedTags) {
     const metadata = canonicalTagMetadataForName(name);
+    if (!metadata) continue;
+    if (mediaType && !isTagApplicableForMediaType(name, mediaType)) continue;
     const tag = await prisma.tag.upsert({
       where: { normalizedName: normalizeTagKey(name) },
-      update: metadata
-        ? {
-            category: metadata.category,
-            discoverable: metadata.discoverable,
-            mediaTypesJson: metadata.mediaTypes
-              ? JSON.stringify(metadata.mediaTypes)
-              : undefined,
-            countryCode: metadata.countryCode,
-            status: "APPROVED",
-            approvedAt: new Date(),
-          }
-        : {},
+      update: {
+        category: metadata.category,
+        discoverable: metadata.discoverable,
+        mediaTypesJson: metadata.mediaTypes
+          ? JSON.stringify(metadata.mediaTypes)
+          : undefined,
+        countryCode: metadata.countryCode,
+        status: "APPROVED",
+        approvedAt: new Date(),
+      },
       create: {
         name,
         normalizedName: normalizeTagKey(name),
-        status: metadata ? "APPROVED" : "PENDING",
-        category: metadata?.category ?? "THEME",
-        discoverable: metadata?.discoverable ?? false,
+        status: "APPROVED",
+        category: metadata.category,
+        discoverable: metadata.discoverable,
         mediaTypesJson: metadata?.mediaTypes
           ? JSON.stringify(metadata.mediaTypes)
           : undefined,
         countryCode: metadata?.countryCode,
-        approvedAt: metadata ? new Date() : undefined,
+        approvedAt: new Date(),
       },
     });
     await prisma.mediaTag.create({ data: { mediaId, tagId: tag.id } });
   }
+}
+
+export async function upsertMediaRelations(
+  mediaId: string,
+  input: Pick<MediaFormInput, "genres" | "tags" | "credits" | "mediaType">,
+) {
+  await upsertTaxonomy(mediaId, input.genres, input.tags, input.mediaType);
+  await replaceMediaCredits(prisma, mediaId, input.credits ?? []);
 }
 
 export function mediaMutationData(input: MediaFormInput) {

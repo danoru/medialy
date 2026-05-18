@@ -29,6 +29,8 @@ import {
   updateNote,
 } from "@/app/media/actions";
 import { ConfirmMediaAction } from "@/components/media/ConfirmMediaAction";
+import { ActionToastButton } from "@/components/shared/Toasts";
+import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
 
@@ -70,6 +72,7 @@ export default async function MediaDetailPage({
       },
       externalRatings: { orderBy: [{ source: "asc" }] },
       genres: { include: { genre: true } },
+      credits: { include: { contributor: true }, orderBy: { order: "asc" } },
       notes: { orderBy: { updatedAt: "desc" } },
       tags: { include: { tag: true } },
     },
@@ -211,6 +214,36 @@ export default async function MediaDetailPage({
                   No tags yet.
                 </Typography>
               )}
+            </SectionBlock>
+
+            <SectionBlock title="Credits">
+              <Stack spacing={0.75}>
+                {CREDIT_ROLES_BY_MEDIA_TYPE[item.mediaType].map((role) => {
+                  const names = item.credits
+                    .filter((credit) => credit.role === role)
+                    .sort((first, second) => first.order - second.order)
+                    .map((credit) => credit.contributor.name);
+                  if (names.length === 0) return null;
+
+                  return (
+                    <Typography key={role} sx={bodyTextSx}>
+                      <Typography
+                        color="text.secondary"
+                        component="span"
+                        sx={{ fontWeight: 700 }}
+                      >
+                        {creditLabel(item.mediaType, role)}:{" "}
+                      </Typography>
+                      {names.join(", ")}
+                    </Typography>
+                  );
+                })}
+                {item.credits.length === 0 ? (
+                  <Typography color="text.secondary" sx={bodyTextSx}>
+                    No credits yet.
+                  </Typography>
+                ) : null}
+              </Stack>
             </SectionBlock>
           </Stack>
 
@@ -415,14 +448,14 @@ export default async function MediaDetailPage({
                       placeholder="Write your thoughts about this..."
                       sx={textareaSx}
                     />
-                    <Button
+                    <ActionToastButton
                       size="small"
+                      successMessage="Note saved."
                       sx={{ alignSelf: "flex-start" }}
-                      type="submit"
                       variant="outlined"
                     >
                       Save note
-                    </Button>
+                    </ActionToastButton>
                   </Stack>
                 </Box>
               ))}
@@ -436,14 +469,14 @@ export default async function MediaDetailPage({
                     placeholder="Write your thoughts about this..."
                     sx={textareaSx}
                   />
-                  <Button
+                  <ActionToastButton
                     size="small"
+                    successMessage="Note added."
                     sx={{ alignSelf: "flex-start" }}
-                    type="submit"
                     variant="contained"
                   >
                     Add note
-                  </Button>
+                  </ActionToastButton>
                 </Stack>
               </Box>
             </Stack>

@@ -6,10 +6,11 @@ import { Prisma } from "@prisma/client";
 import {
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
-  upsertTaxonomy,
+  upsertMediaRelations,
 } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
+import { queueToast } from "@/lib/toast";
 import {
   mediaFormInputFromFormData,
   parseOptionalRating,
@@ -43,9 +44,10 @@ export async function createMediaItem(
 
     if (!media) return duplicateMediaState();
 
-    await upsertTaxonomy(media.id, input.genres, input.tags);
+    await upsertMediaRelations(media.id, input);
     await recomputeMediaScores(media.id);
     revalidatePath("/media");
+    await queueToast(`${media.title} added.`);
     redirect(`/media/${media.id}`);
   } catch (error) {
     if (isUniqueMediaTitleError(error)) return duplicateMediaState();
@@ -74,10 +76,11 @@ export async function updateMediaItem(
 
     if (!updated) return duplicateMediaState();
 
-    await upsertTaxonomy(id, input.genres, input.tags);
+    await upsertMediaRelations(id, input);
     await recomputeMediaScores(id);
     revalidatePath("/media");
     revalidatePath(`/media/${id}`);
+    await queueToast("Media item saved.");
     redirect(`/media/${id}`);
   } catch (error) {
     if (isUniqueMediaTitleError(error)) return duplicateMediaState();
@@ -92,6 +95,8 @@ export async function updateMediaRatings(formData: FormData) {
     .map((value) => String(value))
     .filter(Boolean);
 
+  let updatedCount = 0;
+
   for (const id of ids) {
     const personalRating = parseOptionalRating(formData.get(`rating:${id}`));
     const currentRating = parseOptionalRating(formData.get(`current:${id}`));
@@ -103,6 +108,7 @@ export async function updateMediaRatings(formData: FormData) {
       data: { personalRating },
     });
     await recomputeMediaScores(id);
+    updatedCount += 1;
   }
 
   revalidatePath("/");
@@ -110,24 +116,32 @@ export async function updateMediaRatings(formData: FormData) {
   revalidatePath("/media");
   revalidatePath("/recommendations");
   revalidatePath("/discover");
+  await queueToast(
+    updatedCount === 0
+      ? "No rating changes to save."
+      : `Saved ${updatedCount} rating${updatedCount === 1 ? "" : "s"}.`,
+  );
   redirect(returnTo.startsWith("/media") ? returnTo : "/media");
 }
 
 export async function archiveMediaItem(id: string) {
   await prisma.mediaItem.update({ where: { id }, data: { isArchived: true } });
   revalidatePath("/media");
+  await queueToast("Media item archived.");
   redirect("/media");
 }
 
 export async function unarchiveMediaItem(id: string) {
   await prisma.mediaItem.update({ where: { id }, data: { isArchived: false } });
   revalidatePath("/media");
+  await queueToast("Media item unarchived.");
   redirect(`/media/${id}`);
 }
 
 export async function deleteMediaItem(id: string) {
   await prisma.mediaItem.delete({ where: { id } });
   revalidatePath("/media");
+  await queueToast("Media item deleted.");
   redirect("/media");
 }
 

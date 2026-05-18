@@ -15,13 +15,24 @@ import {
 import { useActionState, useMemo, useState } from "react";
 import { MediaStatus, type MediaType, type TagStatus } from "@prisma/client";
 import type { MediaItemDTO } from "@/lib/types";
+import {
+  CREDIT_ROLES_BY_MEDIA_TYPE,
+  creditFieldName,
+  creditLabel,
+  creditsForRole,
+} from "@/lib/credits";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
-import { getGenresForMediaType, MAX_GENRES_PER_ITEM } from "@/lib/taxonomy";
+import {
+  getGenresForMediaType,
+  isTagApplicableForMediaType,
+  MAX_GENRES_PER_ITEM,
+} from "@/lib/taxonomy";
 
 type TagOption = {
   name: string;
   status: TagStatus;
+  mediaTypesJson?: string | null;
 };
 
 type MediaFormActionState = {
@@ -65,8 +76,11 @@ export function MediaForm({
     [mediaType],
   );
   const tagNames = useMemo(
-    () => tagOptions.map((tag) => tag.name),
-    [tagOptions],
+    () =>
+      tagOptions
+        .filter((tag) => isTagApplicableForMediaType(tag.name, mediaType))
+        .map((tag) => tag.name),
+    [mediaType, tagOptions],
   );
   const tagStatusByName = useMemo(
     () => new Map(tagOptions.map((tag) => [tag.name, tag.status])),
@@ -115,6 +129,11 @@ export function MediaForm({
                     getGenresForMediaType(nextType).includes(genre),
                   ),
                 );
+                setTags((current) =>
+                  current.filter((tag) =>
+                    isTagApplicableForMediaType(tag, nextType),
+                  ),
+                );
               }}
               select
               value={mediaType}
@@ -161,6 +180,19 @@ export function MediaForm({
               type="date"
             />
           </Grid>
+          {CREDIT_ROLES_BY_MEDIA_TYPE[mediaType].map((role) => (
+            <Grid key={role} size={{ xs: 12, md: 6 }}>
+              <TextField
+                defaultValue={creditsForRole(item?.credits ?? [], role).join(
+                  "; ",
+                )}
+                fullWidth
+                helperText="Separate multiple names with semicolons."
+                label={creditLabel(mediaType, role)}
+                name={creditFieldName(role)}
+              />
+            </Grid>
+          ))}
           <Grid size={{ xs: 12, md: 6 }}>
             <Autocomplete
               getOptionDisabled={(option) =>
@@ -183,7 +215,6 @@ export function MediaForm({
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             <Autocomplete
-              freeSolo
               fullWidth
               multiple
               onChange={(_, value) => {
@@ -193,7 +224,7 @@ export function MediaForm({
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  helperText="Existing tags autocomplete; new tags save as pending."
+                  helperText="Canonical tags available for this media type."
                   label="Tags"
                 />
               )}

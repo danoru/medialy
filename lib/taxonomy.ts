@@ -13,8 +13,10 @@ export const SCREEN_MEDIA_GENRES = [
   "Horror",
   "Musical",
   "Mystery",
+  "Reality",
   "Romance",
   "Science Fiction",
+  "Sports",
   "Thriller",
   "War",
   "Western",
@@ -63,6 +65,11 @@ export type CanonicalTagMetadata = {
   countryCode?: string;
 };
 
+export type CanonicalTagDefinition = CanonicalTagMetadata & {
+  name: string;
+  normalizedName: string;
+};
+
 type DiscoverSubgenreMap = Partial<
   Record<MediaType, Record<string, readonly string[]>>
 >;
@@ -77,6 +84,7 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
   TV_SHOW: {
     Animation: ["Anime"],
     Drama: ["Prestige TV"],
+    Reality: ["Reality Competition"],
     "Science Fiction": ["Space Opera"],
   },
   VIDEO_GAME: {
@@ -96,6 +104,7 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
 
 const screenMediaTypes = new Set<MediaType>(["MOVIE", "TV_SHOW"]);
 const gameMediaTypes = new Set<MediaType>(["VIDEO_GAME"]);
+const tvOnlyGenres = new Set(["Reality"]);
 const canonicalGenreByKey = new Map<string, string>(
   [...SCREEN_MEDIA_GENRES, ...GAME_GENRES].map((genre) => [
     normalizeTaxonomyKey(genre),
@@ -141,14 +150,6 @@ const tagAliases = new Map<string, string>([
   ["rogue like", "Roguelike"],
 ]);
 
-const canonicalDiscoverSubgenreKeys = new Set(
-  Object.values(DISCOVER_SUBGENRES).flatMap((genreMap) =>
-    Object.values(genreMap).flatMap((tags) =>
-      tags.map((tag) => normalizeTaxonomyKey(tag)),
-    ),
-  ),
-);
-
 const countryTagsByKey = new Map<
   string,
   { name: string; countryCode: string }
@@ -182,6 +183,7 @@ export function normalizeGenreName(value: string, mediaType: MediaType) {
   const aliased = genreAliases.get(normalized.toLowerCase()) ?? normalized;
   const canonical = canonicalGenreByKey.get(normalizeTaxonomyKey(aliased));
   if (!canonical) return null;
+  if (tvOnlyGenres.has(canonical) && mediaType !== "TV_SHOW") return null;
 
   return getGenresForMediaType(mediaType).includes(canonical)
     ? canonical
@@ -255,27 +257,97 @@ export function normalizeTagKey(value: string) {
 export function canonicalTagMetadataForName(
   value: string,
 ): CanonicalTagMetadata | null {
-  const name = normalizeTagName(value);
-  const key = normalizeTagKey(name);
-  const country = countryTagsByKey.get(key);
+  const definition = canonicalTagDefinitionForName(value);
+  if (!definition) return null;
 
-  if (country) {
-    return {
-      category: "COUNTRY",
-      discoverable: true,
-      countryCode: country.countryCode,
-    };
+  return {
+    category: definition.category,
+    discoverable: definition.discoverable,
+    mediaTypes: definition.mediaTypes,
+    countryCode: definition.countryCode,
+  };
+}
+
+export function canonicalTagDefinitionForName(
+  value: string,
+): CanonicalTagDefinition | null {
+  const key = normalizeTagKey(value);
+  return getCanonicalTagDefinitions().find(
+    (definition) => definition.normalizedName === key,
+  ) ?? null;
+}
+
+export function isTagApplicableForMediaType(
+  value: string,
+  mediaType: MediaType,
+) {
+  const definition = canonicalTagDefinitionForName(value);
+  if (!definition) return false;
+  return (
+    !definition.mediaTypes ||
+    definition.mediaTypes.length === 0 ||
+    definition.mediaTypes.includes(mediaType)
+  );
+}
+
+export function normalizeCanonicalTagsForMediaType(
+  mediaType: MediaType,
+  values: string[],
+) {
+  const tags: string[] = [];
+
+  for (const value of values) {
+    const definition = canonicalTagDefinitionForName(value);
+    if (!definition) {
+      throw new Error(`Invalid canonical tag: ${value}`);
+    }
+    if (!isTagApplicableForMediaType(definition.name, mediaType)) {
+      throw new Error(`Invalid tag for ${mediaType}: ${value}`);
+    }
+    if (!tags.includes(definition.name)) tags.push(definition.name);
   }
 
-  if (canonicalDiscoverSubgenreKeys.has(key)) {
-    return {
-      category: "SUBGENRE",
-      discoverable: true,
-      mediaTypes: mediaTypesForDiscoverSubgenre(name),
-    };
+  return tags;
+}
+
+export function getCanonicalTagDefinitions(): CanonicalTagDefinition[] {
+  const namesByKey = new Map<string, string>();
+
+  for (const genreMap of Object.values(DISCOVER_SUBGENRES)) {
+    for (const tags of Object.values(genreMap)) {
+      for (const tag of tags) {
+        namesByKey.set(normalizeTagKey(tag), tag);
+      }
+    }
   }
 
-  return null;
+  for (const country of countryTagsByKey.values()) {
+    namesByKey.set(normalizeTagKey(country.name), country.name);
+  }
+
+  return [...namesByKey.entries()]
+    .map(([normalizedName, name]) => {
+      const country = countryTagsByKey.get(normalizedName);
+
+      if (country) {
+        return {
+          name: country.name,
+          normalizedName,
+          category: "COUNTRY",
+          discoverable: true,
+          countryCode: country.countryCode,
+        } satisfies CanonicalTagDefinition;
+      }
+
+      return {
+        name,
+        normalizedName,
+        category: "SUBGENRE",
+        discoverable: true,
+        mediaTypes: mediaTypesForDiscoverSubgenre(name),
+      } satisfies CanonicalTagDefinition;
+    })
+    .sort((first, second) => first.name.localeCompare(second.name));
 }
 
 export function getDiscoverSubgenresForGenre(

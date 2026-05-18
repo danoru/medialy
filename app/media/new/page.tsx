@@ -7,9 +7,9 @@ export const metadata = { title: "Add Media" };
 
 export default async function NewMediaPage() {
   const tags = await prisma.tag.findMany({
-    where: { status: { in: ["APPROVED", "PENDING"] } },
+    where: { status: "APPROVED" },
     orderBy: [{ status: "asc" }, { name: "asc" }],
-    select: { name: true, status: true },
+    select: { mediaTypesJson: true, name: true, status: true },
   });
 
   return (

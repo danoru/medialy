@@ -28,9 +28,9 @@ export default async function EditMediaPage({
   const [item, tags] = await Promise.all([
     getMediaItemDTO(id),
     prisma.tag.findMany({
-      where: { status: { in: ["APPROVED", "PENDING"] } },
+      where: { status: "APPROVED" },
       orderBy: [{ status: "asc" }, { name: "asc" }],
-      select: { name: true, status: true },
+      select: { mediaTypesJson: true, name: true, status: true },
     }),
   ]);
   if (!item) notFound();

@@ -4,7 +4,7 @@ import {
   mediaMutationDataWithUniqueTitle,
   mediaReleaseYear,
   mediaTitleKey,
-  upsertTaxonomy,
+  upsertMediaRelations,
 } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
@@ -94,6 +94,30 @@ export const MEDIA_IMPORT_FIELDS: Array<{
     required: false,
     aliases: ["external url", "url", "link"],
   },
+  {
+    key: "directors",
+    label: "Directors",
+    required: false,
+    aliases: ["directors", "director", "directed by"],
+  },
+  {
+    key: "creators",
+    label: "Creators",
+    required: false,
+    aliases: ["creators", "creator", "created by"],
+  },
+  {
+    key: "developers",
+    label: "Developers",
+    required: false,
+    aliases: ["developers", "developer", "developed by"],
+  },
+  {
+    key: "publishers",
+    label: "Publishers",
+    required: false,
+    aliases: ["publishers", "publisher", "published by"],
+  },
 ];
 
 export const MEDIA_IMPORT_CORE_FIELDS: MediaImportField[] = [
@@ -109,6 +133,10 @@ export const MEDIA_IMPORT_ADVANCED_FIELDS: MediaImportField[] = [
   "releaseDate",
   "genres",
   "tags",
+  "directors",
+  "creators",
+  "developers",
+  "publishers",
   "description",
   "externalUrl",
 ];
@@ -140,6 +168,7 @@ export async function buildJsonExport(): Promise<MedialyExport> {
       include: {
         genres: { include: { genre: true } },
         tags: { include: { tag: true } },
+        credits: { include: { contributor: true }, orderBy: { order: "asc" } },
       },
     }),
     prisma.genre.findMany(),
@@ -205,6 +234,7 @@ export async function buildMediaCsvExport() {
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
+      credits: { include: { contributor: true }, orderBy: { order: "asc" } },
     },
     orderBy: { title: "asc" },
   });
@@ -216,6 +246,10 @@ export async function buildMediaCsvExport() {
     "personalRating",
     "genres",
     "tags",
+    "directors",
+    "creators",
+    "developers",
+    "publishers",
     "description",
     "externalUrl",
   ];
@@ -228,6 +262,10 @@ export async function buildMediaCsvExport() {
       item.personalRating ?? "",
       item.genres.map((entry) => entry.genre.name).join(";"),
       item.tags.map((entry) => entry.tag.name).join(";"),
+      creditNames(item.credits, "DIRECTOR"),
+      creditNames(item.credits, "CREATOR"),
+      creditNames(item.credits, "DEVELOPER"),
+      creditNames(item.credits, "PUBLISHER"),
       item.description ?? "",
       item.externalUrl ?? "",
     ]
@@ -383,6 +421,7 @@ export function mediaInputFromLetterboxdRow(
     isFavorite: false,
     genres: [],
     tags: [],
+    credits: [],
   };
 }
 
@@ -487,7 +526,7 @@ export async function importMediaRowsWithSource(
   for (const [index, input] of rows.entries()) {
     try {
       const media = await upsertImportedMedia(input);
-      await upsertTaxonomy(media.id, input.genres, input.tags);
+      await upsertMediaRelations(media.id, input);
       await recomputeMediaScores(media.id);
       importedCount += 1;
     } catch (error) {
@@ -527,7 +566,7 @@ export async function importLetterboxdRows(
   for (const [index, input] of rows.entries()) {
     try {
       const media = await upsertImportedMedia(input);
-      await upsertTaxonomy(media.id, input.genres, input.tags);
+      await upsertMediaRelations(media.id, input);
       await recomputeMediaScores(media.id);
       importedCount += 1;
     } catch (error) {
@@ -577,6 +616,10 @@ export async function importJsonExport(
       externalUrl?: string | null;
       genres?: Array<{ genre?: { name?: string } }>;
       tags?: Array<{ tag?: { name?: string } }>;
+      credits?: Array<{
+        role?: string;
+        contributor?: { name?: string; kind?: string };
+      }>;
     };
     try {
       const input = mediaFormInputFromCsvRow({
@@ -600,9 +643,13 @@ export async function importJsonExport(
             ?.map((entry) => entry.tag?.name)
             .filter(Boolean)
             .join(";") ?? "",
+        directors: jsonCreditNames(item.credits, "DIRECTOR"),
+        creators: jsonCreditNames(item.credits, "CREATOR"),
+        developers: jsonCreditNames(item.credits, "DEVELOPER"),
+        publishers: jsonCreditNames(item.credits, "PUBLISHER"),
       });
       const media = await upsertImportedMedia(input);
-      await upsertTaxonomy(media.id, input.genres, input.tags);
+      await upsertMediaRelations(media.id, input);
       await recomputeMediaScores(media.id);
       importedCount += 1;
     } catch (error) {
@@ -634,6 +681,35 @@ export async function importJsonExport(
 
 function formatDate(value: Date | null) {
   return value ? value.toISOString().slice(0, 10) : "";
+}
+
+function creditNames(
+  credits: Array<{ role: string; order: number; contributor: { name: string } }>,
+  role: string,
+) {
+  return credits
+    .filter((credit) => credit.role === role)
+    .sort((first, second) => first.order - second.order)
+    .map((credit) => credit.contributor.name)
+    .join(";");
+}
+
+function jsonCreditNames(
+  credits:
+    | Array<{
+        role?: string;
+        contributor?: { name?: string };
+      }>
+    | undefined,
+  role: string,
+) {
+  return (
+    credits
+      ?.filter((credit) => credit.role === role)
+      .map((credit) => credit.contributor?.name)
+      .filter(Boolean)
+      .join(";") ?? ""
+  );
 }
 
 async function upsertImportedMedia(input: MediaFormInput) {

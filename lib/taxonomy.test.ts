@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   canonicalTagMetadataForName,
+  getCanonicalTagDefinitions,
   getDiscoverSubgenresForGenre,
+  isTagApplicableForMediaType,
   normalizeGenreName,
   splitGenresAndTags,
 } from "@/lib/taxonomy";
@@ -46,6 +48,30 @@ describe("taxonomy normalization", () => {
       countryCode: "JP",
     });
   });
+
+  it("supports Sports for movies and TV, and Reality for TV only", () => {
+    expect(normalizeGenreName("Sports", "MOVIE")).toBe("Sports");
+    expect(normalizeGenreName("Sports", "TV_SHOW")).toBe("Sports");
+    expect(normalizeGenreName("Reality", "TV_SHOW")).toBe("Reality");
+    expect(normalizeGenreName("Reality", "MOVIE")).toBeNull();
+  });
+
+  it("exposes the code-defined canonical tag allowlist", () => {
+    const definitions = getCanonicalTagDefinitions();
+    expect(definitions.map((definition) => definition.name)).toEqual(
+      expect.arrayContaining([
+        "Action RPG",
+        "Anime",
+        "Japan",
+        "Prestige TV",
+        "Real-Time Strategy",
+        "Stealth",
+      ]),
+    );
+    expect(definitions.every((definition) => definition.discoverable)).toBe(
+      true,
+    );
+  });
 });
 
 describe("discover taxonomy mapping", () => {
@@ -80,6 +106,18 @@ describe("discover taxonomy mapping", () => {
     );
     expect(getDiscoverSubgenresForGenre("MOVIE", "Horror")).not.toContain(
       "Anime",
+    );
+  });
+
+  it("keeps Reality Competition as a TV-only subgenre tag", () => {
+    expect(getDiscoverSubgenresForGenre("TV_SHOW", "Reality")).toContain(
+      "Reality Competition",
+    );
+    expect(isTagApplicableForMediaType("Reality Competition", "TV_SHOW")).toBe(
+      true,
+    );
+    expect(isTagApplicableForMediaType("Reality Competition", "MOVIE")).toBe(
+      false,
     );
   });
 });

@@ -1,5 +1,7 @@
 import type {
   ComparisonContext,
+  ContributorKind,
+  CreditRole,
   ImportSourceType,
   MediaStatus,
   MediaType,
@@ -30,6 +32,12 @@ export type MediaItemDTO = {
   genres: string[];
   tags: string[];
   tagDetails?: Array<{ name: string; status: TagStatus }>;
+  credits?: Array<{
+    role: CreditRole;
+    kind: ContributorKind;
+    name: string;
+    order: number;
+  }>;
 };
 
 export type MediaFormInput = {
@@ -45,6 +53,11 @@ export type MediaFormInput = {
   isFavorite: boolean;
   genres: string[];
   tags: string[];
+  credits?: Array<{
+    role: CreditRole;
+    kind: ContributorKind;
+    names: string[];
+  }>;
 };
 
 export type PairwiseComparisonInput = {
@@ -133,6 +146,10 @@ export type CsvMediaRow = {
   personalRating?: string;
   genres?: string;
   tags?: string;
+  directors?: string;
+  creators?: string;
+  developers?: string;
+  publishers?: string;
   description?: string;
   externalUrl?: string;
   isFavorite?: string;

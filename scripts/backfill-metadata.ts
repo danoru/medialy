@@ -1,5 +1,6 @@
 import { MediaType, PrismaClient } from "@prisma/client";
 import "dotenv/config";
+import { replaceMediaCredits, type CreditInput } from "@/lib/credits";
 
 type Args = {
   dryRun: boolean;
@@ -18,6 +19,7 @@ type MediaItemRow = {
   metadataJson: string | null;
   genres: Array<{ genre: { name: string } }>;
   tags: Array<{ tag: { name: string } }>;
+  credits: Array<{ role: string }>;
 };
 
 type MetadataMatch = {
@@ -30,6 +32,7 @@ type MetadataMatch = {
   externalUrl: string | null;
   genres: string[];
   tags: string[];
+  credits: CreditInput[];
   metadata: Record<string, unknown>;
 };
 
@@ -65,11 +68,13 @@ async function main() {
         { metadataJson: null },
         { genres: { none: {} } },
         { tags: { none: {} } },
+        { credits: { none: {} } },
       ],
     },
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
+      credits: true,
     },
     orderBy: [{ mediaType: "asc" }, { title: "asc" }],
     take: args.limit ?? undefined,
@@ -89,6 +94,7 @@ async function main() {
       metadataJson: 0,
       genres: 0,
       tags: 0,
+      credits: 0,
     },
     sources: {
       tmdb: 0,
@@ -120,11 +126,13 @@ async function main() {
     const genres = item.genres.length === 0 ? normalizeNames(match.genres) : [];
     const tags =
       item.tags.length === 0 ? normalizeNames(match.tags).slice(0, 8) : [];
+    const credits = item.credits.length === 0 ? match.credits : [];
 
     if (
       Object.keys(update).length === 0 &&
       genres.length === 0 &&
-      tags.length === 0
+      tags.length === 0 &&
+      credits.length === 0
     ) {
       stats.noUsefulData += 1;
       continue;
@@ -170,6 +178,10 @@ async function main() {
             create: { mediaId: item.id, tagId: tag.id },
           });
         }
+
+        if (credits.length > 0) {
+          await replaceMediaCredits(tx, item.id, credits);
+        }
       });
     }
 
@@ -181,6 +193,7 @@ async function main() {
     if (update.metadataJson) stats.fields.metadataJson += 1;
     if (genres.length > 0) stats.fields.genres += 1;
     if (tags.length > 0) stats.fields.tags += 1;
+    if (credits.length > 0) stats.fields.credits += 1;
 
     console.log(
       JSON.stringify({
@@ -193,6 +206,10 @@ async function main() {
         fields: Object.keys(update),
         genres,
         tags,
+        credits: credits.map((credit) => ({
+          role: credit.role,
+          names: credit.names,
+        })),
       }),
     );
   }
@@ -275,9 +292,10 @@ async function findTmdb(
   if (!candidate) return null;
 
   const id = String(recordValue(candidate).id);
-  const details = await tmdbFetch(
-    new URL(`https://api.themoviedb.org/3/${endpoint}/${id}?language=en-US`),
-  );
+  const detailsUrl = new URL(`https://api.themoviedb.org/3/${endpoint}/${id}`);
+  detailsUrl.searchParams.set("language", "en-US");
+  detailsUrl.searchParams.set("append_to_response", "credits");
+  const details = await tmdbFetch(detailsUrl);
   const record = recordValue(details);
   const genreMap = await tmdbGenres(endpoint);
   const genreNames = arrayValue(record.genres).map((genre) =>
@@ -309,6 +327,7 @@ async function findTmdb(
     externalUrl: `https://www.themoviedb.org/${endpoint}/${id}`,
     genres,
     tags: genres,
+    credits: tmdbCredits(record, endpoint),
     metadata: record,
   };
 }
@@ -347,6 +366,7 @@ async function findTvmaze(item: MediaItemRow): Promise<MetadataMatch | null> {
     externalUrl: stringValue(show.url),
     genres,
     tags: genres,
+    credits: [],
     metadata: show,
   };
 }
@@ -360,7 +380,7 @@ async function findIgdb(item: MediaItemRow): Promise<MetadataMatch | null> {
   let candidate: unknown = null;
   for (const query of titleSearchQueries(item.title)) {
     const body = [
-      "fields name,summary,url,first_release_date,genres.name,themes.name,cover.url;",
+      "fields name,summary,url,first_release_date,genres.name,themes.name,involved_companies.developer,involved_companies.publisher,involved_companies.company.name,cover.url;",
       `search "${query.replaceAll('"', '\\"')}";`,
       "limit 10;",
     ].join(" ");
@@ -388,6 +408,7 @@ async function findIgdb(item: MediaItemRow): Promise<MetadataMatch | null> {
     externalUrl: stringValue(game.url),
     genres,
     tags: tags.length > 0 ? tags : genres,
+    credits: igdbCredits(game),
     metadata: game,
   };
 }
@@ -431,8 +452,71 @@ async function findRawg(item: MediaItemRow): Promise<MetadataMatch | null> {
       : null,
     genres,
     tags: tags.length > 0 ? tags : genres,
+    credits: [],
     metadata: game,
   };
+}
+
+function tmdbCredits(
+  record: Record<string, unknown>,
+  endpoint: "movie" | "tv",
+): CreditInput[] {
+  if (endpoint === "tv") {
+    const names = arrayValue(record.created_by)
+      .map((entry) => stringValue(recordValue(entry).name))
+      .filter(isPresent);
+    return names.length > 0
+      ? [{ role: "CREATOR", kind: "PERSON", names, source: "tmdb" }]
+      : [];
+  }
+
+  const crew = arrayValue(recordValue(record.credits).crew);
+  const names = crew
+    .filter((entry) => stringValue(recordValue(entry).job) === "Director")
+    .sort(
+      (first, second) =>
+        (numberValue(recordValue(first).order) ?? 0) -
+        (numberValue(recordValue(second).order) ?? 0),
+    )
+    .map((entry) => stringValue(recordValue(entry).name))
+    .filter(isPresent);
+
+  return names.length > 0
+    ? [{ role: "DIRECTOR", kind: "PERSON", names, source: "tmdb" }]
+    : [];
+}
+
+function igdbCredits(game: Record<string, unknown>): CreditInput[] {
+  const developers: string[] = [];
+  const publishers: string[] = [];
+
+  for (const entry of arrayValue(game.involved_companies)) {
+    const record = recordValue(entry);
+    const name = stringValue(recordValue(record.company).name);
+    if (!name) continue;
+    if (record.developer === true) developers.push(name);
+    if (record.publisher === true) publishers.push(name);
+  }
+
+  const credits: CreditInput[] = [];
+  if (developers.length > 0) {
+    credits.push({
+      role: "DEVELOPER",
+      kind: "COMPANY",
+      names: [...new Set(developers)],
+      source: "igdb",
+    });
+  }
+  if (publishers.length > 0) {
+    credits.push({
+      role: "PUBLISHER",
+      kind: "COMPANY",
+      names: [...new Set(publishers)],
+      source: "igdb",
+    });
+  }
+
+  return credits;
 }
 
 async function tmdbFetch(url: URL) {

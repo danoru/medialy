@@ -1,11 +1,17 @@
 import { MediaStatus, MediaType } from "@prisma/client";
+import {
+  CREDIT_ROLES_BY_MEDIA_TYPE,
+  creditKindForRole,
+  splitCreditNames,
+  type CreditInput,
+} from "@/lib/credits";
 import type { CsvMediaRow, MediaFormInput } from "@/lib/types";
 import { normalizeSearchText } from "@/lib/text-normalization";
 import {
   MAX_GENRES_PER_ITEM,
   normalizeGenreName,
   normalizeGenresForMediaType,
-  normalizeTagName,
+  normalizeCanonicalTagsForMediaType,
   splitGenresAndTags,
 } from "@/lib/taxonomy";
 
@@ -97,7 +103,8 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
     personalRating: parseOptionalRating(formData.get("personalRating")),
     isFavorite: formData.get("isFavorite") === "on",
     genres: parseCanonicalGenres(formData.getAll("genres"), mediaType),
-    tags: splitNames(formData.get("tags")).map(normalizeTagName),
+    tags: parseCanonicalTags(formData.get("tags"), mediaType),
+    credits: parseCreditsFromFormData(formData, mediaType),
   };
 }
 
@@ -120,10 +127,11 @@ export function mediaFormInputFromCsvRow(row: CsvMediaRow): MediaFormInput {
     genres: split.genres,
     tags: [
       ...new Set([
-        ...split.tags,
-        ...splitNames(row.tags ?? "").map(normalizeTagName),
+        ...normalizeCanonicalTagsForMediaType(mediaType, split.tags),
+        ...parseCanonicalTags(row.tags ?? "", mediaType),
       ]),
     ],
+    credits: parseCreditsFromCsvRow(row),
   };
 }
 
@@ -152,6 +160,50 @@ export function parseGenres(
 ) {
   const genres = normalizeGenresForMediaType(mediaType, splitNames(value));
   return genres;
+}
+
+export function parseCanonicalTags(
+  value: FormDataEntryValue | string | null,
+  mediaType: MediaType,
+) {
+  return normalizeCanonicalTagsForMediaType(mediaType, splitNames(value));
+}
+
+function parseCreditsFromFormData(
+  formData: FormData,
+  mediaType: MediaType,
+): CreditInput[] {
+  return CREDIT_ROLES_BY_MEDIA_TYPE[mediaType].map((role) =>
+    mediaCredit(role, formData.get(roleFieldName(role))),
+  );
+}
+
+function parseCreditsFromCsvRow(row: CsvMediaRow): CreditInput[] {
+  return [
+    mediaCredit("DIRECTOR", row.directors ?? ""),
+    mediaCredit("CREATOR", row.creators ?? ""),
+    mediaCredit("DEVELOPER", row.developers ?? ""),
+    mediaCredit("PUBLISHER", row.publishers ?? ""),
+  ].filter((credit) => credit.names.length > 0);
+}
+
+function mediaCredit(
+  role: CreditInput["role"],
+  value: FormDataEntryValue | string | null,
+): CreditInput {
+  return {
+    role,
+    kind: creditKindForRole(role),
+    names: splitCreditNames(value),
+  };
+}
+
+function roleFieldName(role: CreditInput["role"]) {
+  if (role === "DIRECTOR") return "directorCredits";
+  if (role === "CREATOR") return "creatorCredits";
+  if (role === "DEVELOPER") return "developerCredits";
+  if (role === "PUBLISHER") return "publisherCredits";
+  return "credits";
 }
 
 function parseOptionalBoolean(value: string) {

@@ -33,6 +33,7 @@ model MediaItem {
 
   genres          MediaGenre[]
   tags            MediaTag[]
+  credits         MediaCredit[]
   comparisonsWon  PairwiseComparison[] @relation("Winner")
   comparisonsLost PairwiseComparison[] @relation("Loser")
   listItems       ListItem[]
@@ -145,6 +146,35 @@ model MediaTag {
   tag     Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([mediaId, tagId])
+}
+
+model Contributor {
+  id             String          @id @default(cuid())
+  name           String
+  normalizedName String
+  kind           ContributorKind
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  credits        MediaCredit[]
+
+  @@unique([normalizedName, kind])
+  @@index([name])
+  @@index([kind])
+}
+
+model MediaCredit {
+  mediaId       String
+  contributorId String
+  role          CreditRole
+  order         Int        @default(0)
+  source        String?
+  sourceId      String?
+  media         MediaItem  @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  contributor   Contributor @relation(fields: [contributorId], references: [id], onDelete: Cascade)
+
+  @@id([mediaId, contributorId, role])
+  @@index([role])
+  @@index([contributorId])
 }
 
 model PairwiseComparison {
@@ -312,4 +342,16 @@ enum TagCategory {
   MECHANIC
   MOOD
   FORMAT
+}
+
+enum ContributorKind {
+  PERSON
+  COMPANY
+}
+
+enum CreditRole {
+  DIRECTOR
+  CREATOR
+  DEVELOPER
+  PUBLISHER
 }

@@ -15,24 +15,35 @@ describe("media csv import", () => {
   it("parses genres and tags from semicolon-separated columns", () => {
     const [row] = parseMediaCsv(
       "title,mediaType,status,releaseDate,personalRating,genres,tags,description,externalUrl\n" +
-        "Heat,MOVIE,WATCHLIST,1995-12-15,9,Crime;Drama,heist;rewatchable,Classic,http://example.test",
+        "Heat,MOVIE,WATCHLIST,1995-12-15,9,Crime;Drama,Anime;Japan,Classic,http://example.test",
     );
     const input = mediaFormInputFromCsvRow(row);
 
     expect(input.genres).toEqual(["Crime", "Drama"]);
-    expect(input.tags).toEqual(["Heist", "Rewatchable"]);
+    expect(input.tags).toEqual(["Anime", "Japan"]);
     expect(input.personalRating).toBe(9);
   });
 
-  it("moves noncanonical imported genre labels into normalized tags", () => {
+  it("moves canonical imported subgenre labels into normalized tags", () => {
     const [row] = parseMediaCsv(
       "title,mediaType,status,genres,tags\n" +
-        "Blade Runner,MOVIE,COMPLETED,Sci-Fi;Cyberpunk,found-family",
+        "Blade Runner,MOVIE,COMPLETED,Sci-Fi;Cyberpunk,Space Opera",
     );
     const input = mediaFormInputFromCsvRow(row);
 
     expect(input.genres).toEqual(["Science Fiction"]);
-    expect(input.tags).toEqual(["Cyberpunk", "Found Family"]);
+    expect(input.tags).toEqual(["Cyberpunk", "Space Opera"]);
+  });
+
+  it("rejects noncanonical imported tags", () => {
+    const [row] = parseMediaCsv(
+      "title,mediaType,status,genres,tags\n" +
+        "Blade Runner,MOVIE,COMPLETED,Sci-Fi,found-family",
+    );
+
+    expect(() => mediaFormInputFromCsvRow(row)).toThrow(
+      /Invalid canonical tag/,
+    );
   });
 
   it("returns row-level validation errors for invalid enum values", () => {
