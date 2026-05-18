@@ -1,5 +1,4 @@
 import {
-  Button,
   Card,
   CardContent,
   Chip,
@@ -17,6 +16,8 @@ import { addFriendRating, createFriend } from "@/app/friends/actions";
 import { getFriendCompatibility } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
 import { formatMediaType, formatStatus } from "@/lib/format";
+import { StatePanel } from "@/components/shared/StatePanel";
+import { ActionToastButton } from "@/components/shared/Toasts";
 import {
   isVisibleMediaType,
   VISIBLE_MEDIA_TYPES,
@@ -91,9 +92,12 @@ export default async function FriendsPage({
                 <Stack spacing={2}>
                   <TextField label="Name" name="name" required />
                   <TextField label="Notes" minRows={3} multiline name="notes" />
-                  <Button type="submit" variant="contained">
+                  <ActionToastButton
+                    successMessage="Friend added."
+                    variant="contained"
+                  >
                     Add friend
-                  </Button>
+                  </ActionToastButton>
                 </Stack>
               </form>
             </CardContent>
@@ -112,6 +116,7 @@ export default async function FriendsPage({
                     disabled={friends.length === 0}
                     label="Friend"
                     name="friendId"
+                    required
                     select
                     sx={{ minWidth: 180 }}
                   >
@@ -127,6 +132,7 @@ export default async function FriendsPage({
                     disabled={filteredMedia.length === 0}
                     label="Media"
                     name="mediaId"
+                    required
                     select
                     sx={{ minWidth: 220 }}
                   >
@@ -157,15 +163,15 @@ export default async function FriendsPage({
                       </MenuItem>
                     ))}
                   </TextField>
-                  <Button
+                  <ActionToastButton
                     disabled={
                       friends.length === 0 || filteredMedia.length === 0
                     }
-                    type="submit"
+                    successMessage="Friend rating saved."
                     variant="contained"
                   >
                     Save
-                  </Button>
+                  </ActionToastButton>
                 </Stack>
               </form>
               {friends.length === 0 || filteredMedia.length === 0 ? (
@@ -243,10 +249,11 @@ export default async function FriendsPage({
                       </Typography>
                     ))}
                     {ratings.length === 0 ? (
-                      <Typography color="text.secondary">
-                        No {formatMediaType(selectedType).toLowerCase()} friend
-                        ratings yet.
-                      </Typography>
+                      <StatePanel
+                        description={`Record ratings for ${formatMediaType(selectedType).toLowerCase()} media to compare this friend's taste with yours.`}
+                        minHeight={150}
+                        title={`No ${formatMediaType(selectedType).toLowerCase()} friend ratings yet`}
+                      />
                     ) : null}
                   </Stack>
                 </CardContent>
@@ -256,14 +263,10 @@ export default async function FriendsPage({
         })}
         {friends.length === 0 ? (
           <Grid size={{ xs: 12 }}>
-            <Card variant="outlined">
-              <CardContent>
-                <Typography color="text.secondary">
-                  No friends yet. Add one above to start tracking overlap and
-                  compatibility.
-                </Typography>
-              </CardContent>
-            </Card>
+            <StatePanel
+              description="Add a friend above, then record their ratings to track overlap and compatibility."
+              title="No friends yet"
+            />
           </Grid>
         ) : null}
       </Grid>

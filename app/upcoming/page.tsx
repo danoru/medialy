@@ -34,6 +34,8 @@ import {
   groupUpcomingItems,
   startOfToday,
 } from "@/lib/upcoming";
+import { StatePanel } from "@/components/shared/StatePanel";
+import { ActionToastButton } from "@/components/shared/Toasts";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Upcoming" };
@@ -203,13 +205,11 @@ function CandidateQueue({
             ))}
           </Stack>
         ) : (
-          <Typography
-            color="text.secondary"
-            sx={{ py: 3, textAlign: "center" }}
-          >
-            No staged {formatMediaType(selectedType).toLowerCase()} discovery
-            candidates yet.
-          </Typography>
+          <StatePanel
+            description={`Fetched ${formatMediaType(selectedType).toLowerCase()} candidates will appear here before they enter recommendations.`}
+            minHeight={170}
+            title={`No staged ${formatMediaType(selectedType).toLowerCase()} candidates`}
+          />
         )}
       </CardContent>
     </Card>
@@ -273,8 +273,7 @@ function CandidateRow({ candidate }: { candidate: ReleaseCandidateItem }) {
         <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.6, mt: 0.8 }}>
           <Chip
             label={
-              candidate.releaseDate?.toLocaleDateString() ??
-              "Date unknown"
+              candidate.releaseDate?.toLocaleDateString() ?? "Date unknown"
             }
             size="small"
           />
@@ -297,30 +296,43 @@ function CandidateRow({ candidate }: { candidate: ReleaseCandidateItem }) {
       >
         {candidate.status !== ReleaseCandidateStatus.APPROVED ? (
           <form action={approveReleaseCandidate.bind(null, candidate.id)}>
-            <Button size="small" type="submit" variant="outlined">
+            <ActionToastButton
+              size="small"
+              successMessage="Candidate approved."
+              variant="outlined"
+            >
               Approve
-            </Button>
+            </ActionToastButton>
           </form>
         ) : null}
         <form action={importApprovedReleaseCandidate.bind(null, candidate.id)}>
-          <Button
+          <ActionToastButton
             color="success"
             size="small"
-            type="submit"
+            successMessage="Candidate imported."
             variant="contained"
           >
             Import
-          </Button>
+          </ActionToastButton>
         </form>
         <form action={rejectReleaseCandidate.bind(null, candidate.id)}>
-          <Button color="warning" size="small" type="submit" variant="outlined">
+          <ActionToastButton
+            color="warning"
+            size="small"
+            successMessage="Candidate rejected."
+            variant="outlined"
+          >
             Reject
-          </Button>
+          </ActionToastButton>
         </form>
         <form action={ignoreReleaseCandidate.bind(null, candidate.id)}>
-          <Button size="small" type="submit" variant="text">
+          <ActionToastButton
+            size="small"
+            successMessage="Candidate ignored."
+            variant="text"
+          >
             Ignore
-          </Button>
+          </ActionToastButton>
         </form>
       </Stack>
     </Stack>
@@ -504,9 +516,14 @@ function ReleaseRow({
           </Button>
           {showReviewActions ? (
             <form action={clearReleaseDate.bind(null, id)}>
-              <Button color="warning" size="small" type="submit" variant="outlined">
+              <ActionToastButton
+                color="warning"
+                size="small"
+                successMessage="Release date cleared."
+                variant="outlined"
+              >
                 Clear date
-              </Button>
+              </ActionToastButton>
             </form>
           ) : null}
         </Stack>
@@ -517,16 +534,12 @@ function ReleaseRow({
 
 function EmptyState() {
   return (
-    <Stack
-      spacing={1}
-      sx={{ alignItems: "center", color: "text.secondary", py: 5 }}
-    >
-      <CalendarMonthIcon />
-      <Typography>No releases in the next 30 days.</Typography>
-      <Button href="/media/new" size="small" variant="outlined">
-        Add one
-      </Button>
-    </Stack>
+    <StatePanel
+      action={{ href: "/media/new", label: "Add one" }}
+      description="Future-dated media will appear here once release dates are added."
+      icon={<CalendarMonthIcon />}
+      title="No releases in the next 30 days"
+    />
   );
 }
 

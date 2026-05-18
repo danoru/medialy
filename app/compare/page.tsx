@@ -27,6 +27,8 @@ import {
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
+import { StatePanel } from "@/components/shared/StatePanel";
+import { ActionToastButton } from "@/components/shared/Toasts";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Compare" };
@@ -170,7 +172,10 @@ export default async function ComparePage({
                 name="mediaType"
                 select
                 size="small"
-                sx={{ minWidth: { lg: 180 } }}
+                sx={{
+                  minWidth: { md: 180 },
+                  width: { xs: "100%", md: "auto" },
+                }}
               >
                 <MenuItem value="">Auto</MenuItem>
                 {typeCounts
@@ -187,7 +192,10 @@ export default async function ComparePage({
                 name="genre"
                 select
                 size="small"
-                sx={{ minWidth: { lg: 180 } }}
+                sx={{
+                  minWidth: { md: 180 },
+                  width: { xs: "100%", md: "auto" },
+                }}
               >
                 <MenuItem value="">Prefer shared genres</MenuItem>
                 {genres.map((genre) => (
@@ -202,7 +210,10 @@ export default async function ComparePage({
                 name="tag"
                 select
                 size="small"
-                sx={{ minWidth: { lg: 180 } }}
+                sx={{
+                  minWidth: { md: 180 },
+                  width: { xs: "100%", md: "auto" },
+                }}
               >
                 <MenuItem value="">Prefer shared tags</MenuItem>
                 {tags.map((tag) => (
@@ -290,7 +301,7 @@ export default async function ComparePage({
                 sx={{
                   flexWrap: "wrap",
                   gap: 1,
-                  ml: { xs: "55px", sm: "55px" },
+                  ml: { xs: 0, sm: "55px" },
                   mt: 2,
                 }}
               >
@@ -414,10 +425,10 @@ export default async function ComparePage({
                                 direction="row"
                                 sx={{
                                   gap: 0.75,
-                                  height: 32,
                                   maxWidth: "100%",
                                   minWidth: 0,
-                                  overflow: "hidden",
+                                  overflowX: "auto",
+                                  pb: 0.25,
                                   whiteSpace: "nowrap",
                                 }}
                               >
@@ -508,9 +519,12 @@ export default async function ComparePage({
                             multiline
                             name="notes"
                           />
-                          <Button type="submit" variant="contained">
+                          <ActionToastButton
+                            successMessage="Comparison saved."
+                            variant="contained"
+                          >
                             Choose winner
-                          </Button>
+                          </ActionToastButton>
                         </Stack>
                       </CardContent>
                     </Card>
@@ -521,14 +535,11 @@ export default async function ComparePage({
           </Grid>
         </Stack>
       ) : (
-        <Card variant="outlined">
-          <CardContent>
-            <Typography>
-              Add at least two watched or played items in the same media type,
-              or loosen the selected genre and tag filters.
-            </Typography>
-          </CardContent>
-        </Card>
+        <StatePanel
+          action={{ href: "/media", label: "Review media" }}
+          description="Add at least two released, active items in the same media type, or loosen the selected genre and tag filters."
+          title="No comparison pair available"
+        />
       )}
 
       <Card variant="outlined">
@@ -557,7 +568,10 @@ export default async function ComparePage({
                 name="historyItem"
                 select
                 size="small"
-                sx={{ minWidth: 220 }}
+                sx={{
+                  minWidth: { md: 220 },
+                  width: { xs: "100%", md: "auto" },
+                }}
               >
                 <MenuItem value="">All items</MenuItem>
                 {historyMedia.map((item) => (
@@ -572,7 +586,10 @@ export default async function ComparePage({
                 name="historyContext"
                 select
                 size="small"
-                sx={{ minWidth: 180 }}
+                sx={{
+                  minWidth: { md: 180 },
+                  width: { xs: "100%", md: "auto" },
+                }}
               >
                 <MenuItem value="">All contexts</MenuItem>
                 {Object.values(ComparisonContext).map((context) => (

@@ -14,6 +14,7 @@ import Link from "next/link";
 import { getDataHealthReport } from "@/lib/insights";
 import { formatMediaType } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
+import { StatePanel } from "@/components/shared/StatePanel";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Data Health" };
@@ -135,9 +136,11 @@ export default async function DataHealthPage({
                   </Box>
                 ))}
                 {filteredReport.duplicateCandidates.length === 0 ? (
-                  <Typography color="text.secondary">
-                    No duplicate candidates found.
-                  </Typography>
+                  <StatePanel
+                    description="No same-title and same-year candidates were found for the selected media type."
+                    minHeight={160}
+                    title="No duplicate candidates found"
+                  />
                 ) : null}
               </Stack>
             </CardContent>
@@ -188,7 +191,11 @@ function HealthCard({
             </Link>
           ))}
           {items.length === 0 ? (
-            <Typography color="text.secondary">No issues.</Typography>
+            <StatePanel
+              description="Everything in this category looks complete for the current media type."
+              minHeight={140}
+              title="No issues"
+            />
           ) : null}
         </Stack>
       </CardContent>

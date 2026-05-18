@@ -14,6 +14,7 @@ import Link from "next/link";
 import { getRecommendations } from "@/lib/recommendations";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
+import { StatePanel } from "@/components/shared/StatePanel";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Recommendations" };
@@ -147,10 +148,11 @@ export default async function RecommendationsPage({
           </Card>
         ))}
         {visibleRecommendations.length === 0 ? (
-          <Typography color="text.secondary">
-            No eligible {formatMediaType(selectedType).toLowerCase()}{" "}
-            recommendations yet.
-          </Typography>
+          <StatePanel
+            action={{ href: "/media", label: "Review media library" }}
+            description={`Add ratings, comparisons, or watchlist items to unlock ${formatMediaType(selectedType).toLowerCase()} recommendations.`}
+            title={`No ${formatMediaType(selectedType).toLowerCase()} recommendations yet`}
+          />
         ) : null}
       </Stack>
     </Stack>

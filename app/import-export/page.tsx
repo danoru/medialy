@@ -6,6 +6,7 @@ import {
   importXlsxFile,
 } from "@/app/import-export/actions";
 import { ImportExportPanel } from "@/components/import-export/ImportExportPanel";
+import { StatePanel } from "@/components/shared/StatePanel";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +39,11 @@ export default async function ImportExportPage() {
               </Typography>
             ))}
             {jobs.length === 0 ? (
-              <Typography color="text.secondary">
-                No imports recorded yet.
-              </Typography>
+              <StatePanel
+                description="Validated imports will appear here after a JSON, CSV, XLSX, or Letterboxd file is imported."
+                minHeight={160}
+                title="No imports recorded yet"
+              />
             ) : null}
           </Stack>
         </CardContent>

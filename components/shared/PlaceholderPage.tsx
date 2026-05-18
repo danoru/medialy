@@ -9,6 +9,9 @@ export function PlaceholderPage({
 }) {
   return (
     <Stack spacing={3}>
+      <Typography component="h1" sx={{ fontWeight: 900 }} variant="h4">
+        {title}
+      </Typography>
       <Card aria-label={title} variant="outlined">
         <CardContent>
           <Typography color="text.secondary" sx={{ mb: 2 }} variant="body1">

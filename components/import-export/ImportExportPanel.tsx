@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import DownloadIcon from "@mui/icons-material/Download";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import {
@@ -27,6 +27,7 @@ import {
   MEDIA_IMPORT_FIELDS,
 } from "@/lib/import-export";
 import type { MediaImportField, MediaImportMapping } from "@/lib/types";
+import { useToast } from "@/components/shared/Toasts";
 
 type ImportType = "csv" | "json" | "xlsx" | "letterboxd";
 type LetterboxdRole = "watchlist" | "watched";
@@ -72,6 +73,21 @@ export function ImportExportPanel({
   const [mapping, setMapping] = useState<MediaImportMapping>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const { showToast } = useToast();
+  const importSubmittedRef = useRef(false);
+  const importWasPendingRef = useRef(false);
+
+  useEffect(() => {
+    if (isPending) {
+      importWasPendingRef.current = true;
+      return;
+    }
+
+    if (!importWasPendingRef.current || !importSubmittedRef.current) return;
+    importWasPendingRef.current = false;
+    importSubmittedRef.current = false;
+    showToast({ message: "Import completed.", severity: "success" });
+  }, [isPending, showToast]);
 
   async function previewFile(
     file: File | undefined,
@@ -134,6 +150,7 @@ export function ImportExportPanel({
               : jsonFormRef.current;
     if (!form) return;
 
+    importSubmittedRef.current = true;
     startTransition(() => {
       form.requestSubmit();
     });

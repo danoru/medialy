@@ -1,5 +1,4 @@
 import {
-  Button,
   Card,
   CardContent,
   Chip,
@@ -7,6 +6,8 @@ import {
   Typography,
 } from "@mui/material";
 import { approveTag, rejectTag } from "@/app/settings/actions";
+import { StatePanel } from "@/components/shared/StatePanel";
+import { ActionToastButton } from "@/components/shared/Toasts";
 import { prisma } from "@/lib/prisma";
 
 export const metadata = { title: "Settings" };
@@ -27,9 +28,11 @@ export default async function SettingsPage() {
               Tag Moderation
             </Typography>
             {pendingTags.length === 0 ? (
-              <Typography color="text.secondary">
-                No pending tag suggestions.
-              </Typography>
+              <StatePanel
+                description="New freeform tags created from media forms will appear here for approval."
+                minHeight={160}
+                title="No pending tag suggestions"
+              />
             ) : (
               <Stack spacing={1}>
                 {pendingTags.map((tag) => (
@@ -54,19 +57,23 @@ export default async function SettingsPage() {
                     </Stack>
                     <Stack direction="row" spacing={1}>
                       <form action={approveTag.bind(null, tag.id)}>
-                        <Button size="small" type="submit" variant="contained">
+                        <ActionToastButton
+                          size="small"
+                          successMessage="Tag approved."
+                          variant="contained"
+                        >
                           Approve
-                        </Button>
+                        </ActionToastButton>
                       </form>
                       <form action={rejectTag.bind(null, tag.id)}>
-                        <Button
+                        <ActionToastButton
                           color="error"
                           size="small"
-                          type="submit"
+                          successMessage="Tag rejected."
                           variant="outlined"
                         >
                           Reject
-                        </Button>
+                        </ActionToastButton>
                       </form>
                     </Stack>
                   </Stack>
