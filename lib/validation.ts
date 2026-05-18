@@ -12,6 +12,8 @@ import {
   normalizeGenreName,
   normalizeGenresForMediaType,
   normalizeCanonicalTagsForMediaType,
+  normalizeTagKey,
+  normalizeTagName,
   splitGenresAndTags,
 } from "@/lib/taxonomy";
 
@@ -103,7 +105,7 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
     personalRating: parseOptionalRating(formData.get("personalRating")),
     isFavorite: formData.get("isFavorite") === "on",
     genres: parseCanonicalGenres(formData.getAll("genres"), mediaType),
-    tags: parseCanonicalTags(formData.get("tags"), mediaType),
+    tags: parseSelectedTags(formData.get("tags")),
     credits: parseCreditsFromFormData(formData, mediaType),
   };
 }
@@ -167,6 +169,17 @@ export function parseCanonicalTags(
   mediaType: MediaType,
 ) {
   return normalizeCanonicalTagsForMediaType(mediaType, splitNames(value));
+}
+
+export function parseSelectedTags(value: FormDataEntryValue | string | null) {
+  return [
+    ...new Map(
+      splitNames(value)
+        .map(normalizeTagName)
+        .filter(Boolean)
+        .map((name) => [normalizeTagKey(name), name]),
+    ).values(),
+  ];
 }
 
 function parseCreditsFromFormData(

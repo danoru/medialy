@@ -104,6 +104,15 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
 
 const screenMediaTypes = new Set<MediaType>(["MOVIE", "TV_SHOW"]);
 const gameMediaTypes = new Set<MediaType>(["VIDEO_GAME"]);
+const validMediaTypes = new Set<string>([
+  "MOVIE",
+  "TV_SHOW",
+  "VIDEO_GAME",
+  "BOOK",
+  "BOARD_GAME",
+  "MUSIC",
+  "MUSICAL",
+]);
 const tvOnlyGenres = new Set(["Reality"]);
 const canonicalGenreByKey = new Map<string, string>(
   [...SCREEN_MEDIA_GENRES, ...GAME_GENRES].map((genre) => [
@@ -150,16 +159,15 @@ const tagAliases = new Map<string, string>([
   ["rogue like", "Roguelike"],
 ]);
 
-const countryTagsByKey = new Map<
-  string,
-  { name: string; countryCode: string }
->([
-  ["france", { name: "France", countryCode: "FR" }],
-  ["japan", { name: "Japan", countryCode: "JP" }],
-  ["southkorea", { name: "South Korea", countryCode: "KR" }],
-  ["unitedkingdom", { name: "United Kingdom", countryCode: "GB" }],
-  ["unitedstates", { name: "United States", countryCode: "US" }],
-]);
+const countryTagsByKey = new Map<string, { name: string; countryCode: string }>(
+  [
+    ["france", { name: "France", countryCode: "FR" }],
+    ["japan", { name: "Japan", countryCode: "JP" }],
+    ["southkorea", { name: "South Korea", countryCode: "KR" }],
+    ["unitedkingdom", { name: "United Kingdom", countryCode: "GB" }],
+    ["unitedstates", { name: "United States", countryCode: "US" }],
+  ],
+);
 
 const titleCaseExceptions = new Set([
   "4X",
@@ -272,9 +280,11 @@ export function canonicalTagDefinitionForName(
   value: string,
 ): CanonicalTagDefinition | null {
   const key = normalizeTagKey(value);
-  return getCanonicalTagDefinitions().find(
-    (definition) => definition.normalizedName === key,
-  ) ?? null;
+  return (
+    getCanonicalTagDefinitions().find(
+      (definition) => definition.normalizedName === key,
+    ) ?? null
+  );
 }
 
 export function isTagApplicableForMediaType(
@@ -288,6 +298,28 @@ export function isTagApplicableForMediaType(
     definition.mediaTypes.length === 0 ||
     definition.mediaTypes.includes(mediaType)
   );
+}
+
+export function mediaTypesFromJson(value: string | null | undefined) {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is MediaType =>
+      validMediaTypes.has(String(entry)),
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function tagMetadataAllowsMediaType(
+  mediaTypesJson: string | null | undefined,
+  mediaType: MediaType,
+) {
+  const mediaTypes = mediaTypesFromJson(mediaTypesJson);
+  return mediaTypes.length === 0 || mediaTypes.includes(mediaType);
 }
 
 export function normalizeCanonicalTagsForMediaType(

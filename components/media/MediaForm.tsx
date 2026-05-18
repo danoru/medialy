@@ -25,8 +25,8 @@ import { formatMediaType, formatStatus } from "@/lib/format";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import {
   getGenresForMediaType,
-  isTagApplicableForMediaType,
   MAX_GENRES_PER_ITEM,
+  tagMetadataAllowsMediaType,
 } from "@/lib/taxonomy";
 
 type TagOption = {
@@ -78,7 +78,9 @@ export function MediaForm({
   const tagNames = useMemo(
     () =>
       tagOptions
-        .filter((tag) => isTagApplicableForMediaType(tag.name, mediaType))
+        .filter((tag) =>
+          tagMetadataAllowsMediaType(tag.mediaTypesJson, mediaType),
+        )
         .map((tag) => tag.name),
     [mediaType, tagOptions],
   );
@@ -131,7 +133,14 @@ export function MediaForm({
                 );
                 setTags((current) =>
                   current.filter((tag) =>
-                    isTagApplicableForMediaType(tag, nextType),
+                    tagOptions.some(
+                      (option) =>
+                        option.name === tag &&
+                        tagMetadataAllowsMediaType(
+                          option.mediaTypesJson,
+                          nextType,
+                        ),
+                    ),
                   ),
                 );
               }}
@@ -215,16 +224,24 @@ export function MediaForm({
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
             <Autocomplete
+              freeSolo
               fullWidth
               multiple
               onChange={(_, value) => {
-                setTags(value.filter(Boolean));
+                setTags([
+                  ...new Map(
+                    value
+                      .map((tag) => tag.trim())
+                      .filter(Boolean)
+                      .map((tag) => [tag.toLowerCase(), tag]),
+                  ).values(),
+                ]);
               }}
               options={tagNames}
               renderInput={(params) => (
                 <TextField
                   {...params}
-                  helperText="Canonical tags available for this media type."
+                  helperText="Choose approved tags, or type a new tag and press Enter to save it as pending."
                   label="Tags"
                 />
               )}

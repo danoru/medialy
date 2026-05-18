@@ -1,14 +1,22 @@
 import {
   Card,
   CardContent,
+  Checkbox,
   Chip,
+  FormControlLabel,
+  MenuItem,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
+import { TagCategory } from "@prisma/client";
 import { approveTag, rejectTag } from "@/app/settings/actions";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { ActionToastButton } from "@/components/shared/Toasts";
+import { formatMediaType } from "@/lib/format";
+import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
+import { mediaTypesFromJson } from "@/lib/taxonomy";
 
 export const metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
@@ -37,12 +45,13 @@ export default async function SettingsPage() {
               <Stack spacing={1}>
                 {pendingTags.map((tag) => (
                   <Stack
-                    direction={{ xs: "column", sm: "row" }}
                     key={tag.id}
-                    spacing={1}
+                    spacing={1.2}
                     sx={{
-                      alignItems: { sm: "center" },
-                      justifyContent: "space-between",
+                      border: "1px solid",
+                      borderColor: "divider",
+                      borderRadius: "8px",
+                      p: 1.5,
                     }}
                   >
                     <Stack
@@ -55,17 +64,85 @@ export default async function SettingsPage() {
                       </Typography>
                       <Chip label="Pending" size="small" />
                     </Stack>
-                    <Stack direction="row" spacing={1}>
-                      <form action={approveTag.bind(null, tag.id)}>
-                        <ActionToastButton
-                          size="small"
-                          successMessage="Tag approved."
-                          variant="contained"
+                    <form action={approveTag.bind(null, tag.id)}>
+                      <Stack spacing={1.2}>
+                        <Stack
+                          direction={{ xs: "column", md: "row" }}
+                          spacing={1}
                         >
-                          Approve
-                        </ActionToastButton>
-                      </form>
-                      <form action={rejectTag.bind(null, tag.id)}>
+                          <TextField
+                            defaultValue={tag.name}
+                            label="Canonical name"
+                            name="name"
+                            size="small"
+                            sx={{ minWidth: { md: 220 } }}
+                          />
+                          <TextField
+                            defaultValue={tag.category}
+                            label="Category"
+                            name="category"
+                            select
+                            size="small"
+                            sx={{ minWidth: { md: 180 } }}
+                          >
+                            {Object.values(TagCategory).map((category) => (
+                              <MenuItem key={category} value={category}>
+                                {category}
+                              </MenuItem>
+                            ))}
+                          </TextField>
+                          <TextField
+                            defaultValue={tag.countryCode ?? ""}
+                            label="Country code"
+                            name="countryCode"
+                            size="small"
+                            sx={{ maxWidth: { md: 140 } }}
+                          />
+                        </Stack>
+                        <Stack
+                          direction="row"
+                          sx={{ flexWrap: "wrap", gap: 1 }}
+                        >
+                          {VISIBLE_MEDIA_TYPES.map((mediaType) => (
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  defaultChecked={mediaTypesFromJson(
+                                    tag.mediaTypesJson,
+                                  ).includes(mediaType)}
+                                  name="mediaTypes"
+                                  size="small"
+                                  value={mediaType}
+                                />
+                              }
+                              key={mediaType}
+                              label={formatMediaType(mediaType)}
+                            />
+                          ))}
+                          <FormControlLabel
+                            control={
+                              <Checkbox
+                                defaultChecked={tag.discoverable}
+                                name="discoverable"
+                                size="small"
+                              />
+                            }
+                            label="Discoverable"
+                          />
+                        </Stack>
+                        <Stack direction="row" spacing={1}>
+                          <ActionToastButton
+                            size="small"
+                            successMessage="Tag approved."
+                            variant="contained"
+                          >
+                            Approve
+                          </ActionToastButton>
+                        </Stack>
+                      </Stack>
+                    </form>
+                    <form action={rejectTag.bind(null, tag.id)}>
+                      <Stack direction="row" spacing={1}>
                         <ActionToastButton
                           color="error"
                           size="small"
@@ -74,8 +151,8 @@ export default async function SettingsPage() {
                         >
                           Reject
                         </ActionToastButton>
-                      </form>
-                    </Stack>
+                      </Stack>
+                    </form>
                   </Stack>
                 ))}
               </Stack>

@@ -11,8 +11,10 @@ import { normalizeSearchText } from "@/lib/text-normalization";
 import {
   canonicalTagMetadataForName,
   isTagApplicableForMediaType,
+  mediaTypesFromJson,
   normalizeTagKey,
   normalizeTagName,
+  tagMetadataAllowsMediaType,
 } from "@/lib/taxonomy";
 
 const includeTaxonomy = {
@@ -107,32 +109,71 @@ export async function upsertTaxonomy(
   ];
 
   for (const name of normalizedTags) {
+    const normalizedName = normalizeTagKey(name);
+    const existingTag = await prisma.tag.findUnique({
+      where: { normalizedName },
+    });
+
+    if (existingTag?.status === "REJECTED") continue;
+
+    if (existingTag) {
+      if (
+        mediaType &&
+        !tagMetadataAllowsMediaType(existingTag.mediaTypesJson, mediaType)
+      ) {
+        const mediaTypes = [
+          ...new Set([
+            ...mediaTypesFromJson(existingTag.mediaTypesJson),
+            mediaType,
+          ]),
+        ];
+        await prisma.tag.update({
+          where: { id: existingTag.id },
+          data: { mediaTypesJson: JSON.stringify(mediaTypes) },
+        });
+      }
+      await prisma.mediaTag.create({
+        data: { mediaId, tagId: existingTag.id },
+      });
+      continue;
+    }
+
     const metadata = canonicalTagMetadataForName(name);
-    if (!metadata) continue;
-    if (mediaType && !isTagApplicableForMediaType(name, mediaType)) continue;
+    if (
+      metadata &&
+      mediaType &&
+      !isTagApplicableForMediaType(name, mediaType)
+    ) {
+      continue;
+    }
+
     const tag = await prisma.tag.upsert({
-      where: { normalizedName: normalizeTagKey(name) },
-      update: {
-        category: metadata.category,
-        discoverable: metadata.discoverable,
-        mediaTypesJson: metadata.mediaTypes
-          ? JSON.stringify(metadata.mediaTypes)
-          : undefined,
-        countryCode: metadata.countryCode,
-        status: "APPROVED",
-        approvedAt: new Date(),
-      },
+      where: { normalizedName },
+      update: metadata
+        ? {
+            category: metadata.category,
+            discoverable: metadata.discoverable,
+            mediaTypesJson: metadata.mediaTypes
+              ? JSON.stringify(metadata.mediaTypes)
+              : undefined,
+            countryCode: metadata.countryCode,
+            status: "APPROVED",
+            approvedAt: new Date(),
+          }
+        : {},
       create: {
         name,
-        normalizedName: normalizeTagKey(name),
-        status: "APPROVED",
-        category: metadata.category,
-        discoverable: metadata.discoverable,
+        normalizedName,
+        status: metadata ? "APPROVED" : "PENDING",
+        category: metadata?.category ?? "THEME",
+        discoverable: metadata?.discoverable ?? false,
         mediaTypesJson: metadata?.mediaTypes
           ? JSON.stringify(metadata.mediaTypes)
-          : undefined,
+          : mediaType
+            ? JSON.stringify([mediaType])
+            : undefined,
         countryCode: metadata?.countryCode,
-        approvedAt: new Date(),
+        approvedAt: metadata ? new Date() : undefined,
       },
     });
     await prisma.mediaTag.create({ data: { mediaId, tagId: tag.id } });
