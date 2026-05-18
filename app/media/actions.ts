@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { Prisma } from "@prisma/client";
+import { MediaStatus, Prisma } from "@prisma/client";
 import {
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
@@ -124,6 +124,60 @@ export async function updateMediaRatings(formData: FormData) {
   redirect(returnTo.startsWith("/media") ? returnTo : "/media");
 }
 
+export async function updateMediaRating(id: string, formData: FormData) {
+  const personalRating = parseOptionalRating(formData.get("personalRating"));
+  await prisma.mediaItem.update({
+    where: { id },
+    data: { personalRating },
+  });
+  await recomputeMediaScores(id);
+  revalidatePath("/");
+  revalidatePath("/dashboard");
+  revalidatePath("/media");
+  revalidatePath(`/media/${id}`);
+  revalidatePath("/recommendations");
+  revalidatePath("/discover");
+  await queueToast(
+    personalRating == null ? "Rating cleared." : "Rating saved.",
+  );
+}
+
+export async function updateMediaStatus(id: string, formData: FormData) {
+  const status = String(formData.get("status") ?? "");
+  if (!isMediaStatus(status)) {
+    await queueToast("Invalid status.", "error");
+    return;
+  }
+
+  await prisma.mediaItem.update({
+    where: { id },
+    data: { status },
+  });
+  revalidatePath("/media");
+  revalidatePath(`/media/${id}`);
+  revalidatePath("/recommendations");
+  revalidatePath("/discover");
+  await queueToast("Status saved.");
+}
+
+export async function toggleFavoriteMediaItem(id: string) {
+  const item = await prisma.mediaItem.findUnique({
+    where: { id },
+    select: { isFavorite: true },
+  });
+  if (!item) return;
+
+  const isFavorite = !item.isFavorite;
+  await prisma.mediaItem.update({
+    where: { id },
+    data: { isFavorite },
+  });
+  revalidatePath("/media");
+  revalidatePath(`/media/${id}`);
+  revalidatePath("/recommendations");
+  await queueToast(isFavorite ? "Added to favorites." : "Removed favorite.");
+}
+
 export async function archiveMediaItem(id: string) {
   await prisma.mediaItem.update({ where: { id }, data: { isArchived: true } });
   revalidatePath("/media");
@@ -175,4 +229,8 @@ function isUniqueMediaTitleError(error: unknown) {
     error.meta.target.includes("title") &&
     error.meta.target.includes("mediaType")
   );
+}
+
+function isMediaStatus(value: string): value is MediaStatus {
+  return Object.values(MediaStatus).includes(value as MediaStatus);
 }
