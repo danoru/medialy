@@ -9,6 +9,7 @@ import FavoriteIcon from "@mui/icons-material/Favorite";
 import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
 import ImportExportIcon from "@mui/icons-material/ImportExport";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import MovieIcon from "@mui/icons-material/Movie";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import PeopleIcon from "@mui/icons-material/People";
@@ -21,6 +22,8 @@ import {
   AppBar,
   Avatar,
   Box,
+  BottomNavigation,
+  BottomNavigationAction,
   Button,
   Divider,
   Drawer,
@@ -40,6 +43,7 @@ import { usePathname } from "next/navigation";
 import { noirTokens } from "@/components/cinematic/CinematicPrimitives";
 
 const drawerWidth = 214;
+const mobileNavHeight = 68;
 
 const navItems = [
   {
@@ -106,12 +110,36 @@ const navItems = [
   },
 ];
 
+const mobilePrimaryNavHrefs = [
+  "/dashboard",
+  "/media",
+  "/discover",
+  "/watchlist",
+] as const;
+
+const mobilePrimaryNav = navItems.filter((item) =>
+  mobilePrimaryNavHrefs.includes(
+    item.href as (typeof mobilePrimaryNavHrefs)[number],
+  ),
+);
+
+const mobileSecondaryNav = navItems.filter(
+  (item) =>
+    !mobilePrimaryNavHrefs.includes(
+      item.href as (typeof mobilePrimaryNavHrefs)[number],
+    ),
+);
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const showAddMedia = pathname !== "/media/new";
   const [profileMenuAnchor, setProfileMenuAnchor] =
     useState<HTMLElement | null>(null);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const profileMenuOpen = Boolean(profileMenuAnchor);
+  const mobileBottomValue =
+    mobilePrimaryNav.find((item) => isSelectedPath(pathname, item.href))
+      ?.href ?? "more";
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -164,7 +192,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <InputBase
               inputProps={{ "aria-label": "Search media library" }}
               name="filter"
-              placeholder="Search for movies, shows, games..."
+              placeholder="Search media..."
               sx={{ color: "inherit", flex: 1, minWidth: 0 }}
             />
           </Box>
@@ -191,7 +219,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               }}
               variant="outlined"
             >
-              Add
+              <Box
+                component="span"
+                sx={{ display: { xs: "none", sm: "inline" } }}
+              >
+                Add
+              </Box>
             </Button>
           ) : null}
           <IconButton
@@ -346,8 +379,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             sx={{ flex: 1, overflowY: "auto", p: 0.8, position: "relative" }}
           >
             {navItems.map((item) => {
-              const selected =
-                pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const selected = isSelectedPath(pathname, item.href);
 
               return (
                 <ListItemButton
@@ -399,18 +431,211 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Box>
       </Drawer>
 
+      <Drawer
+        anchor="bottom"
+        onClose={() => setMobileMoreOpen(false)}
+        open={mobileMoreOpen}
+        sx={{
+          display: { xs: "block", md: "none" },
+          "& .MuiDrawer-paper": {
+            background:
+              "linear-gradient(180deg, rgba(8, 17, 31, 0.99), rgba(5, 8, 18, 0.99))",
+            borderTop: `1px solid ${alpha("#BFDBFE", 0.14)}`,
+            borderTopLeftRadius: "12px",
+            borderTopRightRadius: "12px",
+            color: "text.primary",
+            maxHeight: "82vh",
+            pb: "max(14px, env(safe-area-inset-bottom))",
+          },
+        }}
+      >
+        <Box sx={{ px: 1.2, py: 1 }}>
+          <Box
+            sx={{
+              bgcolor: alpha("#BFDBFE", 0.2),
+              borderRadius: "999px",
+              height: 4,
+              mx: "auto",
+              mb: 1.2,
+              width: 44,
+            }}
+          />
+          <Typography
+            sx={{
+              fontSize: 13,
+              fontWeight: 900,
+              letterSpacing: 1.4,
+              mb: 0.8,
+              textTransform: "uppercase",
+            }}
+          >
+            More
+          </Typography>
+          <List component="nav" sx={{ p: 0 }}>
+            {mobileSecondaryNav.map((item) => (
+              <MobileDrawerItem
+                item={item}
+                key={item.href}
+                onClick={() => setMobileMoreOpen(false)}
+                selected={isSelectedPath(pathname, item.href)}
+              />
+            ))}
+            <Divider sx={{ borderColor: alpha("#BFDBFE", 0.1), my: 0.75 }} />
+            <MobileDrawerItem
+              item={{
+                description: "Your account profile.",
+                href: "/profile",
+                icon: <PersonIcon />,
+                label: "Profile",
+              }}
+              onClick={() => setMobileMoreOpen(false)}
+              selected={isSelectedPath(pathname, "/profile")}
+            />
+            <MobileDrawerItem
+              item={{
+                description: "Application settings.",
+                href: "/settings",
+                icon: <SettingsIcon />,
+                label: "Settings",
+              }}
+              onClick={() => setMobileMoreOpen(false)}
+              selected={isSelectedPath(pathname, "/settings")}
+            />
+          </List>
+        </Box>
+      </Drawer>
+
       <Box
         component="main"
         sx={{
           flexGrow: 1,
           minWidth: 0,
           px: { xs: 1, sm: 1.5, md: 2 },
-          py: { xs: 1, md: 1.5 },
+          pb: {
+            xs: `calc(${mobileNavHeight}px + 1rem + env(safe-area-inset-bottom))`,
+            md: 1.5,
+          },
+          pt: { xs: 1, md: 1.5 },
         }}
       >
         <Toolbar sx={{ minHeight: 60 }} />
         {children}
       </Box>
+
+      <Box
+        sx={{
+          backdropFilter: "blur(18px)",
+          bgcolor: alpha("#050812", 0.92),
+          borderTop: `1px solid ${alpha("#BFDBFE", 0.12)}`,
+          bottom: 0,
+          boxShadow: `0 -18px 48px ${alpha("#000000", 0.36)}`,
+          display: { xs: "block", md: "none" },
+          left: 0,
+          pb: "env(safe-area-inset-bottom)",
+          position: "fixed",
+          right: 0,
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+        }}
+      >
+        <BottomNavigation
+          onChange={(_, nextValue: string) => {
+            if (nextValue === "more") {
+              setMobileMoreOpen(true);
+            }
+          }}
+          showLabels
+          sx={{
+            bgcolor: "transparent",
+            height: mobileNavHeight,
+            "& .MuiBottomNavigationAction-root": {
+              color: alpha("#E2E8F0", 0.62),
+              minWidth: 0,
+              px: 0.3,
+              "&.Mui-selected": {
+                color:
+                  mobileBottomValue === "more"
+                    ? noirTokens.accent.blue
+                    : "#FFFFFF",
+              },
+            },
+            "& .MuiBottomNavigationAction-label": {
+              fontSize: 10.5,
+              fontWeight: 780,
+              mt: 0.2,
+              whiteSpace: "nowrap",
+            },
+          }}
+          value={mobileBottomValue}
+        >
+          {mobilePrimaryNav.map((item) => (
+            <BottomNavigationAction
+              component="a"
+              href={item.href}
+              icon={item.icon}
+              key={item.href}
+              label={item.label === "Dashboard" ? "Home" : item.label}
+              value={item.href}
+            />
+          ))}
+          <BottomNavigationAction
+            icon={<MoreHorizIcon />}
+            label="More"
+            value="more"
+          />
+        </BottomNavigation>
+      </Box>
     </Box>
   );
+}
+
+function MobileDrawerItem({
+  item,
+  onClick,
+  selected,
+}: {
+  item: (typeof navItems)[number];
+  onClick: () => void;
+  selected: boolean;
+}) {
+  return (
+    <ListItemButton
+      href={item.href}
+      onClick={onClick}
+      selected={selected}
+      sx={{
+        border: `1px solid ${selected ? alpha(noirTokens.accent.purple, 0.28) : "transparent"}`,
+        borderRadius: "8px",
+        mb: 0.25,
+        minHeight: 44,
+        px: 1,
+        "&.Mui-selected": {
+          background: `linear-gradient(135deg, ${alpha(noirTokens.accent.purple, 0.24)}, ${alpha(noirTokens.accent.blue, 0.11)})`,
+          color: "#ffffff",
+          "& .MuiListItemIcon-root": {
+            color: noirTokens.accent.blue,
+          },
+        },
+      }}
+    >
+      <ListItemIcon sx={{ color: "text.secondary", minWidth: 34 }}>
+        {item.icon}
+      </ListItemIcon>
+      <ListItemText
+        primary={
+          <Typography sx={{ fontSize: 13, fontWeight: selected ? 850 : 720 }}>
+            {item.label}
+          </Typography>
+        }
+        secondary={
+          <Typography color="text.secondary" sx={{ fontSize: 11.5 }}>
+            {item.description}
+          </Typography>
+        }
+      />
+    </ListItemButton>
+  );
+}
+
+function isSelectedPath(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
 }

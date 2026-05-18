@@ -272,7 +272,7 @@ function HeroSection({
   return (
     <Box
       sx={{
-        minHeight: { xs: 430, md: 470 },
+        minHeight: { xs: 360, sm: 430, md: 470 },
         overflow: "hidden",
         position: "relative",
       }}
@@ -290,7 +290,7 @@ function HeroSection({
             alignSelf: "end",
             maxWidth: 780,
             pb: { xs: 1, md: 4 },
-            pt: { xs: 3, md: 5 },
+            pt: { xs: 2, md: 5 },
             zIndex: 2,
           }}
         >
@@ -305,7 +305,7 @@ function HeroSection({
             sx={{
               fontFamily:
                 'var(--font-heading), "Satoshi", "Inter", system-ui, sans-serif',
-              fontSize: { xs: "3.2rem", sm: "4.8rem", md: "6.4rem" },
+              fontSize: { xs: "2.45rem", sm: "4.8rem", md: "6.4rem" },
               fontWeight: 900,
               letterSpacing: 0,
               lineHeight: 0.86,
@@ -332,8 +332,11 @@ function HeroSection({
           sx={{
             alignItems: "center",
             display: "grid",
-            gridTemplateColumns: "repeat(5, minmax(84px, 1fr))",
-            minHeight: { xs: 240, md: 430 },
+            gridTemplateColumns: {
+              xs: "repeat(5, minmax(52px, 1fr))",
+              sm: "repeat(5, minmax(84px, 1fr))",
+            },
+            minHeight: { xs: 168, sm: 240, md: 430 },
             position: "relative",
           }}
         >
@@ -352,8 +355,11 @@ function HeroSection({
               item={item}
               key={item.id}
               sx={{
-                mt: index % 2 === 0 ? { xs: 0, md: -5 } : { xs: 4, md: 8 },
-                transform: `rotate(${[-7, 4, -2, 6, -5][index] ?? 0}deg)`,
+                mt: index % 2 === 0 ? { xs: 0, md: -5 } : { xs: 2, md: 8 },
+                transform: {
+                  xs: `rotate(${[-4, 3, -1, 4, -3][index] ?? 0}deg)`,
+                  md: `rotate(${[-7, 4, -2, 6, -5][index] ?? 0}deg)`,
+                },
                 zIndex: index === 2 ? 4 : 3 - Math.abs(index - 2),
               }}
             />
@@ -659,7 +665,10 @@ function IfYouLikedPanel({
               borderRadius: "8px",
               display: "grid",
               gap: 0.8,
-              gridTemplateColumns: "48px 1fr auto 48px 1fr",
+              gridTemplateColumns: {
+                xs: "38px minmax(0, 1fr) 30px 38px minmax(0, 1fr)",
+                sm: "48px 1fr auto 48px 1fr",
+              },
               p: 0.7,
             }}
           >
