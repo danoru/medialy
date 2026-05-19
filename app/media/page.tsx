@@ -28,8 +28,15 @@ import {
   visibleMediaTypeFilter,
 } from "@/lib/media-types";
 import { updateMediaRatings } from "@/app/media/actions";
-import { normalizeSearchText } from "@/lib/text-normalization";
 import { StatePanel } from "@/components/shared/StatePanel";
+import { sortMediaTitleRows, type SortDirection } from "@/lib/media-sort";
+import { MediaPageNavigator } from "@/components/media/MediaPageNavigator";
+import { SaveRatingsButton } from "@/components/media/SaveRatingsButton";
+import { matchesMediaTitleSearch } from "@/lib/media-search";
+import {
+  getCanonicalTagDefinitions,
+  getGenresForMediaType,
+} from "@/lib/taxonomy";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Media" };
@@ -39,7 +46,6 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 const PAGE_SIZE = 50;
 const ALL_MEDIA_TYPES = "ALL";
 const SORT_DIRECTIONS = ["asc", "desc"] as const;
-type SortDirection = (typeof SORT_DIRECTIONS)[number];
 
 export default async function MediaPage({
   searchParams,
@@ -47,18 +53,30 @@ export default async function MediaPage({
   searchParams: SearchParams;
 }) {
   const params = await searchParams;
-  const filter = stringParam(params.filter);
+  const titleFilter = titleFilterParam(params);
+  const selectedGenre = stringParam(params.genre) ?? "";
+  const selectedTag = stringParam(params.tag) ?? "";
   const sort = stringParam(params.sort) || "title";
-  const direction = sortDirectionParam(params.direction) ?? defaultDirection(sort);
+  const direction =
+    sortDirectionParam(params.direction) ?? defaultDirection(sort);
   const requestedType = stringParam(params.type);
+  const hasSearchFilters = Boolean(titleFilter || selectedGenre || selectedTag);
   const selectedType =
     requestedType === ALL_MEDIA_TYPES
       ? ALL_MEDIA_TYPES
       : isVisibleMediaType(requestedType)
         ? requestedType
-        : filter
+        : hasSearchFilters
           ? ALL_MEDIA_TYPES
           : VISIBLE_MEDIA_TYPES[0];
+  const genreOptions = filterOptionValues(
+    genreFilterOptions(selectedType),
+    selectedGenre,
+  );
+  const tagOptions = filterOptionValues(
+    tagFilterOptions(selectedType),
+    selectedTag,
+  );
   const page = Math.max(1, intParam(params.page) ?? 1);
   const where: Prisma.MediaItemWhereInput = {
     mediaType:
@@ -67,28 +85,24 @@ export default async function MediaPage({
         : selectedType,
   };
 
+  if (selectedGenre)
+    where.genres = { some: { genre: { name: selectedGenre } } };
+  if (selectedTag) where.tags = { some: { tag: { name: selectedTag } } };
   if (stringParam(params.status))
     where.status = stringParam(params.status) as MediaStatus;
   if (stringParam(params.favorite) === "true") where.isFavorite = true;
   if (stringParam(params.archived) !== "true") where.isArchived = false;
-  if (filter) {
-    const matchingIds = await mediaIdsMatchingFilter(where, filter);
+  if (titleFilter) {
+    const matchingIds = await mediaIdsMatchingTitleFilter(where, titleFilter);
     where.id = { in: matchingIds };
   }
 
-  const [total, items] = await Promise.all([
-    prisma.mediaItem.count({ where }),
-    prisma.mediaItem.findMany({
-      where,
-      include: {
-        genres: { include: { genre: true } },
-        tags: { include: { tag: true } },
-      },
-      orderBy: orderBy(sort, direction),
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-    }),
-  ]);
+  const { items, total } = await findMediaPageItems({
+    direction,
+    page,
+    sort,
+    where,
+  });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (total > 0 && page > totalPages) {
@@ -138,17 +152,49 @@ export default async function MediaPage({
             component="form"
             direction={{ xs: "column", md: "row" }}
             spacing={2}
+            sx={{ flexWrap: "wrap" }}
           >
             {selectedType ? (
               <input name="type" type="hidden" value={selectedType} />
             ) : null}
             <TextField
-              defaultValue={filter}
-              label="Genre, tag, or title"
-              name="filter"
+              defaultValue={titleFilter}
+              label="Title"
+              name="title"
+              placeholder="Title"
               size="small"
               sx={{ minWidth: { md: 220 } }}
             />
+            <TextField
+              defaultValue={selectedGenre}
+              label="Genre"
+              name="genre"
+              select
+              size="small"
+              sx={{ minWidth: { md: 170 } }}
+            >
+              <MenuItem value="">All genres</MenuItem>
+              {genreOptions.map((genre) => (
+                <MenuItem key={genre} value={genre}>
+                  {genre}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              defaultValue={selectedTag}
+              label="Tag"
+              name="tag"
+              select
+              size="small"
+              sx={{ minWidth: { md: 190 } }}
+            >
+              <MenuItem value="">All tags</MenuItem>
+              {tagOptions.map((tag) => (
+                <MenuItem key={tag} value={tag}>
+                  {tag}
+                </MenuItem>
+              ))}
+            </TextField>
             <TextField
               defaultValue={stringParam(params.status) ?? ""}
               label="Status"
@@ -266,6 +312,63 @@ type MediaListItem = Awaited<
   >
 >[number];
 
+const mediaListItemInclude = {
+  genres: { include: { genre: true } },
+  tags: { include: { tag: true } },
+} satisfies Prisma.MediaItemInclude;
+
+async function findMediaPageItems({
+  direction,
+  page,
+  sort,
+  where,
+}: {
+  direction: SortDirection;
+  page: number;
+  sort: string;
+  where: Prisma.MediaItemWhereInput;
+}) {
+  const skip = (page - 1) * PAGE_SIZE;
+
+  if (sort === "title") {
+    const titleRows = await prisma.mediaItem.findMany({
+      select: { id: true, title: true },
+      where,
+    });
+    const pageIds = sortMediaTitleRows(titleRows, direction)
+      .slice(skip, skip + PAGE_SIZE)
+      .map((item) => item.id);
+
+    if (pageIds.length === 0) return { items: [], total: titleRows.length };
+
+    const pageItems = await prisma.mediaItem.findMany({
+      include: mediaListItemInclude,
+      where: { id: { in: pageIds } },
+    });
+    const itemsById = new Map(pageItems.map((item) => [item.id, item]));
+
+    return {
+      items: pageIds
+        .map((id) => itemsById.get(id))
+        .filter((item): item is MediaListItem => Boolean(item)),
+      total: titleRows.length,
+    };
+  }
+
+  const [total, items] = await Promise.all([
+    prisma.mediaItem.count({ where }),
+    prisma.mediaItem.findMany({
+      include: mediaListItemInclude,
+      orderBy: orderBy(sort, direction),
+      skip,
+      take: PAGE_SIZE,
+      where,
+    }),
+  ]);
+
+  return { items, total };
+}
+
 function MediaRatingsTable({
   currentHref,
   endIndex,
@@ -379,7 +482,6 @@ function MediaRatingsTable({
       <CardContent>
         <MediaResultsFooter
           endIndex={endIndex}
-          itemsLength={items.length}
           page={page}
           params={params}
           startIndex={startIndex}
@@ -536,7 +638,6 @@ function MediaRatingsCards({
       <CardContent>
         <MediaResultsFooter
           endIndex={endIndex}
-          itemsLength={items.length}
           page={page}
           params={params}
           startIndex={startIndex}
@@ -550,7 +651,6 @@ function MediaRatingsCards({
 
 function MediaResultsFooter({
   endIndex,
-  itemsLength,
   page,
   params,
   startIndex,
@@ -558,7 +658,6 @@ function MediaResultsFooter({
   totalPages,
 }: {
   endIndex: number;
-  itemsLength: number;
   page: number;
   params: Record<string, string | string[] | undefined>;
   startIndex: number;
@@ -588,60 +687,19 @@ function MediaResultsFooter({
           justifyContent: { sm: "flex-end" },
         }}
       >
-        <Button disabled={itemsLength === 0} type="submit" variant="contained">
-          Save ratings
-        </Button>
-        {totalPages > 1 ? (
-          <Stack
-            direction="row"
-            spacing={0.75}
-            sx={{
-              flexWrap: "wrap",
-              gap: 0.75,
-              justifyContent: { sm: "flex-end" },
-            }}
-          >
-            <Button
-              disabled={page <= 1}
-              href={buildMediaHref(params, { page: String(page - 1) })}
-              size="small"
-              variant="outlined"
-            >
-              Previous
-            </Button>
-            {getPaginationItems(page, totalPages).map((item, index) =>
-              item === "ellipsis" ? (
-                <Button
-                  disabled
-                  key={`${item}-${index}`}
-                  size="small"
-                  sx={{ minWidth: 36 }}
-                  variant="text"
-                >
-                  ...
-                </Button>
-              ) : (
-                <Button
-                  aria-current={item === page ? "page" : undefined}
-                  href={buildMediaHref(params, { page: String(item) })}
-                  key={item}
-                  size="small"
-                  sx={{ minWidth: 36 }}
-                  variant={item === page ? "contained" : "outlined"}
-                >
-                  {item}
-                </Button>
-              ),
-            )}
-            <Button
-              disabled={page >= totalPages}
-              href={buildMediaHref(params, { page: String(page + 1) })}
-              size="small"
-              variant="outlined"
-            >
-              Next
-            </Button>
-          </Stack>
+        <SaveRatingsButton />
+        {total > 0 ? (
+          <MediaPageNavigator
+            page={page}
+            pages={Array.from({ length: totalPages }, (_, index) => {
+              const nextPage = index + 1;
+
+              return {
+                href: buildMediaHref(params, { page: String(nextPage) }),
+                page: nextPage,
+              };
+            })}
+          />
         ) : null}
       </Stack>
     </Stack>
@@ -657,6 +715,12 @@ function intParam(value: string | string[] | undefined) {
   if (!raw) return null;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function titleFilterParam(
+  params: Record<string, string | string[] | undefined>,
+) {
+  return (stringParam(params.title) ?? stringParam(params.filter) ?? "").trim();
 }
 
 function sortDirectionParam(
@@ -698,35 +762,13 @@ function formatScore(value: number | null) {
   return value == null ? "-" : value.toFixed(1);
 }
 
-function getPaginationItems(currentPage: number, totalPages: number) {
-  const pages = new Set([1, totalPages]);
-
-  for (
-    let nextPage = currentPage - 1;
-    nextPage <= currentPage + 1;
-    nextPage += 1
-  ) {
-    if (nextPage >= 1 && nextPage <= totalPages) pages.add(nextPage);
-  }
-
-  const sortedPages = [...pages].sort((first, second) => first - second);
-  const items: Array<number | "ellipsis"> = [];
-
-  for (const nextPage of sortedPages) {
-    const previous = items.at(-1);
-    if (typeof previous === "number" && nextPage - previous > 1)
-      items.push("ellipsis");
-    items.push(nextPage);
-  }
-
-  return items;
-}
-
 function buildMediaHref(
   params: Record<string, string | string[] | undefined>,
   overrides: Partial<
     Record<
-      | "filter"
+      | "title"
+      | "genre"
+      | "tag"
       | "type"
       | "status"
       | "favorite"
@@ -741,7 +783,9 @@ function buildMediaHref(
   const searchParams = new URLSearchParams();
 
   for (const key of [
-    "filter",
+    "title",
+    "genre",
+    "tag",
     "type",
     "status",
     "favorite",
@@ -751,7 +795,7 @@ function buildMediaHref(
     "page",
   ] as const) {
     const nextValue =
-      key in overrides ? overrides[key] : stringParam(params[key]);
+      key in overrides ? overrides[key] : mediaHrefParam(params, key);
     if (nextValue) searchParams.set(key, nextValue);
   }
 
@@ -759,35 +803,77 @@ function buildMediaHref(
   return query ? `/media?${query}` : "/media";
 }
 
-async function mediaIdsMatchingFilter(
-  baseWhere: Prisma.MediaItemWhereInput,
-  filter: string,
+function mediaHrefParam(
+  params: Record<string, string | string[] | undefined>,
+  key:
+    | "title"
+    | "genre"
+    | "tag"
+    | "type"
+    | "status"
+    | "favorite"
+    | "archived"
+    | "sort"
+    | "direction"
+    | "page",
 ) {
-  const query = normalizeSearchText(filter);
-  if (!query) return [];
+  if (key === "title") return titleFilterParam(params);
+  return stringParam(params[key]);
+}
 
+function genreFilterOptions(selectedType: string) {
+  const mediaTypes = isVisibleMediaType(selectedType)
+    ? [selectedType]
+    : VISIBLE_MEDIA_TYPES;
+
+  return [
+    ...new Set(
+      mediaTypes.flatMap((mediaType) => getGenresForMediaType(mediaType)),
+    ),
+  ].sort((first, second) => first.localeCompare(second));
+}
+
+function tagFilterOptions(selectedType: string) {
+  const visibleTypes = new Set<string>(VISIBLE_MEDIA_TYPES);
+
+  return getCanonicalTagDefinitions()
+    .filter((definition) => {
+      if (!definition.mediaTypes || definition.mediaTypes.length === 0) {
+        return true;
+      }
+
+      if (isVisibleMediaType(selectedType)) {
+        return definition.mediaTypes.includes(selectedType);
+      }
+
+      return definition.mediaTypes.some((mediaType) =>
+        visibleTypes.has(mediaType),
+      );
+    })
+    .map((definition) => definition.name);
+}
+
+function filterOptionValues(options: string[], selectedValue: string) {
+  if (!selectedValue || options.includes(selectedValue)) return options;
+
+  return [...options, selectedValue].sort((first, second) =>
+    first.localeCompare(second),
+  );
+}
+
+async function mediaIdsMatchingTitleFilter(
+  baseWhere: Prisma.MediaItemWhereInput,
+  titleFilter: string,
+) {
   const candidates = await prisma.mediaItem.findMany({
     where: baseWhere,
     select: {
       id: true,
       title: true,
-      genres: { select: { genre: { select: { name: true } } } },
-      tags: { select: { tag: { select: { name: true } } } },
-      credits: { select: { contributor: { select: { name: true } } } },
     },
   });
 
   return candidates
-    .filter((item) => {
-      const searchable = normalizeSearchText(
-        [
-          item.title,
-          ...item.genres.map((entry) => entry.genre.name),
-          ...item.tags.map((entry) => entry.tag.name),
-          ...item.credits.map((entry) => entry.contributor.name),
-        ].join(" "),
-      );
-      return searchable.includes(query);
-    })
+    .filter((item) => matchesMediaTitleSearch(item.title, titleFilter))
     .map((item) => item.id);
 }
