@@ -30,7 +30,10 @@ export async function getRecommendations(
   limit?: number,
   eligibility: EligibilityOptions = {},
 ): Promise<Recommendation[]> {
-  const userId = await getCurrentUserId();
+  // Anonymous viewers get a best-effort recommendations list built from
+  // public signals (no personal taste graph). A sentinel id makes the
+  // per-user joins consistently return defaults.
+  const userId = (await getCurrentUserId()) ?? "__anonymous__";
   const rawItems = await prisma.mediaItem.findMany({
     where: {
       mediaType: visibleMediaTypeFilter(),

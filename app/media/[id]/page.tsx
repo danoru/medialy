@@ -67,16 +67,20 @@ export default async function MediaDetailPage({
 }) {
   const { id } = await params;
   const userId = await getCurrentUserId();
+  // Anonymous viewers see the public detail page without personal joins
+  // (comparisons/notes belong to a user). We use a sentinel that never
+  // matches so the typed query is happy and the relations come back empty.
+  const userIdFilter = userId ?? "__anonymous__";
   const rawItem = await prisma.mediaItem.findUnique({
     include: {
       comparisonsLost: {
-        where: { userId },
+        where: { userId: userIdFilter },
         include: { winner: true },
         orderBy: { createdAt: "desc" },
         take: 10,
       },
       comparisonsWon: {
-        where: { userId },
+        where: { userId: userIdFilter },
         include: { loser: true },
         orderBy: { createdAt: "desc" },
         take: 10,
@@ -84,7 +88,7 @@ export default async function MediaDetailPage({
       externalRatings: { orderBy: [{ source: "asc" }] },
       genres: { include: { genre: true } },
       credits: { include: { contributor: true }, orderBy: { order: "asc" } },
-      notes: { where: { userId }, orderBy: { updatedAt: "desc" } },
+      notes: { where: { userId: userIdFilter }, orderBy: { updatedAt: "desc" } },
       tags: { include: { tag: true } },
       ...userMediaInclude(userId),
     },
@@ -266,11 +270,13 @@ export default async function MediaDetailPage({
               </Stack>
 
               <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.7 }}>
-                <StatusChip mediaType={item.mediaType} status={item.status} />
-                {item.isFavorite ? (
+                {userId ? (
+                  <StatusChip mediaType={item.mediaType} status={item.status} />
+                ) : null}
+                {userId && item.isFavorite ? (
                   <GlassChip icon={<StarRoundedIcon />} label="Favorite" warm />
                 ) : null}
-                {item.isArchived ? (
+                {userId && item.isArchived ? (
                   <GlassChip
                     icon={<ArchiveRoundedIcon />}
                     label="Archived"
@@ -331,6 +337,7 @@ export default async function MediaDetailPage({
               )}
             </SectionBlock> */}
 
+            {userId ? (
             <Box id="notes" sx={panelSx(detailTokens.accent.emerald)}>
               <SectionHeader title="Notes" />
               <Stack spacing={1.2}>
@@ -395,6 +402,7 @@ export default async function MediaDetailPage({
                 ))}
               </Stack>
             </Box>
+            ) : null}
 
             <Box sx={panelSx(detailTokens.accent.cyan)}>
               <Stack
@@ -508,23 +516,45 @@ export default async function MediaDetailPage({
           </Stack>
 
           <Stack spacing={1.25} sx={rightRailSx}>
-            <MediaDetailActions
-              favoriteAction={toggleFavoriteMediaItem.bind(null, item.id)}
-              isFavorite={item.isFavorite}
-              mediaType={item.mediaType}
-              status={item.status}
-              statusAction={updateMediaStatus.bind(null, item.id)}
-            />
+            {userId ? (
+              <MediaDetailActions
+                favoriteAction={toggleFavoriteMediaItem.bind(null, item.id)}
+                isFavorite={item.isFavorite}
+                mediaType={item.mediaType}
+                status={item.status}
+                statusAction={updateMediaStatus.bind(null, item.id)}
+              />
+            ) : (
+              <Box sx={scorePanelSx}>
+                <Stack spacing={1}>
+                  <Typography sx={kickerSx}>Track this</Typography>
+                  <Typography color="text.secondary" sx={metadataTextSx}>
+                    Sign in to rate, track status, favorite, and take notes.
+                  </Typography>
+                  <Button
+                    href={`/signin?callbackUrl=${encodeURIComponent(`/media/${item.id}`)}`}
+                    size="small"
+                    variant="contained"
+                  >
+                    Sign in
+                  </Button>
+                </Stack>
+              </Box>
+            )}
 
             <Box sx={scorePanelSx}>
               <Stack spacing={1.25}>
-                <Typography sx={kickerSx}>Your rating</Typography>
-                <MediaRatingControl
-                  action={updateMediaRating.bind(null, item.id)}
-                  personalRating={item.personalRating}
-                />
+                {userId ? (
+                  <>
+                    <Typography sx={kickerSx}>Your rating</Typography>
+                    <MediaRatingControl
+                      action={updateMediaRating.bind(null, item.id)}
+                      personalRating={item.personalRating}
+                    />
 
-                <Divider sx={panelDividerSx} />
+                    <Divider sx={panelDividerSx} />
+                  </>
+                ) : null}
 
                 <Box sx={scoreGridSx}>
                   <ScoreLine

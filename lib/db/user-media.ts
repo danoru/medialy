@@ -45,8 +45,18 @@ export type WithUserMedia<T> = T & { userMedia: UserMedia[] };
  * Returns the Prisma `include` shape callers should use when loading a
  * `MediaItem` for a specific user — exactly one (or zero) `UserMedia` row
  * for that user.
+ *
+ * For anonymous viewers (`userId === null`), returns a `where` clause that
+ * intentionally never matches any row, so the joined `userMedia` array is
+ * always empty and `mergeUserMedia` falls back to `DEFAULT_USER_MEDIA`. This
+ * lets read paths keep the same shape without branching on auth state.
  */
-export function userMediaInclude(userId: string) {
+export function userMediaInclude(userId: string | null) {
+  if (userId == null) {
+    return {
+      userMedia: { where: { userId: "__anonymous__" }, take: 1 } as const,
+    };
+  }
   return {
     userMedia: { where: { userId }, take: 1 } as const,
   };

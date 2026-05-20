@@ -17,7 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
 import { isDiscoverSubgenreForGenre } from "@/lib/taxonomy";
 import { getCurrentUserId } from "@/lib/user";
-import { DEFAULT_USER_MEDIA } from "@/lib/db/user-media";
+import { DEFAULT_USER_MEDIA, userMediaInclude } from "@/lib/db/user-media";
 import type { UserMedia } from "@prisma/client";
 
 function mergeUserMediaInline<T extends { userMedia: UserMedia[] }>(row: T) {
@@ -114,13 +114,19 @@ export default async function TopListsPage({
   const requestedCountry = stringParam(params.country)?.toUpperCase();
 
   const userId = await getCurrentUserId();
+  const archivedFilter =
+    userId == null
+      ? {}
+      : {
+          OR: [
+            { userMedia: { none: { userId } } },
+            { userMedia: { some: { userId, isArchived: false } } },
+          ],
+        };
   const rawDiscoverItems = await prisma.mediaItem.findMany({
     where: {
       mediaType: selectedType,
-      OR: [
-        { userMedia: { none: { userId } } },
-        { userMedia: { some: { userId, isArchived: false } } },
-      ],
+      ...archivedFilter,
       ...(requestedCountry
         ? {
             tags: {
@@ -139,7 +145,7 @@ export default async function TopListsPage({
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
-      userMedia: { where: { userId }, take: 1 },
+      ...userMediaInclude(userId),
     },
   });
   const discoverItems: DiscoveryItem[] = rawDiscoverItems

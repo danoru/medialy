@@ -2,7 +2,7 @@ import type { MediaStatus, MediaType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
 import { calculateComparisonRelevance } from "@/lib/scoring/comparisonRelevance";
-import { getCurrentUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 
 export type ComparisonSelectionItem = {
@@ -44,7 +44,7 @@ type SelectionOptions = {
 const EXCLUDED_COMPARISON_STATUSES: MediaStatus[] = ["WATCHLIST", "BACKLOG"];
 
 export async function getComparisonPair(options: ComparisonPairOptions = {}) {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId("/compare");
   const focusRow = options.focusId
     ? await prisma.mediaItem.findUnique({
         where: { id: options.focusId },

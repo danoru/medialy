@@ -15,7 +15,7 @@ import { MediaStatus } from "@prisma/client";
 import { addFriendRating, createFriend } from "@/app/friends/actions";
 import { getFriendCompatibility } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/user";
 import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import { StatePanel } from "@/components/shared/StatePanel";
@@ -41,7 +41,7 @@ export default async function FriendsPage({
   const selectedType = isVisibleMediaType(requestedType)
     ? requestedType
     : VISIBLE_MEDIA_TYPES[0];
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId("/friends");
   const [friends, media, compatibility] = await Promise.all([
     prisma.friend.findMany({
       where: { userId },

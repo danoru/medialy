@@ -39,6 +39,7 @@ import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import type { MediaItemDTO, Recommendation } from "@/lib/types";
+import { requireUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Watchlist" };
@@ -53,6 +54,7 @@ export default async function WatchlistPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireUserId("/watchlist");
   const params = await searchParams;
   const requestedType = stringParam(params.type);
   const selectedType = isVisibleMediaType(requestedType)

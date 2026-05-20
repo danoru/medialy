@@ -9,7 +9,7 @@ import {
 } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
-import { getCurrentUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/user";
 import { upsertUserMedia } from "@/lib/db/user-media";
 import type {
   CsvMediaRow,
@@ -156,7 +156,7 @@ const mediaImportTemplateRows = [
 ];
 
 export async function buildJsonExport(): Promise<MedialyExport> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const [
     media,
     genres,
@@ -235,7 +235,7 @@ export function buildMediaImportTemplateCsv() {
 }
 
 export async function buildMediaCsvExport() {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const items = await prisma.mediaItem.findMany({
     include: {
       genres: { include: { genre: true } },
@@ -528,7 +528,7 @@ export async function importMediaRowsWithSource(
   sourceType: "CSV" | "XLSX",
   fileName?: string,
 ): Promise<ImportResult> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
   let importedCount = 0;
 
@@ -569,7 +569,7 @@ export async function importLetterboxdRows(
   rows: MediaFormInput[],
   fileName?: string,
 ): Promise<ImportResult> {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
   let importedCount = 0;
 
@@ -612,7 +612,7 @@ export async function importJsonExport(
 ): Promise<ImportResult> {
   assertExportVersion(input);
   const bundle = input as MedialyExport;
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
   let importedCount = 0;
 

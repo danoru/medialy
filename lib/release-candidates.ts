@@ -13,7 +13,7 @@ import {
 } from "@/lib/media";
 import { normalizeComparableTitle } from "@/lib/text-normalization";
 import { splitGenresAndTags, normalizeTagName } from "@/lib/taxonomy";
-import { getCurrentUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/user";
 import { upsertUserMedia } from "@/lib/db/user-media";
 
 export type CandidateReason = {
@@ -220,7 +220,7 @@ export async function importReleaseCandidate(id: string) {
     genres,
     tags,
   };
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const media = await prisma.$transaction(async (tx) => {
     const mediaData = await mediaMutationDataWithUniqueTitle(
       tx,
@@ -327,7 +327,7 @@ async function findExistingMediaMatch(
 }
 
 async function getLocalAffinity(mediaType: MediaType) {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const completed = await prisma.userMedia.findMany({
     where: {
       userId,

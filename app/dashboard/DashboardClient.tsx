@@ -40,7 +40,7 @@ import type { FriendCompatibility, MediaItemDTO } from "@/lib/types";
 import { formatUpcomingRelativeLabel } from "@/lib/upcoming";
 
 type DashboardData = {
-  userName: string;
+  userName: string | null;
   totalItems: number;
   watchlistCount: number;
   comparisonCount: number;
@@ -217,7 +217,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               lineHeight: 1.1,
             }}
           >
-            Welcome back, {data.userName}
+            {data.userName ? `Welcome back, ${data.userName}` : "Welcome to Medialy"}
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
             Recommendations, watchlist, and library signals at a glance.

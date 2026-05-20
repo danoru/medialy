@@ -13,7 +13,7 @@ import { applyEloResult } from "@/lib/scoring";
 import { expectedWinProbabilityFromPriors } from "@/lib/scoring/pairwise";
 import { prisma } from "@/lib/prisma";
 import { recomputePersonalScore } from "@/lib/scoring/recompute";
-import { getCurrentUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/user";
 import {
   mergeUserMedia,
   upsertUserMedia,
@@ -27,7 +27,7 @@ export async function saveComparison(formData: FormData) {
   const notes = String(formData.get("notes") ?? "").trim();
   if (!winnerId || !loserId || winnerId === loserId) return;
 
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
 
   await prisma.$transaction(async (tx) => {
     const [winnerRow, loserRow] = await Promise.all([

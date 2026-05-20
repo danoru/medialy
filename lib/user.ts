@@ -1,49 +1,28 @@
 import type { User } from "@prisma/client";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 
-// `auth()` is imported dynamically inside `getCurrentUser()` rather than at
-// the top of the module. The static import would pull `next-auth` (and its
-// `next/server` dependency) into the test environment's module graph
-// transitively via every `lib/*` file that imports this module — Vitest can't
-// resolve `next/server` from inside next-auth's nested node_modules, so the
-// tests fail before they run. Dynamic import keeps the test graph clean
-// while still working at runtime.
-
 /**
- * Single source of truth for "who is acting". Auth.js (NextAuth v5) provides
- * the session via `auth()`; everything user-scoped goes through here so the
- * rest of the app never needs to thread session plumbing itself.
+ * Who is acting?
  *
- * Resolution order:
- *  1. Real session — return the signed-in user from the DB.
- *  2. No session and we're running outside a request (build-time prerender
- *     of `/_not-found`, or a Vitest test that imports something touching this
- *     module) — return the seeded `usr_default` row if it exists, else the
- *     in-memory `FALLBACK_USER`. This must never throw, since `RootLayout`
- *     calls it and an exception breaks every static page.
+ * Anonymous browsing is supported: most read paths return data even when
+ * there is no session. Mutations and personal pages must use
+ * `requireUserId()` / `requireUser()`, which redirect to `/signin`.
  *
- * Middleware (`middleware.ts`) already redirects unauthenticated requests to
- * `/signin`, so within normal request handling step 1 is always what happens.
- * The fallback exists solely for the no-request contexts.
+ * Resolution order in `getCurrentUser()`:
+ *   1. Real session → the signed-in user from the DB.
+ *   2. No session → `null`. The catalog still renders; user-scoped joins
+ *      gracefully return defaults via `userMediaInclude(null)` /
+ *      `mergeUserMedia`.
+ *
+ * `auth()` is imported dynamically so `next-auth` (and its `next/server` dep)
+ * stays out of the Vitest module graph through every `lib/*` file that
+ * imports this module.
  */
 
 export const DEFAULT_USER_ID = "usr_default";
 
-const FALLBACK_USER: User = {
-  id: DEFAULT_USER_ID,
-  displayName: "You",
-  name: null,
-  email: null,
-  emailVerified: null,
-  image: null,
-  avatarColor: null,
-  createdAt: new Date(0),
-  updatedAt: new Date(0),
-};
-
-export async function getCurrentUser(): Promise<User> {
-  // `auth()` can throw if invoked outside a request context (e.g. during
-  // static prerender or in a test); guard it.
+export async function getCurrentUser(): Promise<User | null> {
   let sessionUserId: string | null = null;
   try {
     const { auth } = await import("@/lib/auth");
@@ -53,27 +32,39 @@ export async function getCurrentUser(): Promise<User> {
     sessionUserId = null;
   }
 
-  try {
-    if (sessionUserId) {
-      const user = await prisma.user.findUnique({
-        where: { id: sessionUserId },
-      });
-      if (user) return user;
-    }
+  if (!sessionUserId) return null;
 
-    // No session (or session.user.id refers to a deleted row): fall back to
-    // the seeded default so prerender / tests stay alive.
-    const fallback = await prisma.user.findUnique({
-      where: { id: DEFAULT_USER_ID },
-    });
-    return fallback ?? FALLBACK_USER;
+  try {
+    const user = await prisma.user.findUnique({ where: { id: sessionUserId } });
+    return user;
   } catch {
-    return FALLBACK_USER;
+    return null;
   }
 }
 
-export async function getCurrentUserId(): Promise<string> {
+export async function getCurrentUserId(): Promise<string | null> {
   const user = await getCurrentUser();
+  return user?.id ?? null;
+}
+
+/**
+ * Gating helper for pages and server actions that require a signed-in user.
+ * Redirects to `/signin?callbackUrl=<current>` if there is no session.
+ * Pass `callbackUrl` to control where the user lands after sign-in.
+ */
+export async function requireUser(callbackUrl?: string): Promise<User> {
+  const user = await getCurrentUser();
+  if (!user) {
+    const target = callbackUrl
+      ? `/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`
+      : "/signin";
+    redirect(target);
+  }
+  return user;
+}
+
+export async function requireUserId(callbackUrl?: string): Promise<string> {
+  const user = await requireUser(callbackUrl);
   return user.id;
 }
 

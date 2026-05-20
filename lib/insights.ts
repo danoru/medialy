@@ -21,8 +21,12 @@ const SCORE_BANDS = [
   { label: "1 - 2", min: 0, max: 2.999 },
 ] as const;
 
-export async function getGenreInsights(): Promise<GenreInsight[]> {
-  const insightsByType = await getGenreInsightsByMediaType();
+export async function getGenreInsights(
+  userId?: string | null,
+): Promise<GenreInsight[]> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  const insightsByType = await getGenreInsightsByMediaType(resolvedUserId);
   const totalItems = insightsByType.reduce(
     (sum, entry) => sum + entry.totalCount,
     0,
@@ -67,21 +71,28 @@ export async function getGenreInsights(): Promise<GenreInsight[]> {
     .sort(compareGenreInsights);
 }
 
-export async function getGenreInsightsByMediaType(): Promise<
-  MediaTypeGenreInsights[]
-> {
-  const userId = await getCurrentUserId();
+export async function getGenreInsightsByMediaType(
+  userId?: string | null,
+): Promise<MediaTypeGenreInsights[]> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  const archivedFilter =
+    resolvedUserId == null
+      ? {}
+      : {
+          OR: [
+            { userMedia: { none: { userId: resolvedUserId } } },
+            { userMedia: { some: { userId: resolvedUserId, isArchived: false } } },
+          ],
+        };
   const rawItems = await prisma.mediaItem.findMany({
     where: {
       mediaType: visibleMediaTypeFilter(),
-      OR: [
-        { userMedia: { none: { userId } } },
-        { userMedia: { some: { userId, isArchived: false } } },
-      ],
+      ...archivedFilter,
     },
     include: {
       genres: { include: { genre: true } },
-      ...userMediaInclude(userId),
+      ...userMediaInclude(resolvedUserId),
     },
     orderBy: [{ title: "asc" }],
   });
@@ -280,20 +291,29 @@ function compareGenreInsights(first: GenreInsight, second: GenreInsight) {
   );
 }
 
-export async function getDataHealthReport(): Promise<DataHealthReport> {
-  const userId = await getCurrentUserId();
+export async function getDataHealthReport(
+  userId?: string | null,
+): Promise<DataHealthReport> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  const archivedFilter =
+    resolvedUserId == null
+      ? {}
+      : {
+          OR: [
+            { userMedia: { none: { userId: resolvedUserId } } },
+            { userMedia: { some: { userId: resolvedUserId, isArchived: false } } },
+          ],
+        };
   const rawItems = await prisma.mediaItem.findMany({
     where: {
       mediaType: visibleMediaTypeFilter(),
-      OR: [
-        { userMedia: { none: { userId } } },
-        { userMedia: { some: { userId, isArchived: false } } },
-      ],
+      ...archivedFilter,
     },
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
-      ...userMediaInclude(userId),
+      ...userMediaInclude(resolvedUserId),
     },
     orderBy: { title: "asc" },
   });
@@ -320,16 +340,22 @@ export async function getDataHealthReport(): Promise<DataHealthReport> {
   };
 }
 
-export async function getFriendCompatibility(): Promise<FriendCompatibility[]> {
-  const userId = await getCurrentUserId();
+export async function getFriendCompatibility(
+  userId?: string | null,
+): Promise<FriendCompatibility[]> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  if (resolvedUserId == null) return [];
   const friends = await prisma.friend.findMany({
-    where: { userId },
+    where: { userId: resolvedUserId },
     include: {
       ratings: {
         where: { media: { mediaType: visibleMediaTypeFilter() } },
         include: {
           media: {
-            include: { userMedia: { where: { userId }, take: 1 } },
+            include: {
+              userMedia: { where: { userId: resolvedUserId }, take: 1 },
+            },
           },
         },
       },

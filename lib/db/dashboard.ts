@@ -91,7 +91,10 @@ export function getDashboardTonightPicksByMediaType(
 export async function getDashboardData() {
   const today = startOfToday();
   const user = await getCurrentUser();
-  const userId = user.id;
+  // Anonymous viewers see a sensible default dashboard built from public
+  // signals. We use a sentinel id that never matches any UserMedia row so
+  // the per-user joins all collapse to defaults.
+  const userId = user?.id ?? "__anonymous__";
 
   // Item is "active" for this user if either there's no UserMedia row yet
   // (defaults to UNTRACKED + not archived) or the row exists and isn't archived.
@@ -251,7 +254,7 @@ export async function getDashboardData() {
     getDashboardTonightPicksByMediaType(recommendations);
 
   return {
-    userName: user.displayName,
+    userName: user?.displayName ?? null,
     totalItems,
     watchlistCount,
     comparisonCount,

@@ -21,6 +21,7 @@ import {
   SOURCE_MEDIA_APPLICABILITY,
   SOURCE_TRUST_WEIGHTS,
 } from "@/lib/scoring/config";
+import { requireUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Scoring" };
@@ -32,7 +33,8 @@ export const metadata = { title: "Scoring" };
  *
  * If you change a constant, just reload — there's no caching layer in front.
  */
-export default function ScoringConfigPage() {
+export default async function ScoringConfigPage() {
+  await requireUserId("/data-health/scoring");
   return (
     <Stack spacing={2.5}>
       <Box>

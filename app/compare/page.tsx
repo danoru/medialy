@@ -24,7 +24,7 @@ import {
   comparisonKey,
   getComparisonPair,
 } from "@/lib/compare";
-import { getCurrentUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/user";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
@@ -56,7 +56,7 @@ export default async function ComparePage({
   const historyContext = coerceComparisonContextParam(
     stringParam(params.historyContext),
   );
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId("/compare");
   const historyWhere: Prisma.PairwiseComparisonWhereInput = {
     userId,
     winner: { mediaType: visibleMediaTypeFilter() },

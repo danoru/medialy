@@ -16,6 +16,7 @@ import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { StatePanel } from "@/components/shared/StatePanel";
+import { requireUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Recommendations" };
@@ -27,6 +28,7 @@ export default async function RecommendationsPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireUserId("/recommendations");
   const params = await searchParams;
   const recommendations = await getRecommendations();
   const requestedType = stringParam(params.type);

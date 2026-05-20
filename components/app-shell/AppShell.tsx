@@ -140,13 +140,15 @@ const mobileSecondaryNav = navItems.filter(
 
 export function AppShell({
   children,
-  userName = "You",
-  userInitial = "Y",
+  userName,
+  userInitial,
 }: {
   children: React.ReactNode;
-  userName?: string;
-  userInitial?: string;
+  userName?: string | null;
+  userInitial?: string | null;
 }) {
+  const displayName = userName ?? "Guest";
+  const displayInitial = userInitial ?? "G";
   const pathname = usePathname();
   const { mode, toggleMode } = useThemeMode();
   const showAddMedia = pathname !== "/media/new";
@@ -274,14 +276,14 @@ export function AppShell({
                 width: 24,
               }}
             >
-              {userInitial}
+              {displayInitial}
             </Avatar>
             <Typography
               variant="labelMd"
               component="span"
               sx={{ fontWeight: 550 }}
             >
-              {userName}
+              {displayName}
             </Typography>
             <KeyboardArrowDownIcon
               sx={{ color: "text.secondary", fontSize: 16 }}

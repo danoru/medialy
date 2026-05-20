@@ -2,14 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/user";
 import { coerceMediaStatus, parseOptionalRating } from "@/lib/validation";
 
 export async function createFriend(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
   if (name) {
-    const userId = await getCurrentUserId();
+    const userId = await requireUserId();
     await prisma.friend.create({
       data: { userId, name, notes: notes || null },
     });
@@ -21,7 +21,7 @@ export async function addFriendRating(formData: FormData) {
   const friendId = String(formData.get("friendId") ?? "");
   const mediaId = String(formData.get("mediaId") ?? "");
   if (!friendId || !mediaId) return;
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   await prisma.friendRating.upsert({
     where: { friendId_mediaId: { friendId, mediaId } },
     update: {

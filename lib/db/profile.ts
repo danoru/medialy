@@ -3,7 +3,7 @@ import { getGenreInsights, getDataHealthReport } from "@/lib/insights";
 import { getFriendCompatibility } from "@/lib/insights";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 import { evaluateBadges, type BadgeKey } from "@/lib/scoring/badges";
-import { getCurrentUser, userInitial } from "@/lib/user";
+import { requireUser, userInitial } from "@/lib/user";
 import { DEFAULT_USER_MEDIA } from "@/lib/db/user-media";
 import type { MediaStatus, MediaType } from "@prisma/client";
 import { statusLabel } from "@/lib/status-labels";
@@ -96,7 +96,7 @@ function calibrationCopy(score: number): string {
 export type ProfileData = Awaited<ReturnType<typeof getProfileData>>;
 
 export async function getProfileData() {
-  const user = await getCurrentUser();
+  const user = await requireUser("/profile");
   const mediaType = visibleMediaTypeFilter();
 
   const [

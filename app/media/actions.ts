@@ -17,7 +17,7 @@ import {
   parseOptionalRating,
 } from "@/lib/validation";
 import { upsertUserMedia } from "@/lib/db/user-media";
-import { getCurrentUserId } from "@/lib/user";
+import { requireUserId } from "@/lib/user";
 
 export type MediaFormActionState = {
   message: string;
@@ -36,7 +36,7 @@ export async function createMediaItem(
   formData: FormData,
 ) {
   try {
-    const userId = await getCurrentUserId();
+    const userId = await requireUserId();
     const input = mediaFormInputFromFormData(formData);
     const media = await prisma.$transaction(async (tx) => {
       const existing = await findExistingMediaItem(tx, input);
@@ -69,7 +69,7 @@ export async function updateMediaItem(
   formData: FormData,
 ) {
   try {
-    const userId = await getCurrentUserId();
+    const userId = await requireUserId();
     const input = mediaFormInputFromFormData(formData);
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await findExistingMediaItem(tx, input, id);
@@ -105,7 +105,7 @@ export async function updateMediaRatings(formData: FormData) {
     .map((value) => String(value))
     .filter(Boolean);
 
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   let updatedCount = 0;
 
   for (const id of ids) {
@@ -134,7 +134,7 @@ export async function updateMediaRatings(formData: FormData) {
 
 export async function updateMediaRating(id: string, formData: FormData) {
   const personalRating = parseOptionalRating(formData.get("personalRating"));
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   await upsertUserMedia(userId, id, { personalRating });
   await recomputeMediaScores(id, userId);
   revalidatePath("/");
@@ -155,7 +155,7 @@ export async function updateMediaStatus(id: string, formData: FormData) {
     return;
   }
 
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   await upsertUserMedia(userId, id, { status });
   revalidatePath("/media");
   revalidatePath(`/media/${id}`);
@@ -165,7 +165,7 @@ export async function updateMediaStatus(id: string, formData: FormData) {
 }
 
 export async function toggleFavoriteMediaItem(id: string) {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const item = await prisma.userMedia.findUnique({
     where: { userId_mediaId: { userId, mediaId: id } },
     select: { isFavorite: true },
@@ -179,7 +179,7 @@ export async function toggleFavoriteMediaItem(id: string) {
 }
 
 export async function archiveMediaItem(id: string) {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   await upsertUserMedia(userId, id, { isArchived: true });
   revalidatePath("/media");
   await queueToast("Media item archived.");
@@ -187,7 +187,7 @@ export async function archiveMediaItem(id: string) {
 }
 
 export async function unarchiveMediaItem(id: string) {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   await upsertUserMedia(userId, id, { isArchived: false });
   revalidatePath("/media");
   await queueToast("Media item unarchived.");
@@ -202,7 +202,7 @@ export async function deleteMediaItem(id: string) {
 }
 
 export async function addNote(id: string, formData: FormData) {
-  const userId = await getCurrentUserId();
+  const userId = await requireUserId();
   const body = String(formData.get("body") ?? "").trim();
   if (body) {
     await prisma.note.create({ data: { userId, mediaId: id, body } });

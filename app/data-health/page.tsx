@@ -15,6 +15,7 @@ import { getDataHealthReport } from "@/lib/insights";
 import { formatMediaType } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { StatePanel } from "@/components/shared/StatePanel";
+import { requireUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Data Health" };
@@ -26,12 +27,13 @@ export default async function DataHealthPage({
 }: {
   searchParams: SearchParams;
 }) {
+  const userId = await requireUserId("/data-health");
   const params = await searchParams;
   const requestedType = stringParam(params.type);
   const selectedType = isVisibleMediaType(requestedType)
     ? requestedType
     : VISIBLE_MEDIA_TYPES[0];
-  const report = await getDataHealthReport();
+  const report = await getDataHealthReport(userId);
   const filteredReport = {
     missingGenres: report.missingGenres.filter(
       (item) => item.mediaType === selectedType,

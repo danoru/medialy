@@ -43,8 +43,8 @@ export default async function RootLayout({
           <Providers initialThemeMode={initialThemeMode}>
             <CssBaseline />
             <AppShell
-              userInitial={userInitial(user.displayName)}
-              userName={user.displayName}
+              userInitial={user ? userInitial(user.displayName) : null}
+              userName={user?.displayName ?? null}
             >
               {children}
             </AppShell>

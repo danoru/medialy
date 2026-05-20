@@ -42,7 +42,7 @@ import {
 import { StatePanel } from "@/components/shared/StatePanel";
 import { ActionToastButton } from "@/components/shared/Toasts";
 import { getCurrentUserId } from "@/lib/user";
-import { mergeUserMedia } from "@/lib/db/user-media";
+import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Upcoming" };
@@ -62,20 +62,26 @@ export default async function UpcomingPage({
   const now = new Date();
   const today = startOfToday(now);
   const userId = await getCurrentUserId();
+  const archivedFilter =
+    userId == null
+      ? {}
+      : {
+          OR: [
+            { userMedia: { none: { userId } } },
+            { userMedia: { some: { userId, isArchived: false } } },
+          ],
+        };
   const [rawItems, candidates] = await Promise.all([
     prisma.mediaItem.findMany({
       where: {
         mediaType: selectedType,
         releaseDate: { gte: today },
-        OR: [
-          { userMedia: { none: { userId } } },
-          { userMedia: { some: { userId, isArchived: false } } },
-        ],
+        ...archivedFilter,
       },
       include: {
         genres: { include: { genre: true } },
         tags: { include: { tag: true } },
-        userMedia: { where: { userId }, take: 1 },
+        ...userMediaInclude(userId),
       },
       orderBy: [{ releaseDate: "asc" }, { title: "asc" }],
     }),

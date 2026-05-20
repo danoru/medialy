@@ -98,30 +98,34 @@ export default async function MediaPage({
   const includeArchived = stringParam(params.archived) === "true";
 
   // Per-user filters live on the joined `UserMedia` row. We combine them into
-  // one relation filter to avoid emitting overlapping `some` clauses.
-  const userMediaFilters: Prisma.UserMediaWhereInput = { userId };
-  let hasUserMediaFilter = false;
-  if (statusParam) {
-    userMediaFilters.status = statusParam as MediaStatus;
-    hasUserMediaFilter = true;
-  }
-  if (favoriteParam === "true") {
-    userMediaFilters.isFavorite = true;
-    hasUserMediaFilter = true;
-  }
-  if (!includeArchived) {
-    userMediaFilters.isArchived = false;
-  }
+  // one relation filter to avoid emitting overlapping `some` clauses. For
+  // anonymous viewers, user-scoped filters are ignored — they only see the
+  // public catalog shape.
+  if (userId != null) {
+    const userMediaFilters: Prisma.UserMediaWhereInput = { userId };
+    let hasUserMediaFilter = false;
+    if (statusParam) {
+      userMediaFilters.status = statusParam as MediaStatus;
+      hasUserMediaFilter = true;
+    }
+    if (favoriteParam === "true") {
+      userMediaFilters.isFavorite = true;
+      hasUserMediaFilter = true;
+    }
+    if (!includeArchived) {
+      userMediaFilters.isArchived = false;
+    }
 
-  if (hasUserMediaFilter) {
-    where.userMedia = { some: userMediaFilters };
-  } else if (!includeArchived) {
-    // Default view: items with no UserMedia (UNTRACKED, not archived) OR
-    // items with a UserMedia row that is not archived.
-    where.OR = [
-      { userMedia: { none: { userId } } },
-      { userMedia: { some: { userId, isArchived: false } } },
-    ];
+    if (hasUserMediaFilter) {
+      where.userMedia = { some: userMediaFilters };
+    } else if (!includeArchived) {
+      // Default view: items with no UserMedia (UNTRACKED, not archived) OR
+      // items with a UserMedia row that is not archived.
+      where.OR = [
+        { userMedia: { none: { userId } } },
+        { userMedia: { some: { userId, isArchived: false } } },
+      ];
+    }
   }
 
   if (titleFilter) {
@@ -365,7 +369,7 @@ async function findMediaPageItems({
   page: number;
   sort: string;
   where: Prisma.MediaItemWhereInput;
-  userId: string;
+  userId: string | null;
 }) {
   const skip = (page - 1) * PAGE_SIZE;
   const include = {
