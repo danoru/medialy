@@ -42,30 +42,36 @@ export function getDashboardTopRecommendationsByMediaType(
   }));
 }
 
+/**
+ * The Overall Top 10 is intentionally objective: same ranking for every
+ * viewer, signed-in or not. It blends external consensus with the average
+ * `personalRating` across ALL users — no viewer-specific score, no archive
+ * state, no affinity. Per-user signals belong on Tonight's Pick / Up Next.
+ */
 export function dashboardQualityScore(
-  item: Pick<MediaItemDTO, "computedConsensusScore" | "computedPersonalScore">,
+  consensusScore: number | null | undefined,
+  communityAverageRating: number | null | undefined,
 ) {
-  const scoreParts = [
-    item.computedConsensusScore,
-    item.computedPersonalScore,
-  ].filter((score): score is number => typeof score === "number");
-
-  if (scoreParts.length > 0) {
-    return (
-      scoreParts.reduce((total, score) => total + score, 0) / scoreParts.length
-    );
-  }
-
-  return null;
+  const parts = [consensusScore, communityAverageRating].filter(
+    (score): score is number => typeof score === "number",
+  );
+  if (parts.length === 0) return null;
+  return parts.reduce((total, score) => total + score, 0) / parts.length;
 }
 
-export function getDashboardOverallTopItemsByMediaType(items: MediaItemDTO[]) {
+export function getDashboardOverallTopItemsByMediaType(
+  items: MediaItemDTO[],
+  communityAverageByMediaId: Map<string, number>,
+) {
   return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
     mediaType,
     items: items
-      .filter((item) => !item.isArchived && item.mediaType === mediaType)
+      .filter((item) => item.mediaType === mediaType)
       .flatMap((media) => {
-        const score = dashboardQualityScore(media);
+        const score = dashboardQualityScore(
+          media.computedConsensusScore,
+          communityAverageByMediaId.get(media.id) ?? null,
+        );
         return score == null ? [] : [{ media, score }];
       })
       .sort((first, second) => {
@@ -135,6 +141,7 @@ export async function getDashboardData() {
     personalTopItemsByMediaType,
     upcomingItemsByMediaType,
     overallTopItems,
+    overallCommunityRatings,
   ] = await Promise.all([
     prisma.mediaItem.count({
       where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
@@ -210,11 +217,25 @@ export async function getDashboardData() {
         }),
       })),
     ),
+    // Overall Top 10 candidate pool is intentionally global — no
+    // `activeForUser` filter, so the viewer's archive state can't shape it.
     prisma.mediaItem.findMany({
-      where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
+      where: { mediaType: visibleMediaTypeFilter() },
       include: withUserAndTaxonomy,
     }),
+    prisma.userMedia.groupBy({
+      by: ["mediaId"],
+      where: { isArchived: false, personalRating: { not: null } },
+      _avg: { personalRating: true },
+    }),
   ]);
+
+  const communityAverageByMediaId = new Map<string, number>();
+  for (const row of overallCommunityRatings) {
+    if (row._avg.personalRating != null) {
+      communityAverageByMediaId.set(row.mediaId, row._avg.personalRating);
+    }
+  }
 
   // Sort the rows we couldn't sort in SQL (because the score columns live on
   // the joined UserMedia row) by their merged values.
@@ -251,6 +272,7 @@ export async function getDashboardData() {
 
   const topItemsByMediaType = getDashboardOverallTopItemsByMediaType(
     mergedOverallTopItems.map(toMediaItemDTO),
+    communityAverageByMediaId,
   );
   const tonightPicksByMediaType =
     getDashboardTonightPicksByMediaType(recommendations);

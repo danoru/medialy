@@ -76,31 +76,33 @@ describe("dashboard recommendation top 10", () => {
 });
 
 describe("dashboard overall top 10", () => {
-  it("uses blended quality score instead of recommendation score", () => {
-    const grouped = getDashboardOverallTopItemsByMediaType([
-      media("steady-quality", "MOVIE", "WATCHLIST", {
-        computedConsensusScore: 9,
-        computedPersonalScore: 8,
-      }),
-      media("affinity-only", "MOVIE", "WATCHLIST", {
-        computedConsensusScore: 6,
-        computedPersonalScore: 6,
-      }),
-    ]);
+  it("blends external consensus with the community average rating", () => {
+    const grouped = getDashboardOverallTopItemsByMediaType(
+      [
+        media("steady-quality", "MOVIE", "WATCHLIST", {
+          computedConsensusScore: 9,
+        }),
+        media("lower-quality", "MOVIE", "WATCHLIST", {
+          computedConsensusScore: 6,
+        }),
+      ],
+      new Map([
+        ["steady-quality", 8],
+        ["lower-quality", 6],
+      ]),
+    );
 
     expect(grouped.find((entry) => entry.mediaType === "MOVIE")?.items).toEqual(
       [
         {
           media: media("steady-quality", "MOVIE", "WATCHLIST", {
             computedConsensusScore: 9,
-            computedPersonalScore: 8,
           }),
           score: 8.5,
         },
         {
-          media: media("affinity-only", "MOVIE", "WATCHLIST", {
+          media: media("lower-quality", "MOVIE", "WATCHLIST", {
             computedConsensusScore: 6,
-            computedPersonalScore: 6,
           }),
           score: 6,
         },
@@ -108,77 +110,84 @@ describe("dashboard overall top 10", () => {
     );
   });
 
-  it("includes active visible items regardless of recommendation status", () => {
-    const grouped = getDashboardOverallTopItemsByMediaType([
-      media("watchlist", "TV_SHOW", "WATCHLIST", {
-        computedPersonalScore: 8,
-      }),
-      media("completed", "TV_SHOW", "COMPLETED", {
-        computedPersonalScore: 9,
-      }),
-      media("backlog", "TV_SHOW", "BACKLOG", {
-        computedPersonalScore: 7,
-      }),
-    ]);
+  it("ignores per-viewer state (status, archived, personal score)", () => {
+    // The viewer-specific fields on the DTO must not affect either inclusion
+    // or ordering — same ranking for every user.
+    const grouped = getDashboardOverallTopItemsByMediaType(
+      [
+        media("viewer-completed", "TV_SHOW", "COMPLETED", {
+          computedConsensusScore: 9,
+          computedPersonalScore: 1,
+        }),
+        media("viewer-archived", "TV_SHOW", "WATCHLIST", {
+          computedConsensusScore: 8,
+          isArchived: true,
+        }),
+        media("viewer-untracked", "TV_SHOW", "UNTRACKED", {
+          computedConsensusScore: 7,
+        }),
+      ],
+      new Map(),
+    );
 
     expect(
-      grouped.find((entry) => entry.mediaType === "TV_SHOW")?.items.map(
-        (entry) => entry.media.id,
-      ),
-    ).toEqual(["completed", "watchlist", "backlog"]);
+      grouped
+        .find((entry) => entry.mediaType === "TV_SHOW")
+        ?.items.map((entry) => entry.media.id),
+    ).toEqual(["viewer-completed", "viewer-archived", "viewer-untracked"]);
   });
 
-  it("excludes items without computed personal or consensus scores", () => {
-    const grouped = getDashboardOverallTopItemsByMediaType([
-      media("personal", "MOVIE", "WATCHLIST", {
-        computedPersonalScore: 8,
-      }),
-      media("consensus", "MOVIE", "WATCHLIST", {
-        computedConsensusScore: 7.5,
-      }),
-      media("explicit-only", "MOVIE", "WATCHLIST", {
-        personalRating: 10,
-      }),
-      media("pairwise-only", "MOVIE", "WATCHLIST", {
-        pairwiseScore: 1400,
-      }),
-    ]);
+  it("excludes items with neither consensus nor community rating", () => {
+    const grouped = getDashboardOverallTopItemsByMediaType(
+      [
+        media("consensus-only", "MOVIE", "WATCHLIST", {
+          computedConsensusScore: 7.5,
+        }),
+        media("community-only", "MOVIE", "WATCHLIST"),
+        media("no-signal", "MOVIE", "WATCHLIST", {
+          // Viewer personal score must NOT rescue an item missing both objective signals.
+          computedPersonalScore: 9,
+        }),
+        media("pairwise-only", "MOVIE", "WATCHLIST", {
+          pairwiseScore: 1400,
+        }),
+      ],
+      new Map([["community-only", 8]]),
+    );
 
     expect(
-      grouped.find((entry) => entry.mediaType === "MOVIE")?.items.map(
-        (entry) => entry.media.id,
-      ),
-    ).toEqual(["personal", "consensus"]);
+      grouped
+        .find((entry) => entry.mediaType === "MOVIE")
+        ?.items.map((entry) => entry.media.id),
+    ).toEqual(["community-only", "consensus-only"]);
   });
 
-  it("returns null for quality score when computed scores are missing", () => {
-    expect(
-      dashboardQualityScore(
-        media("rating", "MOVIE", "WATCHLIST", { personalRating: 7.5 }),
-      ),
-    ).toBeNull();
-    expect(dashboardQualityScore(media("pairwise", "MOVIE"))).toBeNull();
+  it("returns null quality score when both objective signals are missing", () => {
+    expect(dashboardQualityScore(null, null)).toBeNull();
+    expect(dashboardQualityScore(undefined, undefined)).toBeNull();
+    expect(dashboardQualityScore(8, null)).toBe(8);
+    expect(dashboardQualityScore(null, 6)).toBe(6);
+    expect(dashboardQualityScore(8, 6)).toBe(7);
   });
 
-  it("excludes archived and hidden media types", () => {
-    const grouped = getDashboardOverallTopItemsByMediaType([
-      media("active", "VIDEO_GAME", "WATCHLIST", {
-        computedPersonalScore: 7,
-      }),
-      media("archived", "VIDEO_GAME", "WATCHLIST", {
-        computedPersonalScore: 10,
-        isArchived: true,
-      }),
-      media("hidden", "BOOK" as MediaItemDTO["mediaType"], "WATCHLIST", {
-        computedPersonalScore: 10,
-      }),
-    ]);
+  it("filters out hidden media types but keeps visible groups", () => {
+    const grouped = getDashboardOverallTopItemsByMediaType(
+      [
+        media("game", "VIDEO_GAME", "WATCHLIST", {
+          computedConsensusScore: 7,
+        }),
+        media("hidden", "BOOK" as MediaItemDTO["mediaType"], "WATCHLIST", {
+          computedConsensusScore: 10,
+        }),
+      ],
+      new Map(),
+    );
 
     expect(
-      grouped.find((entry) => entry.mediaType === "VIDEO_GAME")?.items.map(
-        (entry) => entry.media.id,
-      ),
-    ).toEqual(["active"]);
+      grouped
+        .find((entry) => entry.mediaType === "VIDEO_GAME")
+        ?.items.map((entry) => entry.media.id),
+    ).toEqual(["game"]);
     expect(grouped.map((entry) => entry.mediaType)).toEqual([
       "MOVIE",
       "TV_SHOW",
@@ -187,27 +196,31 @@ describe("dashboard overall top 10", () => {
   });
 
   it("groups by movies, tv, and games and caps each group at ten", () => {
-    const grouped = getDashboardOverallTopItemsByMediaType([
-      Array.from({ length: 12 }, (_, index) =>
-        media(`movie-${index}`, "MOVIE", "WATCHLIST", {
-          computedPersonalScore: 10 - index * 0.1,
+    const grouped = getDashboardOverallTopItemsByMediaType(
+      [
+        Array.from({ length: 12 }, (_, index) =>
+          media(`movie-${index}`, "MOVIE", "WATCHLIST", {
+            computedConsensusScore: 10 - index * 0.1,
+          }),
+        ),
+        media("tv", "TV_SHOW", "WATCHLIST", { computedConsensusScore: 8 }),
+        media("game", "VIDEO_GAME", "WATCHLIST", {
+          computedConsensusScore: 8,
         }),
-      ),
-      media("tv", "TV_SHOW", "WATCHLIST", { computedPersonalScore: 8 }),
-      media("game", "VIDEO_GAME", "WATCHLIST", { computedPersonalScore: 8 }),
-    ].flat());
+      ].flat(),
+      new Map(),
+    );
 
     expect(
       grouped.find((entry) => entry.mediaType === "MOVIE")?.items,
     ).toHaveLength(10);
-    expect(grouped.find((entry) => entry.mediaType === "TV_SHOW")?.items).toHaveLength(
-      1,
-    );
+    expect(
+      grouped.find((entry) => entry.mediaType === "TV_SHOW")?.items,
+    ).toHaveLength(1);
     expect(
       grouped.find((entry) => entry.mediaType === "VIDEO_GAME")?.items,
     ).toHaveLength(1);
   });
-
 });
 
 describe("dashboard tonight picks", () => {
