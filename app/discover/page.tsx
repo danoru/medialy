@@ -9,9 +9,10 @@ import {
   Typography,
 } from "@mui/material";
 import type { MediaItem, MediaType } from "@prisma/client";
-import { alpha } from "@mui/material/styles";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { formatMediaType } from "@/lib/format";
+import { posterFallback } from "@/lib/media-ui-helpers";
+import { PosterImage } from "@/components/media/PosterCard";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
@@ -512,7 +513,7 @@ function GatewayCard({ index, item }: { index: number; item: DiscoveryItem }) {
         },
       }}
     >
-      <MiniPoster item={item} />
+      <PosterImage item={item} />
       <Box sx={{ minWidth: 0 }}>
         <Typography noWrap sx={{ fontWeight: 600, lineHeight: 1.2 }}>
           {item.title}
@@ -708,7 +709,7 @@ function IfYouLikedPanel({
               p: 1,
             }}
           >
-            <MiniPoster item={chain.seed} />
+            <PosterImage item={chain.seed} />
             <Typography noWrap sx={{ fontWeight: 600 }}>
               {chain.seed.title}
             </Typography>
@@ -718,7 +719,7 @@ function IfYouLikedPanel({
             >
               then
             </Typography>
-            <MiniPoster item={chain.next} />
+            <PosterImage item={chain.next} />
             <Typography noWrap sx={{ fontWeight: 600 }}>
               {chain.next.title}
             </Typography>
@@ -835,25 +836,6 @@ function PosterCard({
           transform: "translateY(-4px)",
         },
         ...sx,
-      }}
-    />
-  );
-}
-
-function MiniPoster({ item }: { item: DiscoveryItem }) {
-  return (
-    <Box
-      sx={{
-        aspectRatio: "2 / 3",
-        backgroundImage: item.posterUrl
-          ? `url(${item.posterUrl})`
-          : posterFallback(item.mediaType),
-        backgroundPosition: "center",
-        backgroundSize: "cover",
-        borderRadius: 1,
-        border: "1px solid",
-        borderColor: "border.subtle",
-        width: "100%",
       }}
     />
   );
@@ -1104,13 +1086,3 @@ function topListsHref(
   return `/discover?${params.toString()}`;
 }
 
-function posterFallback(mediaType: MediaType) {
-  const accent =
-    mediaType === "VIDEO_GAME"
-      ? "#D97706"
-      : mediaType === "TV_SHOW"
-        ? "#0EA5A4"
-        : "#6366F1";
-
-  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
-}

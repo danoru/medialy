@@ -9,13 +9,11 @@ import GridViewIcon from "@mui/icons-material/GridView";
 import GroupIcon from "@mui/icons-material/Group";
 import LocalFireDepartmentIcon from "@mui/icons-material/LocalFireDepartment";
 import MoreVertIcon from "@mui/icons-material/MoreVert";
-import MovieIcon from "@mui/icons-material/Movie";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import TuneIcon from "@mui/icons-material/Tune";
-import TvIcon from "@mui/icons-material/Tv";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import {
   Box,
@@ -38,8 +36,17 @@ import { getRecommendations } from "@/lib/recommendations";
 import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
-import type { MediaItemDTO, Recommendation } from "@/lib/types";
+import type { Recommendation } from "@/lib/types";
 import { requireUserId } from "@/lib/user";
+import { formatReasonValue, matchLabel, matchTone } from "@/lib/score-display";
+import { releaseYearLabel, compactDateLabel } from "@/lib/date-labels";
+import {
+  mediaAccent,
+  mediaTypeIcon,
+  shortMediaTypeLabel,
+} from "@/lib/media-ui-helpers";
+import { PosterImage, PosterThumb } from "@/components/media/PosterCard";
+import { ScoreRing, ScoreBars } from "@/components/media/ScoreDisplay";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Watchlist" };
@@ -271,7 +278,7 @@ function WatchlistHeader({
               <Tab
                 component="a"
                 href={buildWatchlistHref(type)}
-                icon={mediaTypeIcon(type)}
+                icon={mediaTypeIcon(type) as React.ReactElement}
                 iconPosition="start"
                 key={type}
                 label={`${shortMediaTypeLabel(type)} (${countsByType.get(type) ?? 0})`}
@@ -489,7 +496,7 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
         }}
       >
         <RankBadge rank={rank} score={entry.score} />
-        <PosterThumb item={item} score={entry.score} />
+        <PosterThumb item={item} accent={matchTone(entry.score)} size="md" />
         <Box sx={{ minWidth: 0 }}>
           <Stack direction="row" sx={{ alignItems: "center", gap: 0.55 }}>
             <Typography
@@ -600,7 +607,7 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
             mt: 0.9,
           }}
         >
-          <PosterBlock item={item} />
+          <PosterImage item={item} minHeight={184} />
           <Box sx={{ minWidth: 0 }}>
             <Link
               href={`/media/${item.id}`}
@@ -646,7 +653,7 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
                 {Math.round(entry.score)}%
               </Typography>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <MiniBars value={entry.score} />
+                <ScoreBars value={entry.score} />
                 <Stack
                   direction="row"
                   sx={{ justifyContent: "space-between", mt: 0.3 }}
@@ -772,7 +779,7 @@ function NextUpRow({ entry }: { entry: Recommendation }) {
         }}
       >
         <PlayCircleIcon sx={{ color: "text.secondary", fontSize: 22 }} />
-        <PosterThumb item={item} score={entry.score} small />
+        <PosterThumb item={item} accent={matchTone(entry.score)} size="sm" />
         <Box sx={{ minWidth: 0 }}>
           <Typography noWrap sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
             {item.title}
@@ -878,7 +885,7 @@ function QueueMixPanel({
                 >
                   <Box
                     sx={{
-                      bgcolor: mediaTypeColor(entry.mediaType),
+                      bgcolor: mediaAccent(entry.mediaType),
                       borderRadius: "50%",
                       height: 7,
                       width: 7,
@@ -1058,86 +1065,6 @@ function RankBadge({ rank, score }: { rank: number; score: number }) {
   );
 }
 
-function PosterThumb({
-  item,
-  score,
-  small = false,
-}: {
-  item: MediaItemDTO;
-  score: number;
-  small?: boolean;
-}) {
-  return (
-    <Box
-      sx={{
-        backgroundImage: item.posterUrl
-          ? `url(${item.posterUrl})`
-          : designedPosterFallback(item.mediaType),
-        backgroundPosition: "center",
-        backgroundSize: "cover",
-        border: `1px solid ${alpha(matchTone(score), 0.18)}`,
-        borderRadius: 1.5,
-        height: small ? 48 : 60,
-        overflow: "hidden",
-        position: "relative",
-        width: small ? 32 : 40,
-      }}
-    />
-  );
-}
-
-function PosterBlock({ item }: { item: MediaItemDTO }) {
-  return (
-    <Box
-      sx={{
-        aspectRatio: "2 / 3",
-        backgroundImage: item.posterUrl
-          ? `url(${item.posterUrl})`
-          : designedPosterFallback(item.mediaType),
-        backgroundPosition: "center",
-        backgroundSize: "cover",
-        border: "1px solid",
-        borderColor: "border.subtle",
-        borderRadius: 2,
-        minHeight: 184,
-        overflow: "hidden",
-      }}
-    />
-  );
-}
-
-function ScoreRing({ score, size }: { score: number; size: number }) {
-  return (
-    <Box
-      sx={{
-        alignItems: "center",
-        background: `conic-gradient(${matchTone(score)} ${Math.round(score)}%, rgba(var(--mui-palette-text-primaryChannel) / 0.08) 0)`,
-        borderRadius: "50%",
-        display: "flex",
-        height: size,
-        justifyContent: "center",
-        width: size,
-      }}
-    >
-      <Box
-        sx={{
-          alignItems: "center",
-          bgcolor: "background.paper",
-          borderRadius: "50%",
-          display: "flex",
-          fontSize: "0.6875rem",
-          fontWeight: 650,
-          height: size - 10,
-          justifyContent: "center",
-          width: size - 10,
-        }}
-      >
-        {Math.round(score)}%
-      </Box>
-    </Box>
-  );
-}
-
 function ReasonChip({ label, value }: { label: string; value: number }) {
   const color = signalColor(label);
 
@@ -1186,34 +1113,6 @@ function DotMeta({ children }: { children: React.ReactNode }) {
     <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
       / {children}
     </Typography>
-  );
-}
-
-function MiniBars({ value }: { value: number }) {
-  const activeBars = Math.max(1, Math.round(value / 10));
-
-  return (
-    <Box
-      sx={{
-        display: "grid",
-        gap: 0.25,
-        gridTemplateColumns: "repeat(10, 1fr)",
-      }}
-    >
-      {Array.from({ length: 10 }).map((_, index) => (
-        <Box
-          key={index}
-          sx={{
-            bgcolor:
-              index < activeBars
-                ? matchTone(value)
-                : "rgba(var(--mui-palette-text-primaryChannel) / 0.08)",
-            borderRadius: 0.5,
-            height: 9,
-          }}
-        />
-      ))}
-    </Box>
   );
 }
 
@@ -1392,11 +1291,6 @@ function averageScore(entries: Recommendation[]) {
   );
 }
 
-function formatReasonValue(value: number) {
-  const rounded = Math.round(value);
-  return rounded > 0 ? `+${rounded}` : String(rounded);
-}
-
 function primarySignal(entry: Recommendation) {
   const bestReason = positiveReasons(entry).sort(
     (a, b) => b.value - a.value,
@@ -1412,37 +1306,6 @@ function primarySignal(entry: Recommendation) {
   );
 }
 
-function matchLabel(score: number) {
-  if (score >= 85) return "Very High";
-  if (score >= 70) return "High";
-  if (score >= 55) return "Solid";
-  return "Niche";
-}
-
-function matchTone(score: number) {
-  if (score >= 85) return "#2EFFC3";
-  if (score >= 70) return "#22D3EE";
-  if (score >= 55) return "#FBBF24";
-  return "#A78BFA";
-}
-
-function compactDateLabel(value: Date | string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("en-US", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function releaseYearLabel(value: Date | string | null | undefined) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return String(date.getFullYear());
-}
-
 function queueDonutBackground(
   mix: Array<{ count: number; mediaType: MediaType }>,
   total: number,
@@ -1456,7 +1319,7 @@ function queueDonutBackground(
       const start = cursor;
       const end = cursor + (entry.count / total) * 100;
       cursor = end;
-      return `${mediaTypeColor(entry.mediaType)} ${start}% ${end}%`;
+      return `${mediaAccent(entry.mediaType)} ${start}% ${end}%`;
     });
 
   return `conic-gradient(${stops.join(", ")})`;
@@ -1484,25 +1347,3 @@ function signalIcon(label: string) {
   return <AutoAwesomeIcon sx={{ fontSize: 17 }} />;
 }
 
-function mediaTypeIcon(mediaType: MediaType) {
-  if (mediaType === "TV_SHOW") return <TvIcon fontSize="small" />;
-  if (mediaType === "VIDEO_GAME") return <SportsEsportsIcon fontSize="small" />;
-  return <MovieIcon fontSize="small" />;
-}
-
-function mediaTypeColor(mediaType: MediaType) {
-  if (mediaType === "TV_SHOW") return "#60A5FA";
-  if (mediaType === "VIDEO_GAME") return "#2EFFC3";
-  return "#8B5CF6";
-}
-
-function shortMediaTypeLabel(mediaType: MediaType) {
-  if (mediaType === "TV_SHOW") return "TV";
-  if (mediaType === "VIDEO_GAME") return "Games";
-  return "Movies";
-}
-
-function designedPosterFallback(mediaType: MediaType) {
-  const accent = mediaTypeColor(mediaType);
-  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
-}

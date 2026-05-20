@@ -3,12 +3,9 @@
 import AutoGraphIcon from "@mui/icons-material/AutoGraph";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import DonutLargeIcon from "@mui/icons-material/DonutLarge";
-import MovieIcon from "@mui/icons-material/Movie";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
-import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import StarIcon from "@mui/icons-material/Star";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
-import TvIcon from "@mui/icons-material/Tv";
 import {
   Box,
   Chip,
@@ -18,7 +15,6 @@ import {
   Typography,
 } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
-import { alpha } from "@mui/material/styles";
 import { MediaType } from "@prisma/client";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -29,13 +25,17 @@ import type {
   InsightStandoutTitle,
   MediaTypeGenreInsights,
 } from "@/lib/types";
-import { formatMediaType } from "@/lib/format";
+import {
+  mediaTypeIcon,
+  posterFallback,
+  shortMediaTypeLabel,
+} from "@/lib/media-ui-helpers";
 
 type InsightsClientProps = {
   insightsByType: MediaTypeGenreInsights[];
 };
 
-const mediaAccent: Record<MediaType, string> = {
+const localMediaAccent: Record<MediaType, string> = {
   [MediaType.MOVIE]: "#6366F1",
   [MediaType.TV_SHOW]: "#0EA5A4",
   [MediaType.VIDEO_GAME]: "#D97706",
@@ -53,7 +53,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
   const selected =
     insightsByType.find((entry) => entry.mediaType === mediaType) ??
     insightsByType[0];
-  const accent = selected ? mediaAccent[selected.mediaType] : "#6366F1";
+  const accent = selected ? localMediaAccent[selected.mediaType] : "#6366F1";
   const topGenres =
     selected?.genres.filter((genre) => genre.ratedCount > 0).slice(0, 10) ?? [];
   const lowDataGenres =
@@ -828,7 +828,7 @@ function StandoutTitles({ titles }: { titles: InsightStandoutTitle[] }) {
                 aspectRatio: "2 / 3",
                 backgroundImage: title.posterUrl
                   ? `url(${title.posterUrl})`
-                  : designedPosterFallback(title.mediaType),
+                  : posterFallback(title.mediaType),
                 backgroundPosition: "center",
                 backgroundSize: "cover",
                 bgcolor: "surface.2",
@@ -1015,25 +1015,6 @@ function radarPoint(
     center + Math.cos(angle) * scaledRadius,
     center + Math.sin(angle) * scaledRadius,
   ];
-}
-
-function mediaTypeIcon(mediaType: MediaType) {
-  if (mediaType === MediaType.TV_SHOW) return <TvIcon fontSize="small" />;
-  if (mediaType === MediaType.VIDEO_GAME) {
-    return <SportsEsportsIcon fontSize="small" />;
-  }
-  return <MovieIcon fontSize="small" />;
-}
-
-function shortMediaTypeLabel(mediaType: MediaType) {
-  if (mediaType === MediaType.TV_SHOW) return "TV";
-  if (mediaType === MediaType.VIDEO_GAME) return "Games";
-  return formatMediaType(mediaType);
-}
-
-function designedPosterFallback(mediaType: MediaType) {
-  const accent = mediaAccent[mediaType] ?? "#6366F1";
-  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
 }
 
 function mergeSx(base: SxProps<Theme>, override?: SxProps<Theme>) {
