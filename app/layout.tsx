@@ -43,6 +43,7 @@ export default async function RootLayout({
           <Providers initialThemeMode={initialThemeMode}>
             <CssBaseline />
             <AppShell
+              isAuthenticated={Boolean(user)}
               userInitial={user ? userInitial(user.displayName) : null}
               userName={user?.displayName ?? null}
             >
