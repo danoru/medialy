@@ -12,25 +12,17 @@ describe("recommendation status policy", () => {
     expect(isRecommendationEligibleStatus("COMPLETED")).toBe(false);
   });
 
-  it("keeps paused and dropped items eligible but strongly deprioritized", () => {
+  it("keeps paused items eligible but excludes dropped ones by default", () => {
     expect(isRecommendationEligibleStatus("PAUSED")).toBe(true);
-    expect(isRecommendationEligibleStatus("DROPPED")).toBe(true);
-
-    expect(recommendationStatusSignal("PAUSED")).toBeLessThan(
-      recommendationStatusSignal("BACKLOG"),
-    );
-    expect(recommendationStatusSignal("DROPPED")).toBeLessThan(
-      recommendationStatusSignal("PAUSED"),
-    );
+    expect(isRecommendationEligibleStatus("DROPPED")).toBe(false);
   });
 
-  it("prioritizes unknown-to-you items above known queue items", () => {
-    expect(recommendationStatusSignal("UNTRACKED")).toBeGreaterThan(
-      recommendationStatusSignal("WATCHLIST"),
-    );
-    expect(recommendationStatusSignal("WATCHLIST")).toBeGreaterThan(
-      recommendationStatusSignal("BACKLOG"),
-    );
+  it("treats status as a binary eligibility filter, not a continuous score signal", () => {
+    // recommendationStatusSignal is a deprecated shim — every status returns 0
+    // so callers can't accidentally bias rankings while migrating.
+    expect(recommendationStatusSignal("UNTRACKED")).toBe(0);
+    expect(recommendationStatusSignal("WATCHLIST")).toBe(0);
+    expect(recommendationStatusSignal("BACKLOG")).toBe(0);
   });
 
   it("trusts incomplete personal scores less than completed scores", () => {

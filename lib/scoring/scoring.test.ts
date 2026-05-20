@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { applyEloResult, kFactor } from "@/lib/scoring";
+import {
+  effectiveRating,
+  expectedWinProbabilityFromPriors,
+} from "@/lib/scoring/pairwise";
 
 describe("pairwise scoring", () => {
   it("moves points from loser to winner", () => {
@@ -34,5 +38,60 @@ describe("pairwise scoring", () => {
   it("decreases k-factor as comparison count increases", () => {
     expect(kFactor(0)).toBeGreaterThan(kFactor(10));
     expect(kFactor(10)).toBeGreaterThan(kFactor(30));
+  });
+
+  it("returns the expected win probability used by applyEloResult", () => {
+    const result = applyEloResult({
+      winnerScore: 1000,
+      loserScore: 1000,
+      winnerComparisonCount: 0,
+      loserComparisonCount: 0,
+    });
+    expect(result.expectedWinnerWinProb).toBeCloseTo(0.5, 2);
+  });
+});
+
+describe("blended Elo prior", () => {
+  it("collapses to pairwise-only when no rating or consensus is present", () => {
+    const rating = effectiveRating({ pairwiseScore: 1100 });
+    // 1100 normalizes between 850-1350 to 50/100 → 5/10. Then weight 0.25 of 0.25.
+    expect(rating).toBeCloseTo(5, 1);
+  });
+
+  it("favors explicit rating over pairwise when both exist", () => {
+    const lowRatedHighElo = effectiveRating({
+      personalRating: 5,
+      pairwiseScore: 1300,
+    });
+    const highRatedLowElo = effectiveRating({
+      personalRating: 9,
+      pairwiseScore: 900,
+    });
+    expect(highRatedLowElo).toBeGreaterThan(lowRatedHighElo);
+  });
+
+  it("treats a low-rated win over a high-rated item as an upset", () => {
+    const expected = expectedWinProbabilityFromPriors(
+      { personalRating: 6, pairwiseScore: 1000 },
+      { personalRating: 10, pairwiseScore: 1000 },
+    );
+    // The 6-rated winner was expected to lose; probability < 0.5
+    expect(expected).toBeLessThan(0.4);
+
+    const upset = applyEloResult({
+      winnerScore: 1000,
+      loserScore: 1000,
+      winnerComparisonCount: 0,
+      loserComparisonCount: 0,
+      expectedWinnerWinProb: expected,
+    });
+    const even = applyEloResult({
+      winnerScore: 1000,
+      loserScore: 1000,
+      winnerComparisonCount: 0,
+      loserComparisonCount: 0,
+    });
+    // The pure-Elo result expects 50/50, so this should swing harder.
+    expect(upset.winnerDelta).toBeGreaterThan(even.winnerDelta);
   });
 });

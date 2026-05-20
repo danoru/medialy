@@ -1,7 +1,9 @@
-import type { MediaStatus, MediaType } from "@prisma/client";
+import type { MediaStatus, MediaType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
 import { calculateComparisonRelevance } from "@/lib/scoring/comparisonRelevance";
+import { getCurrentUserId } from "@/lib/user";
+import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 
 export type ComparisonSelectionItem = {
   id: string;
@@ -42,15 +44,18 @@ type SelectionOptions = {
 const EXCLUDED_COMPARISON_STATUSES: MediaStatus[] = ["WATCHLIST", "BACKLOG"];
 
 export async function getComparisonPair(options: ComparisonPairOptions = {}) {
-  const focus = options.focusId
+  const userId = await getCurrentUserId();
+  const focusRow = options.focusId
     ? await prisma.mediaItem.findUnique({
         where: { id: options.focusId },
         include: {
           genres: { include: { genre: true } },
           tags: { include: { tag: true } },
+          ...userMediaInclude(userId),
         },
       })
     : null;
+  const focus = focusRow ? mergeUserMedia(focusRow) : null;
 
   if (
     focus &&
@@ -61,12 +66,13 @@ export async function getComparisonPair(options: ComparisonPairOptions = {}) {
     return null;
 
   const mediaType =
-    focus?.mediaType ?? options.mediaType ?? (await selectDefaultMediaType());
+    focus?.mediaType ?? options.mediaType ?? (await selectDefaultMediaType(userId));
   if (!mediaType) return null;
 
   const [items, recentComparisons] = await Promise.all([
-    loadComparisonItems(mediaType, options.genre, options.tag),
+    loadComparisonItems(userId, mediaType, options.genre, options.tag),
     prisma.pairwiseComparison.findMany({
+      where: { userId },
       select: { winnerId: true, loserId: true },
       orderBy: { createdAt: "desc" },
       take: 40,
@@ -82,30 +88,26 @@ export async function getComparisonPair(options: ComparisonPairOptions = {}) {
   });
 }
 
-async function selectDefaultMediaType() {
+async function selectDefaultMediaType(userId: string) {
   const groups = await prisma.mediaItem.groupBy({
     by: ["mediaType"],
-    where: comparisonEligibleWhere(),
+    where: comparisonEligibleWhere(userId),
     _count: true,
-    _min: { comparisonCount: true },
   });
   const eligible = groups.filter((group) => group._count >= 2);
 
-  return eligible.sort(
-    (a, b) =>
-      (a._min.comparisonCount ?? 0) - (b._min.comparisonCount ?? 0) ||
-      b._count - a._count,
-  )[0]?.mediaType;
+  return eligible.sort((a, b) => b._count - a._count)[0]?.mediaType;
 }
 
-function loadComparisonItems(
+async function loadComparisonItems(
+  userId: string,
   mediaType: MediaType,
   genre?: string,
   tag?: string,
 ) {
-  return prisma.mediaItem.findMany({
+  const rows = await prisma.mediaItem.findMany({
     where: {
-      ...comparisonEligibleWhere(),
+      ...comparisonEligibleWhere(userId),
       mediaType,
       ...(genre ? { genres: { some: { genre: { name: genre } } } } : {}),
       ...(tag ? { tags: { some: { tag: { name: tag } } } } : {}),
@@ -113,10 +115,18 @@ function loadComparisonItems(
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
+      ...userMediaInclude(userId),
     },
-    orderBy: [{ comparisonCount: "asc" }, { updatedAt: "asc" }],
+    orderBy: [{ updatedAt: "asc" }],
     take: 36,
   });
+  return rows
+    .map(mergeUserMedia)
+    .sort(
+      (a, b) =>
+        a.comparisonCount - b.comparisonCount ||
+        a.updatedAt.getTime() - b.updatedAt.getTime(),
+    );
 }
 
 export function selectComparisonPair<TItem extends ComparisonSelectionItem>(
@@ -237,14 +247,24 @@ export function isReleasedForComparison(
   return new Date(releaseDate).getTime() <= currentDate.getTime();
 }
 
-export function comparisonEligibleWhere() {
+export function comparisonEligibleWhere(userId: string): Prisma.MediaItemWhereInput {
   return {
-    isArchived: false,
     mediaType: visibleMediaTypeFilter(),
     AND: [
       { OR: [{ releaseDate: null }, { releaseDate: { lte: new Date() } }] },
     ],
-    status: { notIn: EXCLUDED_COMPARISON_STATUSES },
+    OR: [
+      { userMedia: { none: { userId } } },
+      {
+        userMedia: {
+          some: {
+            userId,
+            isArchived: false,
+            status: { notIn: EXCLUDED_COMPARISON_STATUSES },
+          },
+        },
+      },
+    ],
   };
 }
 

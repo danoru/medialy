@@ -13,7 +13,11 @@ import {
   Typography,
 } from "@mui/material";
 import Link from "next/link";
-import { ReleaseCandidateStatus, type MediaType } from "@prisma/client";
+import {
+  ReleaseCandidateStatus,
+  type MediaStatus,
+  type MediaType,
+} from "@prisma/client";
 import {
   approveReleaseCandidate,
   clearReleaseDate,
@@ -22,7 +26,8 @@ import {
   rejectReleaseCandidate,
 } from "@/app/upcoming/actions";
 import { prisma } from "@/lib/prisma";
-import { formatMediaType, formatStatus } from "@/lib/format";
+import { formatMediaType } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
 import {
   isVisibleMediaType,
   VISIBLE_MEDIA_TYPES,
@@ -36,6 +41,8 @@ import {
 } from "@/lib/upcoming";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { ActionToastButton } from "@/components/shared/Toasts";
+import { getCurrentUserId } from "@/lib/user";
+import { mergeUserMedia } from "@/lib/db/user-media";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Upcoming" };
@@ -54,16 +61,21 @@ export default async function UpcomingPage({
     : VISIBLE_MEDIA_TYPES[0];
   const now = new Date();
   const today = startOfToday(now);
-  const [items, candidates] = await Promise.all([
+  const userId = await getCurrentUserId();
+  const [rawItems, candidates] = await Promise.all([
     prisma.mediaItem.findMany({
       where: {
-        isArchived: false,
         mediaType: selectedType,
         releaseDate: { gte: today },
+        OR: [
+          { userMedia: { none: { userId } } },
+          { userMedia: { some: { userId, isArchived: false } } },
+        ],
       },
       include: {
         genres: { include: { genre: true } },
         tags: { include: { tag: true } },
+        userMedia: { where: { userId }, take: 1 },
       },
       orderBy: [{ releaseDate: "asc" }, { title: "asc" }],
     }),
@@ -87,6 +99,7 @@ export default async function UpcomingPage({
     }),
   ]);
 
+  const items = rawItems.map(mergeUserMedia);
   const groups = groupUpcomingItems(items, now);
   const futureCount = groups.next30Days.length + groups.later.length;
   const visibleCandidates = candidates.filter(
@@ -180,7 +193,7 @@ function CandidateQueue({
       <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
         <Stack direction={{ xs: "column", sm: "row" }} sx={{ mb: 1.5 }}>
           <Box sx={{ flex: 1 }}>
-            <Typography sx={{ fontWeight: 800 }} variant="h6">
+            <Typography sx={{ fontWeight: 650 }} variant="h6">
               Discovery Candidates
             </Typography>
             <Typography color="text.secondary" variant="body2">
@@ -243,12 +256,12 @@ function CandidateRow({ candidate }: { candidate: ReleaseCandidateItem }) {
               style={{ textDecoration: "none" }}
               target="_blank"
             >
-              <Typography sx={{ color: "primary.main", fontWeight: 800 }}>
+              <Typography sx={{ color: "primary.main", fontWeight: 650 }}>
                 {candidate.title}
               </Typography>
             </Link>
           ) : (
-            <Typography sx={{ fontWeight: 800 }}>{candidate.title}</Typography>
+            <Typography sx={{ fontWeight: 650 }}>{candidate.title}</Typography>
           )}
           <Chip
             color={
@@ -343,6 +356,7 @@ type ReleaseSectionItem = Awaited<
   ReturnType<typeof prisma.mediaItem.findMany>
 >[number] & {
   genres: Array<{ genre: { name: string } }>;
+  status: import("@prisma/client").MediaStatus;
 };
 
 function ReleaseSection({
@@ -365,7 +379,7 @@ function ReleaseSection({
       <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
         <Stack direction={{ xs: "column", sm: "row" }} sx={{ mb: 1.5 }}>
           <Box sx={{ flex: 1 }}>
-            <Typography sx={{ fontWeight: 800 }} variant="h6">
+            <Typography sx={{ fontWeight: 650 }} variant="h6">
               {title}
             </Typography>
             {description ? (
@@ -410,12 +424,11 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
       <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
         <Typography
           color="text.secondary"
-          sx={{ fontWeight: 700, textTransform: "uppercase" }}
-          variant="caption"
+          variant="eyebrow"
         >
           {label}
         </Typography>
-        <Typography sx={{ fontWeight: 800 }} variant="h5">
+        <Typography sx={{ fontWeight: 650 }} variant="h5">
           {value.toLocaleString()}
         </Typography>
       </CardContent>
@@ -435,10 +448,10 @@ function ReleaseRow({
 }: {
   genres: string[];
   id: string;
-  mediaType: string;
+  mediaType: MediaType;
   now: Date;
   showReviewActions?: boolean;
-  status: string;
+  status: MediaStatus;
   title: string;
   releaseDate: Date | null;
 }) {
@@ -461,14 +474,14 @@ function ReleaseRow({
         <CalendarMonthIcon color="primary" />
         <Box sx={{ minWidth: 0 }}>
           <Link href={`/media/${id}`} style={{ textDecoration: "none" }}>
-            <Typography noWrap sx={{ color: "primary.main", fontWeight: 800 }}>
+            <Typography noWrap sx={{ color: "primary.main", fontWeight: 650 }}>
               {title}
             </Typography>
           </Link>
           <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.6, mt: 0.6 }}>
             <Chip label={formatMediaType(mediaType)} size="small" />
             <Chip
-              label={formatStatus(status)}
+              label={statusLabel(status, mediaType)}
               size="small"
               variant="outlined"
             />

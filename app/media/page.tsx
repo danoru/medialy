@@ -21,7 +21,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { MediaStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { formatMediaType, formatStatus } from "@/lib/format";
+import { formatMediaType } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
 import {
   isVisibleMediaType,
   VISIBLE_MEDIA_TYPES,
@@ -29,6 +30,8 @@ import {
 } from "@/lib/media-types";
 import { updateMediaRatings } from "@/app/media/actions";
 import { StatePanel } from "@/components/shared/StatePanel";
+import { getCurrentUserId } from "@/lib/user";
+import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { sortMediaTitleRows, type SortDirection } from "@/lib/media-sort";
 import { MediaPageNavigator } from "@/components/media/MediaPageNavigator";
 import { SaveRatingsButton } from "@/components/media/SaveRatingsButton";
@@ -78,6 +81,7 @@ export default async function MediaPage({
     selectedTag,
   );
   const page = Math.max(1, intParam(params.page) ?? 1);
+  const userId = await getCurrentUserId();
   const where: Prisma.MediaItemWhereInput = {
     mediaType:
       selectedType === ALL_MEDIA_TYPES
@@ -88,10 +92,38 @@ export default async function MediaPage({
   if (selectedGenre)
     where.genres = { some: { genre: { name: selectedGenre } } };
   if (selectedTag) where.tags = { some: { tag: { name: selectedTag } } };
-  if (stringParam(params.status))
-    where.status = stringParam(params.status) as MediaStatus;
-  if (stringParam(params.favorite) === "true") where.isFavorite = true;
-  if (stringParam(params.archived) !== "true") where.isArchived = false;
+
+  const statusParam = stringParam(params.status);
+  const favoriteParam = stringParam(params.favorite);
+  const includeArchived = stringParam(params.archived) === "true";
+
+  // Per-user filters live on the joined `UserMedia` row. We combine them into
+  // one relation filter to avoid emitting overlapping `some` clauses.
+  const userMediaFilters: Prisma.UserMediaWhereInput = { userId };
+  let hasUserMediaFilter = false;
+  if (statusParam) {
+    userMediaFilters.status = statusParam as MediaStatus;
+    hasUserMediaFilter = true;
+  }
+  if (favoriteParam === "true") {
+    userMediaFilters.isFavorite = true;
+    hasUserMediaFilter = true;
+  }
+  if (!includeArchived) {
+    userMediaFilters.isArchived = false;
+  }
+
+  if (hasUserMediaFilter) {
+    where.userMedia = { some: userMediaFilters };
+  } else if (!includeArchived) {
+    // Default view: items with no UserMedia (UNTRACKED, not archived) OR
+    // items with a UserMedia row that is not archived.
+    where.OR = [
+      { userMedia: { none: { userId } } },
+      { userMedia: { some: { userId, isArchived: false } } },
+    ];
+  }
+
   if (titleFilter) {
     const matchingIds = await mediaIdsMatchingTitleFilter(where, titleFilter);
     where.id = { in: matchingIds };
@@ -102,6 +134,7 @@ export default async function MediaPage({
     page,
     sort,
     where,
+    userId,
   });
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -206,7 +239,7 @@ export default async function MediaPage({
               <MenuItem value="">All statuses</MenuItem>
               {Object.values(MediaStatus).map((status) => (
                 <MenuItem key={status} value={status}>
-                  {formatStatus(status)}
+                  {statusLabel(status)}
                 </MenuItem>
               ))}
             </TextField>
@@ -301,34 +334,45 @@ export default async function MediaPage({
   );
 }
 
-type MediaListItem = Awaited<
+type RawMediaListItem = Awaited<
   ReturnType<
     typeof prisma.mediaItem.findMany<{
       include: {
         genres: { include: { genre: true } };
         tags: { include: { tag: true } };
+        userMedia: { where: { userId: string }; take: 1 };
       };
     }>
   >
 >[number];
 
-const mediaListItemInclude = {
-  genres: { include: { genre: true } },
-  tags: { include: { tag: true } },
-} satisfies Prisma.MediaItemInclude;
+type MediaListItem = ReturnType<typeof mergeUserMedia<RawMediaListItem>>;
+
+const PER_USER_SORTS = new Set([
+  "pairwiseScore",
+  "computedPersonalScore",
+  "personalRating",
+]);
 
 async function findMediaPageItems({
   direction,
   page,
   sort,
   where,
+  userId,
 }: {
   direction: SortDirection;
   page: number;
   sort: string;
   where: Prisma.MediaItemWhereInput;
+  userId: string;
 }) {
   const skip = (page - 1) * PAGE_SIZE;
+  const include = {
+    genres: { include: { genre: true } },
+    tags: { include: { tag: true } },
+    ...userMediaInclude(userId),
+  } satisfies Prisma.MediaItemInclude;
 
   if (sort === "title") {
     const titleRows = await prisma.mediaItem.findMany({
@@ -342,10 +386,12 @@ async function findMediaPageItems({
     if (pageIds.length === 0) return { items: [], total: titleRows.length };
 
     const pageItems = await prisma.mediaItem.findMany({
-      include: mediaListItemInclude,
+      include,
       where: { id: { in: pageIds } },
     });
-    const itemsById = new Map(pageItems.map((item) => [item.id, item]));
+    const itemsById = new Map(
+      pageItems.map((item) => [item.id, mergeUserMedia(item)]),
+    );
 
     return {
       items: pageIds
@@ -355,10 +401,23 @@ async function findMediaPageItems({
     };
   }
 
+  // Sorts that touch fields on the joined `UserMedia` row can't be ordered in
+  // SQL via Prisma's relation orderBy, so we load matching items, merge, then
+  // sort + paginate in memory.
+  if (PER_USER_SORTS.has(sort)) {
+    const allItems = await prisma.mediaItem.findMany({ include, where });
+    const merged = allItems.map(mergeUserMedia);
+    merged.sort((a, b) => compareByUserField(a, b, sort, direction));
+    return {
+      items: merged.slice(skip, skip + PAGE_SIZE),
+      total: merged.length,
+    };
+  }
+
   const [total, items] = await Promise.all([
     prisma.mediaItem.count({ where }),
     prisma.mediaItem.findMany({
-      include: mediaListItemInclude,
+      include,
       orderBy: orderBy(sort, direction),
       skip,
       take: PAGE_SIZE,
@@ -366,7 +425,26 @@ async function findMediaPageItems({
     }),
   ]);
 
-  return { items, total };
+  return { items: items.map(mergeUserMedia), total };
+}
+
+function compareByUserField(
+  a: MediaListItem,
+  b: MediaListItem,
+  sort: string,
+  direction: SortDirection,
+) {
+  const valueOf = (item: MediaListItem) => {
+    if (sort === "pairwiseScore") return item.pairwiseScore;
+    if (sort === "computedPersonalScore")
+      return item.computedPersonalScore ?? -Infinity;
+    if (sort === "personalRating") return item.personalRating ?? -Infinity;
+    return 0;
+  };
+  const delta = valueOf(b) - valueOf(a);
+  const directional = direction === "asc" ? -delta : delta;
+  if (directional !== 0) return directional;
+  return a.title.localeCompare(b.title);
 }
 
 function MediaRatingsTable({
@@ -445,7 +523,7 @@ function MediaRatingsTable({
                   </Stack>
                 </TableCell>
                 <TableCell>{formatMediaType(item.mediaType)}</TableCell>
-                <TableCell>{formatStatus(item.status)}</TableCell>
+                <TableCell>{statusLabel(item.status, item.mediaType)}</TableCell>
                 <TableCell>
                   {item.genres.map((entry) => entry.genre.name).join(", ") ||
                     "Missing"}
@@ -548,8 +626,8 @@ function MediaRatingsCards({
                     <Typography
                       sx={{
                         color: "primary.main",
-                        fontSize: 15,
-                        fontWeight: 850,
+                        fontSize: "0.9375rem",
+                        fontWeight: 600,
                         lineHeight: 1.2,
                         overflowWrap: "anywhere",
                       }}
@@ -566,7 +644,7 @@ function MediaRatingsCards({
                       size="small"
                     />
                     <Chip
-                      label={formatStatus(item.status)}
+                      label={statusLabel(item.status, item.mediaType)}
                       size="small"
                       variant="outlined"
                     />
@@ -609,7 +687,7 @@ function MediaRatingsCards({
                     <Typography color="text.secondary" variant="caption">
                       Personal
                     </Typography>
-                    <Typography sx={{ fontWeight: 800 }}>
+                    <Typography sx={{ fontWeight: 600 }}>
                       {formatScore(item.computedPersonalScore)}
                     </Typography>
                   </Box>
@@ -617,7 +695,7 @@ function MediaRatingsCards({
                     <Typography color="text.secondary" variant="caption">
                       Consensus
                     </Typography>
-                    <Typography sx={{ fontWeight: 800 }}>
+                    <Typography sx={{ fontWeight: 600 }}>
                       {formatScore(item.computedConsensusScore)}
                     </Typography>
                   </Box>
@@ -742,18 +820,8 @@ function orderBy(
 ): Prisma.MediaItemOrderByWithRelationInput[] {
   if (sort === "releaseDate")
     return [{ releaseDate: direction }, { title: "asc" }];
-  if (sort === "pairwiseScore")
-    return [{ pairwiseScore: direction }, { title: "asc" }];
-  if (sort === "computedPersonalScore")
-    return [
-      { computedPersonalScore: direction },
-      { pairwiseScore: direction },
-      { title: "asc" },
-    ];
   if (sort === "computedConsensusScore")
     return [{ computedConsensusScore: direction }, { title: "asc" }];
-  if (sort === "personalRating")
-    return [{ personalRating: direction }, { title: "asc" }];
   if (sort === "updatedAt") return [{ updatedAt: direction }, { title: "asc" }];
   return [{ title: direction }];
 }

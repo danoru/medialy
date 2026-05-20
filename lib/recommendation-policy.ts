@@ -1,48 +1,34 @@
 import type { MediaStatus } from "@prisma/client";
+import {
+  DEFAULT_EXCLUDED_STATUSES,
+  personalScoreTrustForStatus,
+} from "@/lib/scoring/eligibility";
 
-export const EXCLUDED_RECOMMENDATION_STATUSES: MediaStatus[] = [
-  "IN_PROGRESS",
-  "COMPLETED",
-];
+/**
+ * Backwards-compatible shim. New code should call functions from
+ * `@/lib/scoring/eligibility` directly — eligibility now lives there as a
+ * single source of truth, separate from the (taste-only) Match score.
+ */
 
-const RECOMMENDATION_STATUS_SIGNALS: Record<MediaStatus, number> = {
-  UNTRACKED: 100,
-  WATCHLIST: 30,
-  BACKLOG: 18,
-  PAUSED: -45,
-  DROPPED: -80,
-  IN_PROGRESS: 0,
-  COMPLETED: 0,
-};
-
-const PERSONAL_SCORE_TRUST_BY_STATUS: Record<MediaStatus, number> = {
-  COMPLETED: 1,
-  IN_PROGRESS: 0.45,
-  PAUSED: 0.2,
-  DROPPED: 0.05,
-  WATCHLIST: 0,
-  BACKLOG: 0,
-  UNTRACKED: 0,
-};
+export const EXCLUDED_RECOMMENDATION_STATUSES: MediaStatus[] =
+  DEFAULT_EXCLUDED_STATUSES;
 
 export function isRecommendationEligibleStatus(status: MediaStatus) {
   return !EXCLUDED_RECOMMENDATION_STATUSES.includes(status);
-}
-
-export function recommendationStatusSignal(status: MediaStatus) {
-  return RECOMMENDATION_STATUS_SIGNALS[status];
 }
 
 export function recommendationPersonalScoreTrust(
   status: MediaStatus,
   hasExplicitRating: boolean,
 ) {
-  if (
-    hasExplicitRating &&
-    (status === "WATCHLIST" || status === "BACKLOG" || status === "UNTRACKED")
-  ) {
-    return 0.25;
-  }
+  return personalScoreTrustForStatus(status, hasExplicitRating);
+}
 
-  return PERSONAL_SCORE_TRUST_BY_STATUS[status];
+/**
+ * @deprecated Status is no longer used as a score signal — it's an
+ * eligibility filter. This shim returns 0 so any remaining callers don't
+ * accidentally bias rankings. Remove once all call sites migrate.
+ */
+export function recommendationStatusSignal(_status: MediaStatus) {
+  return 0;
 }

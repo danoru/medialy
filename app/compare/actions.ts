@@ -10,8 +10,15 @@ import {
   relevanceToEloWeight,
 } from "@/lib/scoring/comparisonRelevance";
 import { applyEloResult } from "@/lib/scoring";
+import { expectedWinProbabilityFromPriors } from "@/lib/scoring/pairwise";
 import { prisma } from "@/lib/prisma";
 import { recomputePersonalScore } from "@/lib/scoring/recompute";
+import { getCurrentUserId } from "@/lib/user";
+import {
+  mergeUserMedia,
+  upsertUserMedia,
+  userMediaInclude,
+} from "@/lib/db/user-media";
 
 export async function saveComparison(formData: FormData) {
   const winnerId = String(formData.get("winnerId") ?? "");
@@ -20,17 +27,27 @@ export async function saveComparison(formData: FormData) {
   const notes = String(formData.get("notes") ?? "").trim();
   if (!winnerId || !loserId || winnerId === loserId) return;
 
+  const userId = await getCurrentUserId();
+
   await prisma.$transaction(async (tx) => {
-    const [winner, loser] = await Promise.all([
+    const [winnerRow, loserRow] = await Promise.all([
       tx.mediaItem.findUniqueOrThrow({
         where: { id: winnerId },
-        include: { genres: { include: { genre: true } } },
+        include: {
+          genres: { include: { genre: true } },
+          ...userMediaInclude(userId),
+        },
       }),
       tx.mediaItem.findUniqueOrThrow({
         where: { id: loserId },
-        include: { genres: { include: { genre: true } } },
+        include: {
+          genres: { include: { genre: true } },
+          ...userMediaInclude(userId),
+        },
       }),
     ]);
+    const winner = mergeUserMedia(winnerRow);
+    const loser = mergeUserMedia(loserRow);
     if (
       winner.isArchived ||
       loser.isArchived ||
@@ -45,40 +62,66 @@ export async function saveComparison(formData: FormData) {
       );
     }
     const relevance = calculateComparisonRelevance(winner, loser);
+    const eloWeight = relevanceToEloWeight(relevance);
+    const expectedWinnerWinProb = expectedWinProbabilityFromPriors(
+      {
+        personalRating: winner.personalRating,
+        consensusScore: winner.computedConsensusScore,
+        pairwiseScore: winner.pairwiseScore,
+      },
+      {
+        personalRating: loser.personalRating,
+        consensusScore: loser.computedConsensusScore,
+        pairwiseScore: loser.pairwiseScore,
+      },
+    );
     const updated = applyEloResult({
       winnerScore: winner.pairwiseScore,
       loserScore: loser.pairwiseScore,
       winnerComparisonCount: winner.comparisonCount,
       loserComparisonCount: loser.comparisonCount,
-      weight: relevanceToEloWeight(relevance),
+      weight: eloWeight,
+      expectedWinnerWinProb,
     });
 
     await tx.pairwiseComparison.create({
       data: {
+        userId,
         winnerId,
         loserId,
         context,
         notes: notes || null,
-        weight: relevanceToEloWeight(relevance),
+        weight: eloWeight,
+        winnerScoreBefore: winner.pairwiseScore,
+        winnerScoreAfter: updated.winnerScore,
+        loserScoreBefore: loser.pairwiseScore,
+        loserScoreAfter: updated.loserScore,
+        winnerDelta: updated.winnerDelta,
+        loserDelta: updated.loserDelta,
+        expectedWinnerWinProb: updated.expectedWinnerWinProb,
       },
     });
-    await tx.mediaItem.update({
-      where: { id: winnerId },
-      data: {
+    await upsertUserMedia(
+      userId,
+      winnerId,
+      {
         pairwiseScore: updated.winnerScore,
-        comparisonCount: { increment: 1 },
+        comparisonCount: winner.comparisonCount + 1,
       },
-    });
-    await tx.mediaItem.update({
-      where: { id: loserId },
-      data: {
+      tx,
+    );
+    await upsertUserMedia(
+      userId,
+      loserId,
+      {
         pairwiseScore: updated.loserScore,
-        comparisonCount: { increment: 1 },
+        comparisonCount: loser.comparisonCount + 1,
       },
-    });
+      tx,
+    );
     await Promise.all([
-      recomputePersonalScore(winnerId, tx),
-      recomputePersonalScore(loserId, tx),
+      recomputePersonalScore(winnerId, userId, tx),
+      recomputePersonalScore(loserId, userId, tx),
     ]);
   });
 

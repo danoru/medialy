@@ -21,7 +21,8 @@ import {
   creditLabel,
   creditsForRole,
 } from "@/lib/credits";
-import { formatMediaType, formatStatus } from "@/lib/format";
+import { formatMediaType } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import {
   getGenresForMediaType,
@@ -164,7 +165,7 @@ export function MediaForm({
             >
               {Object.values(MediaStatus).map((status) => (
                 <MenuItem key={status} value={status}>
-                  {formatStatus(status)}
+                  {statusLabel(status, item?.mediaType)}
                 </MenuItem>
               ))}
             </TextField>

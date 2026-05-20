@@ -1,3 +1,5 @@
+import { FRIEND_COMPATIBILITY } from "@/lib/scoring/config";
+
 export function calculateFriendCompatibility(
   pairs: Array<{ userRating: number; friendRating: number }>,
 ) {
@@ -17,7 +19,12 @@ export function calculateFriendCompatibility(
 
   return {
     overlapCount: pairs.length,
-    compatibilityScore: Math.max(0, Math.round(100 - averageDistance * 12)),
+    compatibilityScore: Math.max(
+      0,
+      Math.round(
+        100 - averageDistance * FRIEND_COMPATIBILITY.ratingDistancePenalty,
+      ),
+    ),
     averageDistance,
   };
 }

@@ -1,15 +1,14 @@
-export const PERSONAL_SCORE_RELATIONAL_WEIGHT = 0.3;
+/**
+ * Backwards-compatible re-exports. New code should import from
+ * `@/lib/scoring/config` directly. This shim exists so existing imports keep
+ * working while the migration completes.
+ */
+import {
+  MEDIALY_MATCH_WEIGHTS as CONFIG_MATCH_WEIGHTS,
+  PERSONAL_SCORE,
+  SOURCE_TRUST_WEIGHTS as CONFIG_SOURCE_TRUST,
+} from "@/lib/scoring/config";
 
-export const SOURCE_TRUST_WEIGHTS = {
-  METACRITIC: 1,
-} as const;
-
-export const MEDIALY_MATCH_WEIGHTS = {
-  personalScore: 0.22,
-  genreAffinity: 0.22,
-  tagAffinity: 0.12,
-  friendAffinity: 0.18,
-  status: 0.18,
-  upcoming: 0.04,
-  consensus: 0.08,
-} as const;
+export const PERSONAL_SCORE_RELATIONAL_WEIGHT = PERSONAL_SCORE.relationalWeight;
+export const SOURCE_TRUST_WEIGHTS = CONFIG_SOURCE_TRUST;
+export const MEDIALY_MATCH_WEIGHTS = CONFIG_MATCH_WEIGHTS;

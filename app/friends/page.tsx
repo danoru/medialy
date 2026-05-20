@@ -15,7 +15,9 @@ import { MediaStatus } from "@prisma/client";
 import { addFriendRating, createFriend } from "@/app/friends/actions";
 import { getFriendCompatibility } from "@/lib/insights";
 import { prisma } from "@/lib/prisma";
-import { formatMediaType, formatStatus } from "@/lib/format";
+import { getCurrentUserId } from "@/lib/user";
+import { formatMediaType } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { ActionToastButton } from "@/components/shared/Toasts";
 import {
@@ -39,8 +41,10 @@ export default async function FriendsPage({
   const selectedType = isVisibleMediaType(requestedType)
     ? requestedType
     : VISIBLE_MEDIA_TYPES[0];
+  const userId = await getCurrentUserId();
   const [friends, media, compatibility] = await Promise.all([
     prisma.friend.findMany({
+      where: { userId },
       include: {
         ratings: {
           where: { media: { mediaType: visibleMediaTypeFilter() } },
@@ -159,7 +163,7 @@ export default async function FriendsPage({
                     <MenuItem value="">No status</MenuItem>
                     {Object.values(MediaStatus).map((status) => (
                       <MenuItem key={status} value={status}>
-                        {formatStatus(status)}
+                        {statusLabel(status)}
                       </MenuItem>
                     ))}
                   </TextField>
@@ -244,7 +248,7 @@ export default async function FriendsPage({
                       <Typography key={rating.id}>
                         {rating.media.title}: {rating.rating ?? "-"}{" "}
                         {rating.status
-                          ? `(${formatStatus(rating.status)})`
+                          ? `(${statusLabel(rating.status, rating.media.mediaType)})`
                           : ""}
                       </Typography>
                     ))}

@@ -10,6 +10,8 @@ import type {
   MediaTypeGenreInsights,
 } from "@/lib/types";
 import { normalizeComparableTitle } from "@/lib/text-normalization";
+import { getCurrentUserId } from "@/lib/user";
+import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 
 const SCORE_BANDS = [
   { label: "9 - 10", min: 9, max: 10 },
@@ -68,17 +70,22 @@ export async function getGenreInsights(): Promise<GenreInsight[]> {
 export async function getGenreInsightsByMediaType(): Promise<
   MediaTypeGenreInsights[]
 > {
-  const items = await prisma.mediaItem.findMany({
-    where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
+  const userId = await getCurrentUserId();
+  const rawItems = await prisma.mediaItem.findMany({
+    where: {
+      mediaType: visibleMediaTypeFilter(),
+      OR: [
+        { userMedia: { none: { userId } } },
+        { userMedia: { some: { userId, isArchived: false } } },
+      ],
+    },
     include: {
-      genres: {
-        include: {
-          genre: true,
-        },
-      },
+      genres: { include: { genre: true } },
+      ...userMediaInclude(userId),
     },
     orderBy: [{ title: "asc" }],
   });
+  const items = rawItems.map(mergeUserMedia);
   const recentCutoff = new Date();
   recentCutoff.setDate(recentCutoff.getDate() - 90);
 
@@ -274,16 +281,24 @@ function compareGenreInsights(first: GenreInsight, second: GenreInsight) {
 }
 
 export async function getDataHealthReport(): Promise<DataHealthReport> {
-  const items = await prisma.mediaItem.findMany({
-    where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
+  const userId = await getCurrentUserId();
+  const rawItems = await prisma.mediaItem.findMany({
+    where: {
+      mediaType: visibleMediaTypeFilter(),
+      OR: [
+        { userMedia: { none: { userId } } },
+        { userMedia: { some: { userId, isArchived: false } } },
+      ],
+    },
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
+      ...userMediaInclude(userId),
     },
     orderBy: { title: "asc" },
   });
 
-  const dtos = items.map(toMediaItemDTO);
+  const dtos = rawItems.map((item) => toMediaItemDTO(mergeUserMedia(item)));
   const duplicateGroups = new Map<string, typeof dtos>();
 
   for (const item of dtos) {
@@ -306,24 +321,30 @@ export async function getDataHealthReport(): Promise<DataHealthReport> {
 }
 
 export async function getFriendCompatibility(): Promise<FriendCompatibility[]> {
+  const userId = await getCurrentUserId();
   const friends = await prisma.friend.findMany({
+    where: { userId },
     include: {
       ratings: {
         where: { media: { mediaType: visibleMediaTypeFilter() } },
-        include: { media: true },
+        include: {
+          media: {
+            include: { userMedia: { where: { userId }, take: 1 } },
+          },
+        },
       },
     },
     orderBy: { name: "asc" },
   });
 
   return friends.map((friend) => {
-    const overlapping = friend.ratings.filter(
-      (rating) =>
-        rating.rating !== null && rating.media.personalRating !== null,
-    );
+    const overlapping = friend.ratings.filter((rating) => {
+      const ownRating = rating.media.userMedia[0]?.personalRating ?? null;
+      return rating.rating !== null && ownRating !== null;
+    });
     const compatibility = calculateFriendCompatibility(
       overlapping.map((rating) => ({
-        userRating: rating.media.personalRating ?? 0,
+        userRating: rating.media.userMedia[0]?.personalRating ?? 0,
         friendRating: rating.rating ?? 0,
       })),
     );

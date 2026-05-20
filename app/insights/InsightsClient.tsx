@@ -36,16 +36,16 @@ type InsightsClientProps = {
 };
 
 const mediaAccent: Record<MediaType, string> = {
-  [MediaType.MOVIE]: "#22D3EE",
-  [MediaType.TV_SHOW]: "#A78BFA",
-  [MediaType.VIDEO_GAME]: "#2EFFC3",
-  [MediaType.BOOK]: "#FBBF24",
-  [MediaType.BOARD_GAME]: "#FB923C",
-  [MediaType.MUSIC]: "#FF77C8",
-  [MediaType.MUSICAL]: "#FF91A6",
+  [MediaType.MOVIE]: "#6366F1",
+  [MediaType.TV_SHOW]: "#0EA5A4",
+  [MediaType.VIDEO_GAME]: "#D97706",
+  [MediaType.BOOK]: "#16A34A",
+  [MediaType.BOARD_GAME]: "#DC2626",
+  [MediaType.MUSIC]: "#5B5BD6",
+  [MediaType.MUSICAL]: "#D97706",
 };
 
-const bandColors = ["#22D3EE", "#7DD56F", "#FBBF24", "#FB923C", "#FF5C7A"];
+const bandColors = ["#6366F1", "#0EA5A4", "#D97706", "#16A34A", "#DC2626"];
 
 export function InsightsClient({ insightsByType }: InsightsClientProps) {
   const [mediaType, setMediaType] =
@@ -53,7 +53,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
   const selected =
     insightsByType.find((entry) => entry.mediaType === mediaType) ??
     insightsByType[0];
-  const accent = selected ? mediaAccent[selected.mediaType] : "#22D3EE";
+  const accent = selected ? mediaAccent[selected.mediaType] : "#6366F1";
   const topGenres =
     selected?.genres.filter((genre) => genre.ratedCount > 0).slice(0, 10) ?? [];
   const lowDataGenres =
@@ -78,21 +78,25 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
     <InsightsShell>
       <Stack
         direction={{ xs: "column", lg: "row" }}
-        sx={{ alignItems: { lg: "end" }, gap: 1.5 }}
+        sx={{ alignItems: { lg: "flex-end" }, gap: 2 }}
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="eyebrow" sx={{ display: "block", mb: 0.75 }}>
+            Insights
+          </Typography>
           <Typography
             component="h1"
             sx={{
-              fontSize: { xs: 27, md: 34 },
-              fontWeight: 950,
-              letterSpacing: 0,
-              lineHeight: 1,
+              fontFamily: (theme) => theme.typography.h3.fontFamily,
+              fontSize: { xs: "1.5rem", md: "1.875rem" },
+              fontWeight: 650,
+              letterSpacing: "-0.025em",
+              lineHeight: 1.1,
             }}
           >
             Insights
           </Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.6 }} variant="body2">
+          <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
             Analyze your media taste across movies, TV, and games.
           </Typography>
         </Box>
@@ -108,7 +112,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
       <Box
         sx={{
           display: "grid",
-          gap: 1,
+          gap: 2,
           gridTemplateAreas: {
             xs: `
               "performance"
@@ -139,7 +143,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent={mediaAccent[MediaType.TV_SHOW]}
+          accent="#0EA5A4"
           icon={<AutoGraphIcon fontSize="small" />}
           sx={{ gridArea: "fingerprint" }}
           title="Taste Fingerprint"
@@ -151,7 +155,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#FBBF24"
+          accent="#D97706"
           icon={<DonutLargeIcon fontSize="small" />}
           sx={{ gridArea: "distribution" }}
           title="Score Distribution"
@@ -164,7 +168,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#2EFFC3"
+          accent="#16A34A"
           icon={<TrendingUpIcon fontSize="small" />}
           sx={{ gridArea: "rising" }}
           title="Recent Momentum"
@@ -176,7 +180,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#FBBF24"
+          accent="#D97706"
           icon={<ReportProblemIcon fontSize="small" />}
           sx={{ gridArea: "low" }}
           title="Low Data"
@@ -185,7 +189,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#FF77C8"
+          accent="#5B5BD6"
           icon={<StarIcon fontSize="small" />}
           sx={{ gridArea: "titles" }}
           title="Standout Titles"
@@ -205,37 +209,7 @@ function useStateWithAvailableMediaType(
 
 function InsightsShell({ children }: { children: ReactNode }) {
   return (
-    <Stack
-      spacing={1.3}
-      sx={{
-        isolation: "isolate",
-        pb: 1.5,
-        position: "relative",
-        "&::before": {
-          background:
-            "radial-gradient(circle at 14% 0%, rgba(34, 211, 238, 0.11), transparent 30rem), radial-gradient(circle at 86% 4%, rgba(167, 139, 250, 0.14), transparent 31rem)",
-          content: '""',
-          inset: { xs: "-20px -12px auto", md: "-34px -28px auto" },
-          minHeight: 520,
-          pointerEvents: "none",
-          position: "absolute",
-          zIndex: -2,
-        },
-        "&::after": {
-          background:
-            "linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px)",
-          backgroundSize: "38px 38px",
-          content: '""',
-          inset: { xs: "-18px -12px", md: "-28px" },
-          maskImage:
-            "radial-gradient(circle at 50% 0%, black, transparent 76%)",
-          opacity: 0.24,
-          pointerEvents: "none",
-          position: "absolute",
-          zIndex: -1,
-        },
-      }}
-    >
+    <Stack spacing={2.5} sx={{ pb: 1.5 }}>
       {children}
     </Stack>
   );
@@ -256,33 +230,32 @@ function MediaTypeSelector({
       onChange={(_, nextValue: MediaType | null) => {
         if (nextValue) onChange(nextValue);
       }}
+      size="small"
       sx={{
-        background:
-          "linear-gradient(145deg, rgba(5, 8, 18, 0.74), rgba(8, 17, 31, 0.82))",
-        border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
-        borderRadius: "8px",
-        boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
+        bgcolor: "surface.1",
+        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        borderRadius: 2,
         display: "grid",
+        gap: 0.25,
         gridTemplateColumns: {
           xs: "repeat(3, minmax(0, 1fr))",
           sm: "repeat(3, 148px)",
         },
-        overflow: "hidden",
+        p: 0.35,
         width: { xs: "100%", sm: "auto" },
         "& .MuiToggleButton-root": {
           border: 0,
-          borderRadius: 0,
+          borderRadius: 1.5,
           color: "text.secondary",
           gap: 0.75,
-          minHeight: 44,
+          minHeight: 36,
           px: 1,
+          textTransform: "none",
           "&.Mui-selected": {
-            bgcolor: alpha(mediaAccent[value], 0.14),
-            boxShadow: `inset 0 0 0 1px ${alpha(mediaAccent[value], 0.34)}`,
-            color: mediaAccent[value],
-          },
-          "&:hover": {
-            bgcolor: alpha("#FFFFFF", 0.055),
+            bgcolor: "background.paper",
+            boxShadow: (theme) => theme.shadows[1],
+            color: "text.primary",
+            "&:hover": { bgcolor: "background.paper" },
           },
         },
       }}
@@ -331,11 +304,10 @@ function KpiStrip({
   return (
     <Box
       sx={{
-        background:
-          "linear-gradient(145deg, rgba(8, 17, 31, 0.72), rgba(5, 8, 18, 0.82))",
-        border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
-        borderRadius: "8px",
-        boxShadow: `0 20px 70px ${alpha("#000000", 0.26)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
+        bgcolor: "background.paper",
+        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        borderRadius: 3,
+        boxShadow: (theme) => theme.shadows[1],
         display: "grid",
         gridTemplateColumns: {
           xs: "repeat(2, minmax(0, 1fr))",
@@ -349,40 +321,41 @@ function KpiStrip({
           key={stat.label}
           sx={{
             borderLeft: {
-              lg: index === 0 ? 0 : `1px solid ${alpha("#BFDBFE", 0.11)}`,
+              lg:
+                index === 0
+                  ? 0
+                  : (theme) => `1px solid ${theme.palette.border.subtle}`,
             },
             borderTop: {
-              xs: index > 1 ? `1px solid ${alpha("#BFDBFE", 0.11)}` : 0,
+              xs:
+                index > 1
+                  ? (theme) => `1px solid ${theme.palette.border.subtle}`
+                  : 0,
               lg: 0,
             },
             p: { xs: 1.4, md: 1.7 },
           }}
         >
-          <Typography
-            sx={{
-              color: "text.secondary",
-              fontSize: 11,
-              fontWeight: 850,
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
-            }}
-          >
+          <Typography variant="eyebrow" sx={{ display: "block" }}>
             {stat.label}
           </Typography>
           <Typography
             sx={{
               color: "text.primary",
-              fontSize: { xs: 26, md: 31 },
-              fontWeight: 950,
-              letterSpacing: 0,
+              fontSize: { xs: "1.5rem", md: "1.875rem" },
+              fontWeight: 650,
+              letterSpacing: "-0.025em",
               lineHeight: 1.05,
               mt: 0.55,
             }}
           >
             {stat.value}
           </Typography>
-          <Typography color="text.secondary" sx={{ fontSize: 12, mt: 0.4 }}>
-            <Box component="span" sx={{ color: accent, fontWeight: 850 }}>
+          <Typography
+            color="text.secondary"
+            sx={{ fontSize: "0.75rem", mt: 0.4 }}
+          >
+            <Box component="span" sx={{ color: accent, fontWeight: 600 }}>
               {stat.detail}
             </Box>
           </Typography>
@@ -409,30 +382,22 @@ function InsightsPanel({
     <Box
       sx={mergeSx(
         {
-          background: `radial-gradient(circle at 16% 0%, ${alpha(accent, 0.1)}, transparent 22rem), linear-gradient(145deg, rgba(8, 17, 31, 0.82), rgba(5, 8, 18, 0.9))`,
-          border: `1px solid ${alpha("#BFDBFE", 0.12)}`,
-          borderRadius: "8px",
-          boxShadow: `0 20px 64px ${alpha("#000000", 0.26)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
+          bgcolor: "background.paper",
+          border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          borderRadius: 3,
+          boxShadow: (theme) => theme.shadows[1],
           minHeight: 0,
           overflow: "hidden",
-          p: { xs: 1.15, md: 1.25 },
-          position: "relative",
-          "&::before": {
-            background: `linear-gradient(90deg, transparent, ${alpha(accent, 0.32)}, transparent)`,
-            content: '""',
-            height: 1,
-            left: 16,
-            position: "absolute",
-            right: 16,
-            top: 0,
-          },
+          p: { xs: 1.25, md: 1.5 },
         },
         sx,
       )}
     >
-      <Stack direction="row" sx={{ alignItems: "center", gap: 0.75, mb: 1.1 }}>
+      <Stack direction="row" sx={{ alignItems: "center", gap: 0.75, mb: 1.25 }}>
         <Box sx={{ color: accent, display: "flex" }}>{icon}</Box>
-        <Typography sx={{ fontSize: 16, fontWeight: 900 }}>{title}</Typography>
+        <Typography sx={{ fontSize: "1rem", fontWeight: 600 }}>
+          {title}
+        </Typography>
       </Stack>
       {children}
     </Box>
@@ -456,8 +421,8 @@ function GenrePerformance({
         sx={{
           color: "text.secondary",
           display: { xs: "none", sm: "grid" },
-          fontSize: 11,
-          fontWeight: 850,
+          fontSize: "0.75rem",
+          fontWeight: 600,
           gridTemplateColumns: "30px minmax(170px, 1fr) 76px 56px",
           px: 0.25,
         }}
@@ -485,7 +450,7 @@ function GenrePerformance({
               minHeight: 31,
             }}
           >
-            <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
               {index + 1}.
             </Typography>
             <Box sx={{ minWidth: 0 }}>
@@ -493,18 +458,26 @@ function GenrePerformance({
                 direction="row"
                 sx={{ alignItems: "center", gap: 0.8, minWidth: 0 }}
               >
-                <Typography noWrap sx={{ fontSize: 13, fontWeight: 800 }}>
+                <Typography
+                  noWrap
+                  sx={{ fontSize: "0.8125rem", fontWeight: 600 }}
+                >
                   {genre.name}
                 </Typography>
                 <Typography
-                  sx={{ flexShrink: 0, fontSize: 12, fontWeight: 850 }}
+                  sx={{
+                    flexShrink: 0,
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                  }}
                 >
                   {genre.averageScore.toFixed(1)}
                 </Typography>
               </Stack>
               <Box
                 sx={{
-                  bgcolor: alpha("#FFFFFF", 0.055),
+                  bgcolor: "surface.1",
+                  border: (theme) => `1px solid ${theme.palette.border.subtle}`,
                   borderRadius: "999px",
                   height: 9,
                   mt: 0.45,
@@ -513,7 +486,7 @@ function GenrePerformance({
               >
                 <Box
                   sx={{
-                    background: `linear-gradient(90deg, ${alpha(accent, 0.22)}, ${accent})`,
+                    bgcolor: accent,
                     borderRadius: "inherit",
                     height: "100%",
                     width: `${barWidth}%`,
@@ -525,17 +498,16 @@ function GenrePerformance({
               label={confidence.label}
               size="small"
               sx={{
-                bgcolor: alpha(confidence.color, 0.14),
-                border: `1px solid ${alpha(confidence.color, 0.32)}`,
                 color: confidence.color,
                 display: { xs: "none", sm: "inline-flex" },
                 justifySelf: "start",
                 minWidth: 66,
               }}
+              variant="outlined"
             />
             <Typography
               color="text.secondary"
-              sx={{ fontSize: 12, justifySelf: "end" }}
+              sx={{ fontSize: "0.75rem", justifySelf: "end" }}
             >
               {genre.ratedCount}
             </Typography>
@@ -578,7 +550,12 @@ function TasteFingerprint({
       <Box
         component="svg"
         role="img"
-        sx={{ height: 286, maxWidth: "100%", width: 286 }}
+        sx={{
+          color: "text.disabled",
+          height: 286,
+          maxWidth: "100%",
+          width: 286,
+        }}
         viewBox={`0 0 ${viewBoxSize} ${viewBoxSize}`}
       >
         <title>Taste fingerprint radar chart</title>
@@ -591,7 +568,8 @@ function TasteFingerprint({
               center,
               radius,
             )}
-            stroke={alpha("#BFDBFE", 0.12)}
+            stroke="currentColor"
+            strokeOpacity={0.16}
             strokeWidth="1"
           />
         ))}
@@ -608,7 +586,8 @@ function TasteFingerprint({
           return (
             <g key={genre.name}>
               <line
-                stroke={alpha("#BFDBFE", 0.16)}
+                stroke="currentColor"
+                strokeOpacity={0.24}
                 strokeWidth="1"
                 x1={center}
                 x2={x}
@@ -616,9 +595,9 @@ function TasteFingerprint({
                 y2={y}
               />
               <text
-                fill={alpha("#E2E8F0", 0.74)}
+                fill="currentColor"
                 fontSize="10"
-                fontWeight="700"
+                fontWeight="600"
                 textAnchor={
                   labelX < center - 6
                     ? "end"
@@ -635,22 +614,25 @@ function TasteFingerprint({
           );
         })}
         <polygon
-          fill={alpha("#FFFFFF", 0.05)}
+          fill="currentColor"
+          fillOpacity={0.08}
           points={benchmarkPoints}
-          stroke={alpha("#E2E8F0", 0.58)}
+          stroke="currentColor"
           strokeDasharray="4 4"
+          strokeOpacity={0.7}
           strokeWidth="1.5"
         />
         <polygon
-          fill={alpha("#22D3EE", 0.16)}
+          fill="#6366F1"
+          fillOpacity={0.18}
           points={userPoints}
-          stroke="#22D3EE"
+          stroke="#6366F1"
           strokeWidth="2.5"
         />
       </Box>
       <Stack direction="row" sx={{ gap: 1.4, justifyContent: "center" }}>
-        <LegendDot color="#22D3EE" label="You" />
-        <LegendDot color={alpha("#E2E8F0", 0.68)} label="Type avg" />
+        <LegendDot color="#6366F1" label="You" />
+        <LegendDot color="text.disabled" label="Type avg" />
       </Stack>
     </Box>
   );
@@ -683,8 +665,8 @@ function ScoreDistribution({
         <Box
           sx={{
             alignItems: "center",
-            bgcolor: "#07101D",
-            border: `1px solid ${alpha("#BFDBFE", 0.09)}`,
+            bgcolor: "background.paper",
+            border: (theme) => `1px solid ${theme.palette.border.subtle}`,
             borderRadius: "50%",
             display: "flex",
             flexDirection: "column",
@@ -693,10 +675,12 @@ function ScoreDistribution({
             width: 92,
           }}
         >
-          <Typography sx={{ fontSize: 27, fontWeight: 950, lineHeight: 1 }}>
+          <Typography
+            sx={{ fontSize: "1.5rem", fontWeight: 650, lineHeight: 1 }}
+          >
             {ratedCount}
           </Typography>
-          <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+          <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
             Rated
           </Typography>
         </Box>
@@ -716,8 +700,10 @@ function ScoreDistribution({
                 width: 9,
               }}
             />
-            <Typography sx={{ flex: 1, fontSize: 12 }}>{band.label}</Typography>
-            <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+            <Typography sx={{ flex: 1, fontSize: "0.75rem" }}>
+              {band.label}
+            </Typography>
+            <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
               {band.share}%
             </Typography>
           </Stack>
@@ -725,17 +711,17 @@ function ScoreDistribution({
       </Stack>
       <Box
         sx={{
-          borderTop: `1px solid ${alpha("#BFDBFE", 0.1)}`,
+          borderTop: (theme) => `1px solid ${theme.palette.border.subtle}`,
           display: "flex",
           justifyContent: "space-between",
           pt: 1,
           width: "100%",
         }}
       >
-        <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+        <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
           Average Score
         </Typography>
-        <Typography sx={{ fontWeight: 900 }}>
+        <Typography sx={{ fontWeight: 600 }}>
           {averageScore > 0 ? averageScore.toFixed(1) : "-"} / 10
         </Typography>
       </Box>
@@ -753,7 +739,7 @@ function RisingGenres({
   if (genres.length === 0) {
     return (
       <Stack spacing={0.9}>
-        <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+        <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
           No recent rated movement yet. Current strongest genres:
         </Typography>
         {fallbackGenres.map((genre, index) => (
@@ -792,7 +778,7 @@ function LowDataGenres({ genres }: { genres: GenreInsight[] }) {
 
   return (
     <Stack spacing={0.9}>
-      <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+      <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
         High-potential genres to rate or complete next.
       </Typography>
       {genres.map((genre, index) => (
@@ -839,9 +825,9 @@ function StandoutTitles({ titles }: { titles: InsightStandoutTitle[] }) {
                   : designedPosterFallback(title.mediaType),
                 backgroundPosition: "center",
                 backgroundSize: "cover",
-                border: `1px solid ${alpha("#BFDBFE", 0.13)}`,
-                borderRadius: "8px",
-                boxShadow: `0 14px 34px ${alpha("#000000", 0.28)}`,
+                bgcolor: "surface.2",
+                border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+                borderRadius: 2,
                 mb: 0.65,
                 overflow: "hidden",
                 position: "relative",
@@ -850,7 +836,7 @@ function StandoutTitles({ titles }: { titles: InsightStandoutTitle[] }) {
               <Box
                 sx={{
                   background:
-                    "linear-gradient(180deg, transparent 46%, rgba(5, 8, 18, 0.94) 100%)",
+                    "linear-gradient(180deg, transparent 46%, rgba(8,8,11,0.92) 100%)",
                   inset: 0,
                   position: "absolute",
                 }}
@@ -858,14 +844,13 @@ function StandoutTitles({ titles }: { titles: InsightStandoutTitle[] }) {
               <Box
                 sx={{
                   alignItems: "center",
-                  bgcolor: alpha("#050812", 0.82),
-                  border: `1px solid ${alpha("#FFFFFF", 0.12)}`,
-                  borderRadius: "6px",
+                  bgcolor: "rgba(8,8,11,0.6)",
+                  borderRadius: 1,
                   bottom: 7,
-                  color: "#FBBF24",
+                  color: "#FFFFFF",
                   display: "flex",
-                  fontSize: 11,
-                  fontWeight: 900,
+                  fontSize: "0.6875rem",
+                  fontWeight: 600,
                   gap: 0.25,
                   left: 7,
                   px: 0.55,
@@ -877,10 +862,10 @@ function StandoutTitles({ titles }: { titles: InsightStandoutTitle[] }) {
                 {title.score.toFixed(1)}
               </Box>
             </Box>
-            <Typography noWrap sx={{ fontSize: 12, fontWeight: 850 }}>
+            <Typography noWrap sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
               {title.title}
             </Typography>
-            <Typography color="text.secondary" sx={{ fontSize: 11 }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
               {title.releaseYear ?? "Unknown"}
             </Typography>
           </Box>
@@ -905,7 +890,7 @@ function CompactRankRow({
     <Box
       sx={{
         alignItems: "center",
-        borderBottom: `1px solid ${alpha("#BFDBFE", 0.08)}`,
+        borderBottom: (theme) => `1px solid ${theme.palette.border.subtle}`,
         display: "grid",
         gap: 0.8,
         gridTemplateColumns: "24px minmax(0, 1fr) auto",
@@ -913,26 +898,26 @@ function CompactRankRow({
         pb: 0.65,
       }}
     >
-      <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+      <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
         {rank}.
       </Typography>
-      <Typography noWrap sx={{ fontSize: 13, fontWeight: 800 }}>
+      <Typography noWrap sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
         {label}
       </Typography>
       <Stack direction="row" sx={{ alignItems: "center", gap: 0.7 }}>
         {typeof delta === "number" ? (
           <Typography
             sx={{
-              color: delta >= 0 ? "#7DFFD9" : "#FF91A6",
-              fontSize: 12,
-              fontWeight: 900,
+              color: delta >= 0 ? "success.main" : "error.main",
+              fontSize: "0.75rem",
+              fontWeight: 600,
             }}
           >
             {delta >= 0 ? "+" : ""}
             {delta.toFixed(1)}
           </Typography>
         ) : null}
-        <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+        <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
           {value}
         </Typography>
       </Stack>
@@ -946,8 +931,9 @@ function EmptyPanel({ label, sx }: { label: string; sx?: SxProps<Theme> }) {
       sx={mergeSx(
         {
           alignItems: "center",
-          border: `1px solid ${alpha("#BFDBFE", 0.09)}`,
-          borderRadius: "8px",
+          bgcolor: "surface.1",
+          border: (theme) => `1px dashed ${theme.palette.border.default}`,
+          borderRadius: 2,
           color: "text.secondary",
           display: "flex",
           justifyContent: "center",
@@ -958,7 +944,7 @@ function EmptyPanel({ label, sx }: { label: string; sx?: SxProps<Theme> }) {
         sx,
       )}
     >
-      <Typography sx={{ fontSize: 13 }}>{label}</Typography>
+      <Typography sx={{ fontSize: "0.8125rem" }}>{label}</Typography>
     </Box>
   );
 }
@@ -967,7 +953,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <Stack direction="row" sx={{ alignItems: "center", gap: 0.55 }}>
       <Box sx={{ bgcolor: color, height: 2, width: 16 }} />
-      <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+      <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
         {label}
       </Typography>
     </Stack>
@@ -975,14 +961,18 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 }
 
 function confidenceForGenre(genre: GenreInsight) {
-  if (genre.ratedCount >= 8) return { label: "High", color: "#7DFFD9" };
-  if (genre.ratedCount >= 3) return { label: "Medium", color: "#FBBF24" };
-  return { label: "Low", color: "#FF91A6" };
+  if (genre.ratedCount >= 8) {
+    return { label: "High", color: "success.main" };
+  }
+  if (genre.ratedCount >= 3) {
+    return { label: "Medium", color: "warning.main" };
+  }
+  return { label: "Low", color: "error.main" };
 }
 
 function donutGradient(bands: InsightScoreBand[]) {
   if (bands.every((band) => band.share === 0)) {
-    return `conic-gradient(${alpha("#BFDBFE", 0.12)} 0% 100%)`;
+    return "conic-gradient(rgba(127,127,127,0.18) 0% 100%)";
   }
 
   let cursor = 0;
@@ -1033,11 +1023,8 @@ function shortMediaTypeLabel(mediaType: MediaType) {
 }
 
 function designedPosterFallback(mediaType: MediaType) {
-  const accent = mediaAccent[mediaType] ?? "#22D3EE";
-  return [
-    `radial-gradient(circle at 26% 18%, ${alpha(accent, 0.42)}, transparent 34%)`,
-    `linear-gradient(145deg, ${alpha(accent, 0.22)}, rgba(5, 8, 18, 0.94) 58%)`,
-  ].join(", ");
+  const accent = mediaAccent[mediaType] ?? "#6366F1";
+  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
 }
 
 function mergeSx(base: SxProps<Theme>, override?: SxProps<Theme>) {

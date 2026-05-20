@@ -63,7 +63,6 @@ describe("taxonomy normalization", () => {
         "Action RPG",
         "Anime",
         "Japan",
-        "Prestige TV",
         "Real-Time Strategy",
         "Stealth",
       ]),
@@ -84,9 +83,9 @@ describe("discover taxonomy mapping", () => {
     );
   });
 
-  it("places Kart Racer under Racing", () => {
+  it("places Kart under Racing", () => {
     expect(getDiscoverSubgenresForGenre("VIDEO_GAME", "Racing")).toContain(
-      "Kart Racer",
+      "Kart",
     );
   });
 

@@ -61,6 +61,65 @@ describe("consensus score", () => {
     expect(consensus.score).toBe(8.4);
     expect(consensus.confidence).toBeGreaterThan(0);
   });
+
+  it("blends multiple sources by trust weight", () => {
+    const consensus = calculateConsensusScore(
+      [
+        { source: "METACRITIC", score: 90, scale: 100 }, // weight 1.0
+        { source: "ROTTEN_TOMATOES_AUDIENCE", score: 50, scale: 100 }, // weight 0.55
+        { source: "IMDB", score: 70, scale: 100 }, // weight 0.6
+      ],
+      { mediaType: "MOVIE" },
+    );
+    expect(consensus.score).not.toBeNull();
+    // High-trust Metacritic pulls the mean toward 9.
+    expect(consensus.score!).toBeGreaterThan(7);
+    expect(consensus.breakdown).toHaveLength(3);
+  });
+
+  it("drops sources that don't apply to the media type", () => {
+    const consensus = calculateConsensusScore(
+      [
+        { source: "GOODREADS", score: 4.6, scale: 5 },
+        { source: "METACRITIC", score: 88, scale: 100 },
+      ],
+      { mediaType: "VIDEO_GAME" },
+    );
+    // Goodreads excluded (BOOK-only), only Metacritic counts.
+    expect(consensus.score).toBe(8.8);
+    expect(
+      consensus.breakdown.find((entry) => entry.source === "GOODREADS")!
+        .applicable,
+    ).toBe(false);
+  });
+
+  it("downweights outliers once we have enough sources", () => {
+    const withOutlier = calculateConsensusScore([
+      { source: "METACRITIC", score: 80, scale: 100 },
+      { source: "IMDB", score: 82, scale: 100 },
+      { source: "LETTERBOXD", score: 78, scale: 100 },
+      { source: "TMDB", score: 30, scale: 100 }, // wild outlier
+    ]);
+    expect(withOutlier.score).not.toBeNull();
+    // Without trimming, the mean would dip toward the outlier. With trimming
+    // applied at N≥4, the score should remain in the 7s.
+    expect(withOutlier.score!).toBeGreaterThan(7);
+    const outlierEntry = withOutlier.breakdown.find(
+      (entry) => entry.source === "TMDB",
+    )!;
+    expect(outlierEntry.outlierMultiplier).toBeLessThan(1);
+  });
+
+  it("decays stale fetches toward the recency floor", () => {
+    const ancient = new Date(Date.now() - 1000 * 60 * 60 * 24 * 800); // ~2 years
+    const recent = calculateConsensusScore([
+      { source: "METACRITIC", score: 80, scale: 100 },
+    ]);
+    const stale = calculateConsensusScore([
+      { source: "METACRITIC", score: 80, scale: 100, fetchedAt: ancient },
+    ]);
+    expect(stale.confidence).toBeLessThan(recent.confidence);
+  });
 });
 
 describe("comparison relevance", () => {
@@ -104,47 +163,24 @@ describe("friend compatibility", () => {
   });
 });
 
-describe("medialy match", () => {
-  it("returns a bounded percentage and explainable reasons", () => {
+describe("medialy match (taste-only)", () => {
+  it("returns a bounded percentage with one explanation per signal", () => {
     const match = calculateMedialyMatch({
       personalScore: 9,
       personalScoreTrust: 1,
       genreAffinity: 80,
       tagAffinity: 50,
       friendAffinity: 70,
-      status: 100,
-      upcoming: 0,
+      contributorAffinity: 40,
       consensusScore: 8,
     });
 
     expect(match.score).toBeGreaterThan(0);
     expect(match.score).toBeLessThanOrEqual(100);
-    expect(match.reasons.length).toBeGreaterThan(0);
-  });
-
-  it("lets the discovery signal lift an unknown item over a similar queued item", () => {
-    const untracked = calculateMedialyMatch({
-      personalScore: null,
-      personalScoreTrust: 0,
-      genreAffinity: 55,
-      tagAffinity: 35,
-      friendAffinity: 30,
-      status: 100,
-      upcoming: 0,
-      consensusScore: 8,
-    });
-    const watchlist = calculateMedialyMatch({
-      personalScore: null,
-      personalScoreTrust: 0,
-      genreAffinity: 55,
-      tagAffinity: 35,
-      friendAffinity: 30,
-      status: 30,
-      upcoming: 0,
-      consensusScore: 8,
-    });
-
-    expect(untracked.score).toBeGreaterThan(watchlist.score);
+    expect(match.explanations).toHaveLength(6);
+    expect(match.explanations.every((e) => e.weight > 0 && e.weight <= 1)).toBe(
+      true,
+    );
   });
 
   it("dampens personal score for unfinished recommendation candidates", () => {
@@ -154,8 +190,6 @@ describe("medialy match", () => {
       genreAffinity: 0,
       tagAffinity: 0,
       friendAffinity: 0,
-      status: 0,
-      upcoming: 0,
       consensusScore: null,
     });
     const queueTrust = calculateMedialyMatch({
@@ -164,8 +198,6 @@ describe("medialy match", () => {
       genreAffinity: 0,
       tagAffinity: 0,
       friendAffinity: 0,
-      status: 0,
-      upcoming: 0,
       consensusScore: null,
     });
 
@@ -179,8 +211,6 @@ describe("medialy match", () => {
       genreAffinity: 0,
       tagAffinity: 0,
       friendAffinity: 0,
-      status: 100,
-      upcoming: 0,
       consensusScore: null,
     });
     const supportedUnknown = calculateMedialyMatch({
@@ -189,42 +219,28 @@ describe("medialy match", () => {
       genreAffinity: 0,
       tagAffinity: 0,
       friendAffinity: 80,
-      status: 100,
-      upcoming: 0,
       consensusScore: 9,
     });
 
     expect(supportedUnknown.score).toBeGreaterThan(weakUnknown.score);
   });
 
-  it("labels status explanations with discovery or queue language", () => {
-    const discovery = calculateMedialyMatch({
-      personalScore: null,
-      personalScoreTrust: 0,
-      genreAffinity: 0,
+  it("each explanation includes weight, raw value, and contribution", () => {
+    const match = calculateMedialyMatch({
+      personalScore: 8,
+      personalScoreTrust: 1,
+      genreAffinity: 50,
       tagAffinity: 0,
       friendAffinity: 0,
-      status: 100,
-      upcoming: 0,
-      consensusScore: null,
-    });
-    const queuePenalty = calculateMedialyMatch({
-      personalScore: null,
-      personalScoreTrust: 0,
-      genreAffinity: 0,
-      tagAffinity: 0,
-      friendAffinity: 0,
-      status: -45,
-      upcoming: 0,
       consensusScore: null,
     });
 
-    expect(discovery.reasons.map((reason) => reason.label)).toContain(
-      "Discovery signal",
+    const personal = match.explanations.find(
+      (e) => e.signal === "personalScore",
     );
-    expect(queuePenalty.reasons.map((reason) => reason.label)).toContain(
-      "Queue signal",
-    );
+    expect(personal).toBeDefined();
+    expect(personal!.rawValue).toBe(80);
+    expect(personal!.contribution).toBe(Math.round(80 * personal!.weight));
   });
 });
 
