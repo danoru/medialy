@@ -17,7 +17,8 @@ import {
   parseOptionalRating,
 } from "@/lib/validation";
 import { upsertUserMedia } from "@/lib/db/user-media";
-import { requireUserId } from "@/lib/user";
+import { requireUser, requireUserId } from "@/lib/user";
+import { inputToSnapshot, snapshotMediaItem } from "@/lib/edit-suggestions";
 
 export type MediaFormActionState = {
   message: string;
@@ -36,8 +37,26 @@ export async function createMediaItem(
   formData: FormData,
 ) {
   try {
-    const userId = await requireUserId();
+    const user = await requireUser();
     const input = mediaFormInputFromFormData(formData);
+
+    if (!user.isAdmin) {
+      await prisma.mediaEditSuggestion.create({
+        data: {
+          mediaId: null,
+          userId: user.id,
+          beforeJson: null,
+          afterJson: JSON.stringify(inputToSnapshot(input)),
+        },
+      });
+      revalidatePath("/upcoming");
+      revalidatePath("/admin");
+      await queueToast(
+        "Thanks! Your addition was sent for admin review.",
+      );
+      redirect("/media");
+    }
+
     const media = await prisma.$transaction(async (tx) => {
       const existing = await findExistingMediaItem(tx, input);
       if (existing) return null;
@@ -45,7 +64,11 @@ export async function createMediaItem(
       const data = await mediaMutationDataWithUniqueTitle(tx, input);
       const created = await tx.mediaItem.create({ data });
       await tx.userMedia.create({
-        data: { userId, mediaId: created.id, ...userMediaMutationData(input) },
+        data: {
+          userId: user.id,
+          mediaId: created.id,
+          ...userMediaMutationData(input),
+        },
       });
       return created;
     });
@@ -53,7 +76,7 @@ export async function createMediaItem(
     if (!media) return duplicateMediaState();
 
     await upsertMediaRelations(media.id, input);
-    await recomputeMediaScores(media.id, userId);
+    await recomputeMediaScores(media.id, user.id);
     revalidatePath("/media");
     await queueToast(`${media.title} added.`);
     redirect(`/media/${media.id}`);
@@ -69,8 +92,27 @@ export async function updateMediaItem(
   formData: FormData,
 ) {
   try {
-    const userId = await requireUserId();
+    const user = await requireUser();
     const input = mediaFormInputFromFormData(formData);
+
+    if (!user.isAdmin) {
+      const before = await snapshotMediaItem(id);
+      await prisma.mediaEditSuggestion.create({
+        data: {
+          mediaId: id,
+          userId: user.id,
+          beforeJson: before ? JSON.stringify(before) : null,
+          afterJson: JSON.stringify(inputToSnapshot(input)),
+        },
+      });
+      revalidatePath("/upcoming");
+      revalidatePath("/admin");
+      await queueToast(
+        "Thanks! Your edit was sent for admin review.",
+      );
+      redirect(`/media/${id}`);
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await findExistingMediaItem(tx, input, id);
       if (existing) return false;
@@ -80,14 +122,14 @@ export async function updateMediaItem(
         where: { id },
         data,
       });
-      await upsertUserMedia(userId, id, userMediaMutationData(input), tx);
+      await upsertUserMedia(user.id, id, userMediaMutationData(input), tx);
       return true;
     });
 
     if (!updated) return duplicateMediaState();
 
     await upsertMediaRelations(id, input);
-    await recomputeMediaScores(id, userId);
+    await recomputeMediaScores(id, user.id);
     revalidatePath("/media");
     revalidatePath(`/media/${id}`);
     await queueToast("Media item saved.");
