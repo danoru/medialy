@@ -45,7 +45,7 @@ import {
   alpha,
 } from "@mui/material";
 import { usePathname } from "next/navigation";
-import { signOutAction } from "@/app/auth-actions";
+import { signInAction, signOutAction } from "@/app/auth-actions";
 import { useThemeMode } from "@/lib/theme-mode";
 
 const drawerWidth = 232;
@@ -182,8 +182,8 @@ export function AppShell({
         <Toolbar
           sx={{
             alignItems: "center",
-            borderBottom: (theme) =>
-              `1px solid ${theme.palette.border.subtle}`,
+            borderBottom: "1px solid",
+            borderBottomColor: "border.subtle",
             gap: 1,
             minHeight: topBarHeight,
             px: { xs: 1.5, md: 2 },
@@ -196,7 +196,8 @@ export function AppShell({
             sx={{
               alignItems: "center",
               bgcolor: "surface.1",
-              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              border: "1px solid",
+              borderColor: "border.subtle",
               borderRadius: 2,
               color: "text.secondary",
               display: "flex",
@@ -358,26 +359,27 @@ export function AppShell({
               </Menu>
             </>
           ) : (
-            <Button
-              component="a"
-              href="/signin"
-              startIcon={<LoginIcon sx={{ fontSize: 18 }} />}
-              sx={{
-                color: "text.primary",
-                display: { xs: "none", sm: "inline-flex" },
-                height: 36,
-                px: 1.25,
-              }}
-              variant="text"
-            >
-              <Typography
-                variant="labelMd"
-                component="span"
-                sx={{ fontWeight: 550 }}
+            <form action={signInAction.bind(null, pathname)}>
+              <Button
+                type="submit"
+                startIcon={<LoginIcon sx={{ fontSize: 18 }} />}
+                sx={{
+                  color: "text.primary",
+                  display: { xs: "none", sm: "inline-flex" },
+                  height: 36,
+                  px: 1.25,
+                }}
+                variant="text"
               >
-                Sign In
-              </Typography>
-            </Button>
+                <Typography
+                  variant="labelMd"
+                  component="span"
+                  sx={{ fontWeight: 550 }}
+                >
+                  Sign In
+                </Typography>
+              </Button>
+            </form>
           )}
         </Toolbar>
       </AppBar>
@@ -390,7 +392,8 @@ export function AppShell({
           width: drawerWidth,
           "& .MuiDrawer-paper": {
             bgcolor: "background.default",
-            borderRight: (theme) => `1px solid ${theme.palette.border.subtle}`,
+            borderRight: "1px solid",
+            borderRightColor: "border.subtle",
             boxSizing: "border-box",
             color: "text.primary",
             width: drawerWidth,
@@ -507,7 +510,8 @@ export function AppShell({
           display: { xs: "block", md: "none" },
           "& .MuiDrawer-paper": {
             bgcolor: "background.paper",
-            borderTop: (theme) => `1px solid ${theme.palette.border.subtle}`,
+            borderTop: "1px solid",
+            borderTopColor: "border.subtle",
             borderTopLeftRadius: 16,
             borderTopRightRadius: 16,
             maxHeight: "82vh",
@@ -590,16 +594,21 @@ export function AppShell({
                 </form>
               </>
             ) : (
-              <MobileDrawerItem
-                item={{
-                  description: "Sign in with Google to track your library.",
-                  href: "/signin",
-                  icon: <LoginIcon />,
-                  label: "Sign In",
-                }}
-                onClick={() => setMobileMoreOpen(false)}
-                selected={isSelectedPath(pathname, "/signin")}
-              />
+              <form action={signInAction.bind(null, pathname)}>
+                <ListItemButton
+                  component="button"
+                  type="submit"
+                  sx={{ width: "100%" }}
+                >
+                  <ListItemIcon>
+                    <LoginIcon />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Sign In"
+                    secondary="Sign in with Google to track your library."
+                  />
+                </ListItemButton>
+              </form>
             )}
           </List>
         </Box>
@@ -625,7 +634,8 @@ export function AppShell({
       <Box
         sx={{
           bgcolor: "background.paper",
-          borderTop: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          borderTop: "1px solid",
+          borderTopColor: "border.subtle",
           bottom: 0,
           display: { xs: "block", md: "none" },
           left: 0,

@@ -233,7 +233,8 @@ function MediaTypeSelector({
       size="small"
       sx={{
         bgcolor: "surface.1",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         display: "grid",
         gap: 0.25,
@@ -305,7 +306,8 @@ function KpiStrip({
     <Box
       sx={{
         bgcolor: "background.paper",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 3,
         boxShadow: (theme) => theme.shadows[1],
         display: "grid",
@@ -383,7 +385,8 @@ function InsightsPanel({
       sx={mergeSx(
         {
           bgcolor: "background.paper",
-          border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          border: "1px solid",
+        borderColor: "border.subtle",
           borderRadius: 3,
           boxShadow: (theme) => theme.shadows[1],
           minHeight: 0,
@@ -477,7 +480,8 @@ function GenrePerformance({
               <Box
                 sx={{
                   bgcolor: "surface.1",
-                  border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+                  border: "1px solid",
+        borderColor: "border.subtle",
                   borderRadius: "999px",
                   height: 9,
                   mt: 0.45,
@@ -666,7 +670,8 @@ function ScoreDistribution({
           sx={{
             alignItems: "center",
             bgcolor: "background.paper",
-            border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+            border: "1px solid",
+        borderColor: "border.subtle",
             borderRadius: "50%",
             display: "flex",
             flexDirection: "column",
@@ -711,7 +716,8 @@ function ScoreDistribution({
       </Stack>
       <Box
         sx={{
-          borderTop: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          borderTop: "1px solid",
+          borderTopColor: "border.subtle",
           display: "flex",
           justifyContent: "space-between",
           pt: 1,
@@ -826,7 +832,8 @@ function StandoutTitles({ titles }: { titles: InsightStandoutTitle[] }) {
                 backgroundPosition: "center",
                 backgroundSize: "cover",
                 bgcolor: "surface.2",
-                border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+                border: "1px solid",
+        borderColor: "border.subtle",
                 borderRadius: 2,
                 mb: 0.65,
                 overflow: "hidden",
@@ -890,7 +897,8 @@ function CompactRankRow({
     <Box
       sx={{
         alignItems: "center",
-        borderBottom: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        borderBottom: "1px solid",
+        borderBottomColor: "border.subtle",
         display: "grid",
         gap: 0.8,
         gridTemplateColumns: "24px minmax(0, 1fr) auto",
@@ -932,7 +940,8 @@ function EmptyPanel({ label, sx }: { label: string; sx?: SxProps<Theme> }) {
         {
           alignItems: "center",
           bgcolor: "surface.1",
-          border: (theme) => `1px dashed ${theme.palette.border.default}`,
+          border: "1px dashed",
+          borderColor: "border.default",
           borderRadius: 2,
           color: "text.secondary",
           display: "flex",

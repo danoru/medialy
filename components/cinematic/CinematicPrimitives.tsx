@@ -153,7 +153,8 @@ export function CompactStatCard({
       sx={{
         alignItems: "center",
         bgcolor: "surface.1",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         display: "flex",
         gap: 1.25,

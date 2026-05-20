@@ -663,8 +663,8 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                           : undefined,
                         backgroundPosition: "center",
                         backgroundSize: "cover",
-                        border: (theme) =>
-                          `1px solid ${theme.palette.border.subtle}`,
+                        border: "1px solid",
+                        borderColor: "border.subtle",
                         borderRadius: 1.5,
                         display: "flex",
                         height: 90,
@@ -717,8 +717,8 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                   <Box
                     sx={{
                       bgcolor: "surface.1",
-                      border: (theme) =>
-                        `1px solid ${theme.palette.border.subtle}`,
+                      border: "1px solid",
+                      borderColor: "border.subtle",
                       borderRadius: 2,
                       height: "100%",
                       p: 1.1,
