@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import type { Adapter, AdapterUser } from "next-auth/adapters";
 import Google from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
 
@@ -32,8 +33,36 @@ const DEFAULT_USER_ID = "usr_default";
 
 const isProd = process.env.NODE_ENV === "production";
 
+/**
+ * Wrap the stock PrismaAdapter so `createUser` fills in our required
+ * `displayName` column — Auth.js itself only passes `name`, `email`, `image`,
+ * `emailVerified`, so an unwrapped adapter would hit a NOT NULL violation
+ * and surface to the user as a misleading `/api/auth/error?error=Configuration`.
+ * We derive a display name from the Google profile, falling back to the local
+ * part of the email and finally a literal "User" so the insert always
+ * succeeds.
+ */
+const baseAdapter = PrismaAdapter(prisma) as Adapter;
+const adapter: Adapter = {
+  ...baseAdapter,
+  async createUser(data) {
+    const displayName =
+      data.name?.trim() || data.email?.split("@")[0] || "User";
+    const created = await prisma.user.create({
+      data: {
+        name: data.name ?? null,
+        email: data.email,
+        image: data.image ?? null,
+        emailVerified: data.emailVerified ?? null,
+        displayName,
+      },
+    });
+    return created as unknown as AdapterUser;
+  },
+};
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter,
   session: { strategy: "jwt" },
   trustHost: true,
   providers: [
