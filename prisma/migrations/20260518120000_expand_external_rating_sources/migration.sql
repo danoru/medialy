@@ -1,0 +1,15 @@
+-- Expand ExternalRatingSource enum with multi-source consensus support.
+-- Additive: existing METACRITIC values continue to work.
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'ROTTEN_TOMATOES_CRITICS';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'ROTTEN_TOMATOES_AUDIENCE';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'IMDB';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'OPENCRITIC';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'LETTERBOXD';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'TMDB';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'GOODREADS';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'STORYGRAPH';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'BGG';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'STEAM';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'ANILIST';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'MYANIMELIST';
+ALTER TYPE "ExternalRatingSource" ADD VALUE IF NOT EXISTS 'RAWG_USER';
