@@ -17,6 +17,7 @@ import {
   recommendationPersonalScoreTrust,
   recommendationStatusSignal,
 } from "@/lib/recommendation-policy";
+import { getFollowingIds } from "@/lib/social/follows";
 import type { Prisma } from "@prisma/client";
 
 export {
@@ -42,7 +43,6 @@ export async function getRecommendations(
     include: {
       genres: { include: { genre: true } },
       tags: { where: { tag: { status: "APPROVED" } }, include: { tag: true } },
-      friendRatings: { include: { friend: true } },
       credits: { include: { contributor: true } },
       ...userMediaInclude(userId),
     },
@@ -57,7 +57,13 @@ export async function getRecommendations(
         b.pairwiseScore - a.pairwiseScore,
     );
 
-  const affinity = await getAffinityMaps(userId);
+  const [affinity, followedRatingsByMedia] = await Promise.all([
+    getAffinityMaps(userId),
+    getFollowedUserRatingsByMedia(
+      userId,
+      items.map((item) => item.id),
+    ),
+  ]);
 
   const recommendations = items
     .map((item) => {
@@ -74,7 +80,9 @@ export async function getRecommendations(
           total + (affinity.contributors.get(entry.contributor.id) ?? 0),
         0,
       );
-      const friendAffinity = averageFriendBoost(item.friendRatings);
+      const friendAffinity = averageFollowedUserBoost(
+        followedRatingsByMedia.get(item.id) ?? [],
+      );
       const hasExplicitRating = item.personalRating != null;
       const personalScoreTrust = personalScoreTrustForStatus(
         item.status,
@@ -194,7 +202,43 @@ async function getAffinityMaps(userId: string) {
   return { genres, tags, contributors };
 }
 
-function averageFriendBoost(
+/**
+ * For each candidate mediaId, fetch the public ratings + completion status
+ * from users the viewer follows. One follower contributes at most one rating
+ * per item by construction (UserMedia.@@unique([userId, mediaId])), so no
+ * extra capping is required. Anonymous viewers get an empty map.
+ */
+async function getFollowedUserRatingsByMedia(
+  viewerId: string,
+  mediaIds: string[],
+): Promise<Map<string, Array<{ rating: number | null; status: string | null }>>> {
+  if (viewerId === "__anonymous__" || mediaIds.length === 0) return new Map();
+  const followingIds = await getFollowingIds(viewerId);
+  if (followingIds.length === 0) return new Map();
+
+  const rows = await prisma.userMedia.findMany({
+    where: {
+      userId: { in: followingIds },
+      mediaId: { in: mediaIds },
+      isArchived: false,
+      OR: [{ status: "COMPLETED" }, { personalRating: { not: null } }],
+    },
+    select: { mediaId: true, personalRating: true, status: true },
+  });
+
+  const byMedia = new Map<
+    string,
+    Array<{ rating: number | null; status: string | null }>
+  >();
+  for (const row of rows) {
+    const current = byMedia.get(row.mediaId) ?? [];
+    current.push({ rating: row.personalRating, status: row.status });
+    byMedia.set(row.mediaId, current);
+  }
+  return byMedia;
+}
+
+function averageFollowedUserBoost(
   ratings: Array<{ rating: number | null; status: string | null }>,
 ) {
   if (ratings.length === 0) return 0;

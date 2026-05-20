@@ -2,9 +2,9 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   getDataHealthReport,
+  getFollowCompatibility,
   getGenreInsightsByMediaType,
 } from "@/lib/insights";
-import { getFriendCompatibility } from "@/lib/insights";
 import { toMediaItemDTO } from "@/lib/media";
 import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
 import { getRecommendations } from "@/lib/recommendations";
@@ -130,8 +130,8 @@ export async function getDashboardData() {
     upcomingItems,
     watchlistItems,
     recentItems,
-    friendCompatibility,
-    friendCount,
+    followCompatibility,
+    followingCount,
     personalTopItemsByMediaType,
     upcomingItemsByMediaType,
     overallTopItems,
@@ -185,8 +185,10 @@ export async function getDashboardData() {
       orderBy: [{ updatedAt: "desc" }],
       take: 5,
     }),
-    getFriendCompatibility(),
-    prisma.friend.count({ where: { userId } }),
+    getFollowCompatibility(userId),
+    user
+      ? prisma.userFollow.count({ where: { followerId: userId } })
+      : Promise.resolve(0),
     Promise.all(
       VISIBLE_MEDIA_TYPES.map(async (mediaType) => ({
         mediaType,
@@ -283,8 +285,8 @@ export async function getDashboardData() {
     })),
     watchlistItems: mergedWatchlistItems.map(toMediaItemDTO),
     recentItems: mergedRecentItems.map(toMediaItemDTO),
-    friendCompatibility: friendCompatibility.slice(0, 5),
-    friendCount,
+    followCompatibility: followCompatibility.slice(0, 5),
+    followingCount,
     health: {
       missingGenres: healthReport.missingGenres.length,
       missingReleaseDates: healthReport.missingDates.length,

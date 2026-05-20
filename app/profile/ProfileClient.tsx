@@ -536,12 +536,14 @@ export function ProfileClient({ data }: { data: ProfileData }) {
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, md: 6, lg: 3 }}>
           <DashboardSection accent="#DC2626" title="Friend Compatibility">
-            {data.topFriend ? (
+            {data.topFollow ? (
               <Stack spacing={1} sx={{ flex: 1, justifyContent: "center" }}>
                 <Stack direction="row" spacing={1.2} sx={{ alignItems: "center" }}>
                   <Avatar
+                    src={data.topFollow.image ?? undefined}
                     sx={{
                       bgcolor: (theme) =>
+                        data.topFollow?.avatarColor ??
                         alpha(theme.palette.primary.main, 0.14),
                       color: "primary.main",
                       fontWeight: 600,
@@ -549,11 +551,11 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                       width: 44,
                     }}
                   >
-                    {data.topFriend.friendName.charAt(0).toUpperCase()}
+                    {data.topFollow.displayName.charAt(0).toUpperCase()}
                   </Avatar>
                   <Box>
                     <Typography sx={{ fontSize: "0.9375rem", fontWeight: 600 }}>
-                      {data.topFriend.friendName}
+                      {data.topFollow.displayName}
                     </Typography>
                     <Typography
                       sx={{
@@ -562,25 +564,25 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                         fontWeight: 600,
                       }}
                     >
-                      {data.topFriend.compatibilityScore}% match
+                      {data.topFollow.compatibilityScore}% match
                     </Typography>
                   </Box>
                 </Stack>
                 <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
-                  {data.topFriend.explanation}
+                  {data.topFollow.explanation}
                 </Typography>
                 <Chip
                   component={Link}
-                  href="/friends"
+                  href={`/u/${data.topFollow.userId}`}
                   clickable
-                  label="View friends"
+                  label="View profile"
                   size="small"
                   sx={{ alignSelf: "flex-start" }}
                   variant="outlined"
                 />
               </Stack>
             ) : (
-              <EmptyHint text="Add friends and shared ratings to see taste overlap." />
+              <EmptyHint text="Follow other Medialy users to see taste overlap." />
             )}
           </DashboardSection>
         </Grid>

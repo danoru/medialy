@@ -33,7 +33,7 @@ import {
 } from "@/components/cinematic/CinematicPrimitives";
 import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
-import type { FriendCompatibility, MediaItemDTO } from "@/lib/types";
+import type { MediaItemDTO } from "@/lib/types";
 import { formatUpcomingRelativeLabel } from "@/lib/upcoming";
 import { formatScore } from "@/lib/score-display";
 import { releaseYearLabel } from "@/lib/date-labels";
@@ -101,8 +101,6 @@ type DashboardData = {
   }>;
   watchlistItems: MediaItemDTO[];
   recentItems: MediaItemDTO[];
-  friendCompatibility: FriendCompatibility[];
-  friendCount: number;
   health: {
     missingGenres: number;
     missingPosters: number;

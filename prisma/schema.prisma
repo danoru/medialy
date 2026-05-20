@@ -33,7 +33,6 @@ model MediaItem {
   comparisonsWon  PairwiseComparison[] @relation("Winner")
   comparisonsLost PairwiseComparison[] @relation("Loser")
   listItems       ListItem[]
-  friendRatings   FriendRating[]
   notes           Note[]
   externalRatings ExternalRating[]
   userMedia       UserMedia[]
@@ -274,14 +273,32 @@ model User {
 
   accounts      Account[]
   sessions      Session[]
-  friends       Friend[]
-  friendRatings FriendRating[]
   userMedia     UserMedia[]
   comparisons   PairwiseComparison[]
   notes         Note[]
   customLists   CustomList[]
   editSuggestions       MediaEditSuggestion[] @relation("EditSuggestionAuthor")
   reviewedSuggestions   MediaEditSuggestion[] @relation("EditSuggestionReviewer")
+  following     UserFollow[]          @relation("Follower")
+  followers     UserFollow[]          @relation("Following")
+}
+
+/// One-way follow between two users. `followerId` follows `followingId`. Public
+/// taste data (ratings + COMPLETED items) is visible without a follow; the
+/// follow drives the `/friends` page list, the activity feed, and the
+/// `friendAffinity` signal in `medialyMatch`.
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
 }
 
 /// A non-admin's proposed edit (or addition) to a `MediaItem`, awaiting admin
@@ -352,36 +369,6 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
-}
-
-model Friend {
-  id        String         @id @default(cuid())
-  userId    String
-  name      String
-  notes     String?
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  ratings   FriendRating[]
-
-  @@index([userId])
-}
-
-model FriendRating {
-  id        String       @id @default(cuid())
-  userId    String
-  friendId  String
-  mediaId   String
-  rating    Float?
-  status    MediaStatus?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  friend    Friend       @relation(fields: [friendId], references: [id], onDelete: Cascade)
-  media     MediaItem    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-
-  @@unique([friendId, mediaId])
-  @@index([userId])
 }
 
 model Note {

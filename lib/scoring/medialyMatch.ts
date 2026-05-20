@@ -24,7 +24,7 @@ export type MedialyMatchSignals = {
   genreAffinity: number;
   /** 0–100. Overlap with tags of your highly-rated completed items. */
   tagAffinity: number;
-  /** 0–100. Friend ratings + watch status aggregated. */
+  /** 0–100. Ratings + watch status aggregated across users you follow. */
   friendAffinity: number;
   /**
    * 0–100. Shared director/creator/dev with your highly-rated items. New
@@ -90,7 +90,7 @@ export function calculateMedialyMatch(
       "friendAffinity",
       "Friend signal",
       clamp(signals.friendAffinity, 0, 100),
-      { detail: "Aggregated friend ratings and watch statuses" },
+      { detail: "Aggregated ratings from people you follow" },
     ),
   );
 

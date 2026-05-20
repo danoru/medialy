@@ -175,7 +175,7 @@ export const CONSENSUS = {
  *  - personalScore: how much you've already shown you like it (rating + pairwise)
  *  - genreAffinity: overlap with genres of your 8+ rated completed items
  *  - tagAffinity:   overlap with tags of your 8+ rated completed items
- *  - friendAffinity: friend ratings + their watch status
+ *  - friendAffinity: ratings + watch status of users you follow
  *  - contributorAffinity: shared director/creator/dev with your highly-rated items
  *  - consensus:     external critic agreement, smallest weight since it's least personal
  */
@@ -208,10 +208,10 @@ export const COMPARISON_RELEVANCE = {
 } as const;
 
 // -----------------------------------------------------------------------------
-// Friend compatibility
+// Rating compatibility (used by `/friends` follow list and guest taste flow)
 // -----------------------------------------------------------------------------
 
-export const FRIEND_COMPATIBILITY = {
+export const RATING_COMPATIBILITY = {
   /**
    * Compatibility = max(0, 100 - averageRatingDistance * penalty). 12 means a
    * 1-point average gap drops you to 88; a 5-point gap drops you to 40.

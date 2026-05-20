@@ -157,34 +157,23 @@ const mediaImportTemplateRows = [
 
 export async function buildJsonExport(): Promise<MedialyExport> {
   const userId = await requireUserId();
-  const [
-    media,
-    genres,
-    tags,
-    comparisons,
-    notes,
-    lists,
-    friends,
-    friendRatings,
-    importJobs,
-  ] = await Promise.all([
-    prisma.mediaItem.findMany({
-      include: {
-        genres: { include: { genre: true } },
-        tags: { include: { tag: true } },
-        credits: { include: { contributor: true }, orderBy: { order: "asc" } },
-        userMedia: { where: { userId }, take: 1 },
-      },
-    }),
-    prisma.genre.findMany(),
-    prisma.tag.findMany(),
-    prisma.pairwiseComparison.findMany(),
-    prisma.note.findMany(),
-    prisma.customList.findMany({ include: { items: true } }),
-    prisma.friend.findMany(),
-    prisma.friendRating.findMany(),
-    prisma.importJob.findMany(),
-  ]);
+  const [media, genres, tags, comparisons, notes, lists, importJobs] =
+    await Promise.all([
+      prisma.mediaItem.findMany({
+        include: {
+          genres: { include: { genre: true } },
+          tags: { include: { tag: true } },
+          credits: { include: { contributor: true }, orderBy: { order: "asc" } },
+          userMedia: { where: { userId }, take: 1 },
+        },
+      }),
+      prisma.genre.findMany(),
+      prisma.tag.findMany(),
+      prisma.pairwiseComparison.findMany(),
+      prisma.note.findMany(),
+      prisma.customList.findMany({ include: { items: true } }),
+      prisma.importJob.findMany(),
+    ]);
 
   return {
     version: 1,
@@ -195,8 +184,6 @@ export async function buildJsonExport(): Promise<MedialyExport> {
     comparisons,
     notes,
     lists,
-    friends,
-    friendRatings,
     importJobs,
   };
 }

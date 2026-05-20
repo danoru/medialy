@@ -4,7 +4,7 @@ import {
   relevanceToEloWeight,
 } from "@/lib/scoring/comparisonRelevance";
 import { calculateConsensusScore, normalizeExternalRating } from "./consensus";
-import { calculateFriendCompatibility } from "./compatibility";
+import { calculateRatingCompatibility } from "./compatibility";
 import { calculateMedialyMatch } from "./medialyMatch";
 import { calculatePersonalScore } from "./personalScore";
 import { calculateTaxonomySimilarity } from "./taxonomySimilarity";
@@ -151,11 +151,11 @@ describe("comparison relevance", () => {
   });
 });
 
-describe("friend compatibility", () => {
+describe("rating compatibility", () => {
   it("keeps the current distance-based compatibility behavior", () => {
-    const compatibility = calculateFriendCompatibility([
-      { userRating: 9, friendRating: 8 },
-      { userRating: 7, friendRating: 7 },
+    const compatibility = calculateRatingCompatibility([
+      { viewerRating: 9, otherRating: 8 },
+      { viewerRating: 7, otherRating: 7 },
     ]);
 
     expect(compatibility.overlapCount).toBe(2);

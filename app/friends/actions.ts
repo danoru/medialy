@@ -1,44 +1,28 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { prisma } from "@/lib/prisma";
+import { followUser, unfollowUser } from "@/lib/social/follows";
 import { requireUserId } from "@/lib/user";
-import { coerceMediaStatus, parseOptionalRating } from "@/lib/validation";
 
-export async function createFriend(formData: FormData) {
-  const name = String(formData.get("name") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim();
-  if (name) {
-    const userId = await requireUserId();
-    await prisma.friend.create({
-      data: { userId, name, notes: notes || null },
-    });
-  }
+/**
+ * Server actions for the social `/friends` redesign. The legacy manual-friend
+ * actions (`createFriend`, `addFriendRating`) have been removed alongside the
+ * `Friend` and `FriendRating` tables — see the
+ * `drop_manual_friends_add_user_follow` migration.
+ */
+
+export async function followUserAction(targetUserId: string) {
+  if (!targetUserId) return;
+  const viewerId = await requireUserId("/friends");
+  await followUser(viewerId, targetUserId);
   revalidatePath("/friends");
+  revalidatePath(`/u/${targetUserId}`);
 }
 
-export async function addFriendRating(formData: FormData) {
-  const friendId = String(formData.get("friendId") ?? "");
-  const mediaId = String(formData.get("mediaId") ?? "");
-  if (!friendId || !mediaId) return;
-  const userId = await requireUserId();
-  await prisma.friendRating.upsert({
-    where: { friendId_mediaId: { friendId, mediaId } },
-    update: {
-      rating: parseOptionalRating(formData.get("rating")),
-      status: formData.get("status")
-        ? coerceMediaStatus(formData.get("status"))
-        : null,
-    },
-    create: {
-      userId,
-      friendId,
-      mediaId,
-      rating: parseOptionalRating(formData.get("rating")),
-      status: formData.get("status")
-        ? coerceMediaStatus(formData.get("status"))
-        : null,
-    },
-  });
+export async function unfollowUserAction(targetUserId: string) {
+  if (!targetUserId) return;
+  const viewerId = await requireUserId("/friends");
+  await unfollowUser(viewerId, targetUserId);
   revalidatePath("/friends");
+  revalidatePath(`/u/${targetUserId}`);
 }

@@ -1,10 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { calculateFriendCompatibility } from "@/lib/scoring/compatibility";
 import { toMediaItemDTO } from "@/lib/media";
 import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
 import type {
   DataHealthReport,
-  FriendCompatibility,
+  FollowCompatibility,
   GenreInsight,
   InsightMomentumGenre,
   MediaTypeGenreInsights,
@@ -12,6 +11,8 @@ import type {
 import { normalizeComparableTitle } from "@/lib/text-normalization";
 import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
+import { getFollowingIds, getUserProfiles } from "@/lib/social/follows";
+import { getUserOverlap } from "@/lib/social/overlap";
 
 const SCORE_BANDS = [
   { label: "9 - 10", min: 9, max: 10 },
@@ -340,51 +341,43 @@ export async function getDataHealthReport(
   };
 }
 
-export async function getFriendCompatibility(
+/**
+ * Compatibility with each user the viewer follows. Fans out one overlap
+ * computation per follow — the platform's small enough that this is fine; if
+ * it grows, batch the underlying queries.
+ */
+export async function getFollowCompatibility(
   userId?: string | null,
-): Promise<FriendCompatibility[]> {
+): Promise<FollowCompatibility[]> {
   const resolvedUserId =
     userId === undefined ? await getCurrentUserId() : userId;
   if (resolvedUserId == null) return [];
-  const friends = await prisma.friend.findMany({
-    where: { userId: resolvedUserId },
-    include: {
-      ratings: {
-        where: { media: { mediaType: visibleMediaTypeFilter() } },
-        include: {
-          media: {
-            include: {
-              userMedia: { where: { userId: resolvedUserId }, take: 1 },
-            },
-          },
-        },
-      },
-    },
-    orderBy: { name: "asc" },
-  });
 
-  return friends.map((friend) => {
-    const overlapping = friend.ratings.filter((rating) => {
-      const ownRating = rating.media.userMedia[0]?.personalRating ?? null;
-      return rating.rating !== null && ownRating !== null;
-    });
-    const compatibility = calculateFriendCompatibility(
-      overlapping.map((rating) => ({
-        userRating: rating.media.userMedia[0]?.personalRating ?? 0,
-        friendRating: rating.rating ?? 0,
-      })),
-    );
+  const followingIds = await getFollowingIds(resolvedUserId);
+  if (followingIds.length === 0) return [];
 
+  const profiles = await getUserProfiles(followingIds);
+  const overlaps = await Promise.all(
+    followingIds.map(async (targetId) => ({
+      targetId,
+      overlap: await getUserOverlap(resolvedUserId, targetId),
+    })),
+  );
+
+  return overlaps.map(({ targetId, overlap }) => {
+    const profile = profiles.get(targetId);
     return {
-      friendId: friend.id,
-      friendName: friend.name,
-      overlapCount: compatibility.overlapCount,
-      compatibilityScore: compatibility.compatibilityScore,
-      averageDistance: compatibility.averageDistance,
+      userId: targetId,
+      displayName: profile?.displayName ?? "Someone",
+      image: profile?.image ?? null,
+      avatarColor: profile?.avatarColor ?? null,
+      overlapCount: overlap.overlapCount,
+      compatibilityScore: overlap.compatibilityScore,
+      averageDistance: overlap.averageDistance,
       explanation: buildCompatibilityExplanation(
-        compatibility.overlapCount,
-        compatibility.compatibilityScore,
-        compatibility.averageDistance,
+        overlap.overlapCount,
+        overlap.compatibilityScore,
+        overlap.averageDistance,
       ),
     };
   });

@@ -13,7 +13,7 @@ import {
   BADGE_THRESHOLDS,
   COMPARISON_RELEVANCE,
   CONSENSUS,
-  FRIEND_COMPATIBILITY,
+  RATING_COMPATIBILITY,
   HIDDEN_GEM,
   MEDIALY_MATCH_WEIGHTS,
   PAIRWISE,
@@ -215,7 +215,7 @@ export default async function ScoringConfigPage() {
         <Row
           label="Rating distance penalty"
           info="12 means a 1-point average gap drops you to 88; a 5-point gap drops you to 40."
-          value={FRIEND_COMPATIBILITY.ratingDistancePenalty}
+          value={RATING_COMPATIBILITY.ratingDistancePenalty}
         />
       </FormulaSection>
 

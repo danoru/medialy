@@ -198,14 +198,19 @@ export type MedialyExport = {
   comparisons: unknown[];
   notes: unknown[];
   lists: unknown[];
-  friends: unknown[];
-  friendRatings: unknown[];
   importJobs: unknown[];
 };
 
-export type FriendCompatibility = {
-  friendId: string;
-  friendName: string;
+/**
+ * Compatibility between the viewer and one user they follow. Mirrors the old
+ * `FriendCompatibility` shape but keyed by `userId`, since "friend" now refers
+ * to a real platform user rather than a manual entry.
+ */
+export type FollowCompatibility = {
+  userId: string;
+  displayName: string;
+  image: string | null;
+  avatarColor: string | null;
   overlapCount: number;
   compatibilityScore: number;
   averageDistance: number | null;

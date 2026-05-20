@@ -1,10 +1,14 @@
 import { prisma } from "@/lib/prisma";
-import { getGenreInsights, getDataHealthReport } from "@/lib/insights";
-import { getFriendCompatibility } from "@/lib/insights";
+import {
+  getDataHealthReport,
+  getFollowCompatibility,
+  getGenreInsights,
+} from "@/lib/insights";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 import { evaluateBadges, type BadgeKey } from "@/lib/scoring/badges";
 import { requireUser, userInitial } from "@/lib/user";
 import { DEFAULT_USER_MEDIA } from "@/lib/db/user-media";
+import { getFollowingIds } from "@/lib/social/follows";
 import type { MediaStatus, MediaType } from "@prisma/client";
 import { statusLabel } from "@/lib/status-labels";
 
@@ -99,13 +103,16 @@ export async function getProfileData() {
   const user = await requireUser("/profile");
   const mediaType = visibleMediaTypeFilter();
 
+  const followingIds = await getFollowingIds(user.id);
+
   const [
     rawItems,
     comparisonCount,
     contextGroups,
     genreInsights,
-    friendCompatibility,
+    followCompatibility,
     healthReport,
+    followedUserRatingRows,
   ] = await Promise.all([
     prisma.mediaItem.findMany({
       where: {
@@ -125,10 +132,6 @@ export async function getProfileData() {
         createdAt: true,
         updatedAt: true,
         externalRatings: { select: { source: true, score: true, scale: true } },
-        friendRatings: {
-          where: { friend: { userId: user.id } },
-          select: { rating: true },
-        },
         userMedia: {
           where: { userId: user.id },
           take: 1,
@@ -151,9 +154,31 @@ export async function getProfileData() {
       _count: { _all: true },
     }),
     getGenreInsights(),
-    getFriendCompatibility(),
+    getFollowCompatibility(user.id),
     getDataHealthReport(),
+    followingIds.length > 0
+      ? prisma.userMedia.findMany({
+          where: {
+            userId: { in: followingIds },
+            isArchived: false,
+            media: { mediaType },
+            personalRating: { not: null },
+          },
+          select: { mediaId: true, personalRating: true },
+        })
+      : Promise.resolve([] as Array<{ mediaId: string; personalRating: number | null }>),
   ]);
+
+  // Index followed-user ratings by mediaId for fast lookup during badge eval.
+  const followedRatingsByMedia = new Map<
+    string,
+    Array<{ rating: number | null }>
+  >();
+  for (const row of followedUserRatingRows) {
+    const list = followedRatingsByMedia.get(row.mediaId) ?? [];
+    list.push({ rating: row.personalRating });
+    followedRatingsByMedia.set(row.mediaId, list);
+  }
 
   // Flatten per-user fields up onto each item so the existing reducers below
   // don't need to know about `userMedia`.
@@ -262,15 +287,15 @@ export async function getProfileData() {
     confidence * 0.5 + comparisonCoverage * 0.5,
   );
 
-  // Friend compatibility — strongest signal first
-  const rankedFriends = friendCompatibility
-    .filter((friend) => friend.overlapCount > 0)
+  // Follow compatibility — strongest signal first.
+  const rankedFollows = followCompatibility
+    .filter((entry) => entry.overlapCount > 0)
     .sort(
       (a, b) =>
         b.compatibilityScore - a.compatibilityScore ||
         b.overlapCount - a.overlapCount,
     );
-  const topFriend = rankedFriends[0] ?? null;
+  const topFollow = rankedFollows[0] ?? null;
 
   // Library status breakdown
   const statusCounts = new Map<string, number>();
@@ -306,7 +331,7 @@ export async function getProfileData() {
       computedConsensusScore: item.computedConsensusScore,
       consensusConfidence: item.consensusConfidence,
       externalRatings: item.externalRatings,
-      friendRatings: item.friendRatings,
+      followedUserRatings: followedRatingsByMedia.get(item.id),
     });
     for (const badge of badges) {
       signalCounts.set(badge.key, (signalCounts.get(badge.key) ?? 0) + 1);
@@ -400,7 +425,7 @@ export async function getProfileData() {
       score: calibrationScore,
       copy: calibrationCopy(calibrationScore),
     },
-    topFriend,
+    topFollow,
     comparisonCoverage: {
       percent: comparisonCoverage,
       comparedPairs: comparisonCount,

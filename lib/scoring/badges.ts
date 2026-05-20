@@ -32,7 +32,12 @@ export type BadgeInput = {
   computedConsensusScore: number | null;
   consensusConfidence: number | null;
   externalRatings?: ExternalRatingLike[];
-  friendRatings?: Array<{ rating: number | null }>;
+  /**
+   * Public ratings from users the viewer follows. Used by the
+   * `friend_favorite_untouched` badge (formerly populated from manual Friend
+   * rows). Empty array == anonymous viewer or no follows yet.
+   */
+  followedUserRatings?: Array<{ rating: number | null }>;
 };
 
 export function evaluateBadges(item: BadgeInput): BadgeMatch[] {
@@ -136,16 +141,16 @@ function hotTakeFailed(item: BadgeInput): BadgeMatch | null {
 function friendFavoriteUntouched(item: BadgeInput): BadgeMatch | null {
   const cfg = BADGE_THRESHOLDS.friendFavoriteUntouched;
   if (item.status !== "UNTRACKED" && item.status !== "WATCHLIST") return null;
-  const friendRatings = item.friendRatings ?? [];
-  const topFriend = friendRatings
+  const ratings = item.followedUserRatings ?? [];
+  const top = ratings
     .map((r) => r.rating)
     .filter((v): v is number => v != null)
     .reduce((a, b) => Math.max(a, b), 0);
-  if (topFriend >= cfg.minFriendRating) {
+  if (top >= cfg.minFriendRating) {
     return {
       key: "friend_favorite_untouched",
       label: "Friend Favorite",
-      reason: `A friend rated it ${topFriend}/10 and you haven't started it.`,
+      reason: `Someone you follow rated it ${top}/10 and you haven't started it.`,
     };
   }
   return null;
