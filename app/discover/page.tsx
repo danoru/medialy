@@ -375,8 +375,8 @@ function HeroSection({
         >
           <Box
             sx={{
-              background: (theme) =>
-                `radial-gradient(circle at 50% 52%, ${alpha(theme.palette.primary.main, 0.14)}, transparent 22rem)`,
+              background:
+                "radial-gradient(circle at 50% 52%, rgba(var(--mui-palette-primary-mainChannel) / 0.14), transparent 22rem)",
               inset: 0,
               position: "absolute",
             }}
@@ -435,16 +435,14 @@ function GenreRail({
               key={genre.name}
               label={genre.name}
               sx={{
-                bgcolor: (theme) =>
+                bgcolor:
                   selectedGenre === genre.name
-                    ? alpha(theme.palette.primary.main, 0.16)
-                    : theme.palette.surface[1],
-                border: (theme) =>
-                  `1px solid ${
-                    selectedGenre === genre.name
-                      ? alpha(theme.palette.primary.main, 0.4)
-                      : theme.palette.border.subtle
-                  }`,
+                    ? "rgba(var(--mui-palette-primary-mainChannel) / 0.16)"
+                    : "var(--mui-palette-surface-1)",
+                border:
+                  selectedGenre === genre.name
+                    ? "1px solid rgba(var(--mui-palette-primary-mainChannel) / 0.4)"
+                    : "1px solid var(--mui-palette-border-subtle)",
                 color: selectedGenre === genre.name ? "primary.main" : "text.primary",
                 flex: "0 0 auto",
                 fontWeight: selectedGenre === genre.name ? 600 : 500,
@@ -780,7 +778,8 @@ function CuratedCollections({
             <Typography variant="eyebrow">{collection.genre}</Typography>
             <Typography
               sx={{
-                fontFamily: (theme) => theme.typography.h5.fontFamily,
+                fontFamily:
+                  'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif',
                 fontSize: "1rem",
                 fontWeight: 650,
                 letterSpacing: "-0.015em",
@@ -819,11 +818,11 @@ function PosterCard({
           : posterFallback(item.mediaType),
         backgroundPosition: "center",
         backgroundSize: "cover",
-        border: (theme) =>
-          `1px solid ${elevated ? theme.palette.border.strong : theme.palette.border.subtle}`,
+        border: elevated
+          ? "1px solid var(--mui-palette-border-strong)"
+          : "1px solid var(--mui-palette-border-subtle)",
         borderRadius: 2,
-        boxShadow: (theme) =>
-          elevated ? theme.shadows[8] : theme.shadows[3],
+        boxShadow: elevated ? 8 : 3,
         display: "block",
         minWidth: 0,
         overflow: "hidden",
@@ -832,7 +831,7 @@ function PosterCard({
         transition: "transform 180ms ease, box-shadow 180ms ease",
         width: "100%",
         "&:hover": {
-          boxShadow: (theme) => theme.shadows[10],
+          boxShadow: 10,
           transform: "translateY(-4px)",
         },
         ...sx,
@@ -890,7 +889,8 @@ function EmptyText({ children }: { children: React.ReactNode }) {
 }
 
 const sectionTitleSx: SxProps<Theme> = {
-  fontFamily: (theme) => theme.typography.h4.fontFamily,
+  fontFamily:
+    'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif',
   fontSize: { xs: "1.25rem", md: "1.5rem" },
   fontWeight: 650,
   letterSpacing: "-0.025em",
@@ -900,12 +900,12 @@ const sectionTitleSx: SxProps<Theme> = {
 
 function subgenreChipSx(active: boolean): SxProps<Theme> {
   return {
-    bgcolor: (theme) =>
-      active
-        ? alpha(theme.palette.primary.main, 0.16)
-        : theme.palette.surface[1],
-    border: (theme) =>
-      `1px solid ${active ? alpha(theme.palette.primary.main, 0.4) : theme.palette.border.subtle}`,
+    bgcolor: active
+      ? "rgba(var(--mui-palette-primary-mainChannel) / 0.16)"
+      : "var(--mui-palette-surface-1)",
+    border: active
+      ? "1px solid rgba(var(--mui-palette-primary-mainChannel) / 0.4)"
+      : "1px solid var(--mui-palette-border-subtle)",
     color: active ? "primary.main" : "text.primary",
     fontWeight: active ? 600 : 500,
   };

@@ -607,13 +607,13 @@ export const dangerIconActionSx: SxProps<Theme> = {
   bgcolor: "transparent",
   color: "error.main",
   "&:hover": {
-    bgcolor: (theme) => alpha(theme.palette.error.main, 0.1),
+    bgcolor: "rgba(var(--mui-palette-error-mainChannel) / 0.1)",
   },
 };
 
 export const scoreBadgeSx: SxProps<Theme> = {
-  bgcolor: (theme) => alpha(theme.palette.success.main, 0.14),
-  border: (theme) => `1px solid ${alpha(theme.palette.success.main, 0.32)}`,
+  bgcolor: "rgba(var(--mui-palette-success-mainChannel) / 0.14)",
+  border: "1px solid rgba(var(--mui-palette-success-mainChannel) / 0.32)",
   color: "success.main",
   fontWeight: 600,
 };

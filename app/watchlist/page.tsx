@@ -166,7 +166,7 @@ function WatchlistHeader({
           <Box
             sx={{
               alignItems: "center",
-              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+              bgcolor: "rgba(var(--mui-palette-primary-mainChannel) / 0.12)",
               borderRadius: 1.5,
               color: "primary.main",
               display: "flex",
@@ -180,7 +180,8 @@ function WatchlistHeader({
           <Typography
             component="h1"
             sx={{
-              fontFamily: (theme) => theme.typography.h3.fontFamily,
+              fontFamily:
+                'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif',
               fontSize: { xs: "1.5rem", md: "1.875rem" },
               fontWeight: 650,
               letterSpacing: "-0.025em",
@@ -259,7 +260,7 @@ function WatchlistHeader({
               },
               "& .Mui-selected": {
                 bgcolor: "background.paper",
-                boxShadow: (theme) => theme.shadows[1],
+                boxShadow: 1,
                 color: "text.primary",
               },
             }}
@@ -434,8 +435,7 @@ function QueuePagination({
                 ...paginationButtonSx,
                 ...(page === currentPage
                   ? {
-                      bgcolor: (theme) =>
-                        alpha(theme.palette.primary.main, 0.12),
+                      bgcolor: "rgba(var(--mui-palette-primary-mainChannel) / 0.12)",
                       borderColor: "primary.main",
                       color: "primary.main",
                     }
@@ -788,7 +788,7 @@ function NextUpRow({ entry }: { entry: Recommendation }) {
             value={entry.score}
             variant="determinate"
             sx={{
-              bgcolor: (theme) => alpha(theme.palette.text.primary, 0.08),
+              bgcolor: "rgba(var(--mui-palette-text-primaryChannel) / 0.08)",
               borderRadius: 5,
               height: 4,
               mt: 0.55,
@@ -994,7 +994,7 @@ function SignalBar({
         value={signal.share}
         variant="determinate"
         sx={{
-          bgcolor: (theme) => alpha(theme.palette.text.primary, 0.08),
+          bgcolor: "rgba(var(--mui-palette-text-primaryChannel) / 0.08)",
           borderRadius: 5,
           height: 6,
           "& .MuiLinearProgress-bar": {
@@ -1035,12 +1035,14 @@ function RankBadge({ rank, score }: { rank: number; score: number }) {
     <Box
       sx={{
         alignItems: "center",
-        bgcolor: (theme) =>
+        bgcolor:
           rank <= 3
             ? alpha(matchTone(score), 0.16)
-            : alpha(theme.palette.text.primary, 0.05),
-        border: (theme) =>
-          `1px solid ${rank <= 3 ? alpha(matchTone(score), 0.42) : theme.palette.border.subtle}`,
+            : "rgba(var(--mui-palette-text-primaryChannel) / 0.05)",
+        border:
+          rank <= 3
+            ? `1px solid ${alpha(matchTone(score), 0.42)}`
+            : "1px solid var(--mui-palette-border-subtle)",
         borderRadius: 1.5,
         color: rank <= 3 ? matchTone(score) : "text.secondary",
         display: "flex",
@@ -1109,8 +1111,7 @@ function ScoreRing({ score, size }: { score: number; size: number }) {
     <Box
       sx={{
         alignItems: "center",
-        background: (theme) =>
-          `conic-gradient(${matchTone(score)} ${Math.round(score)}%, ${alpha(theme.palette.text.primary, 0.08)} 0)`,
+        background: `conic-gradient(${matchTone(score)} ${Math.round(score)}%, rgba(var(--mui-palette-text-primaryChannel) / 0.08) 0)`,
         borderRadius: "50%",
         display: "flex",
         height: size,
@@ -1203,10 +1204,10 @@ function MiniBars({ value }: { value: number }) {
         <Box
           key={index}
           sx={{
-            bgcolor: (theme) =>
+            bgcolor:
               index < activeBars
                 ? matchTone(value)
-                : alpha(theme.palette.text.primary, 0.08),
+                : "rgba(var(--mui-palette-text-primaryChannel) / 0.08)",
             borderRadius: 0.5,
             height: 9,
           }}
@@ -1292,7 +1293,7 @@ const compactPanelSx: SxProps<Theme> = {
   border: "1px solid",
   borderColor: "border.subtle",
   borderRadius: 3,
-  boxShadow: (theme) => theme.shadows[1],
+  boxShadow: 1,
   overflow: "hidden",
 };
 
