@@ -162,10 +162,9 @@ export function recommendationEligibilityWhere(
     ],
   };
 
-  return {
-    ...userScopedFilter,
-    ...releaseDateFilter,
-  };
+  // Both halves are top-level `OR` clauses, so spreading would collide and
+  // silently drop the user-scoped filter. Combine via `AND` instead.
+  return { AND: [userScopedFilter, releaseDateFilter] };
 }
 
 /**

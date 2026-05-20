@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isEligibleForRecommendation,
   personalScoreTrustForStatus,
+  recommendationEligibilityWhere,
 } from "@/lib/scoring/eligibility";
 
 const base = {
@@ -83,6 +84,19 @@ describe("eligibility", () => {
       isEligibleForRecommendation(base, { hiddenMediaTypes: ["MOVIE"] })
         .eligible,
     ).toBe(false);
+  });
+
+  it("recommendationEligibilityWhere keeps both user-scope and release-date clauses", () => {
+    // Regression: both halves used to be spread into the same object, and the
+    // second `OR` silently overwrote the first — collapsing the filter to just
+    // the release-date check and leaking COMPLETED/rated items into the pool.
+    const where = recommendationEligibilityWhere({ userId: "u1" });
+    expect(where.AND).toBeDefined();
+    const clauses = JSON.stringify(where);
+    expect(clauses).toContain("userMedia");
+    expect(clauses).toContain("releaseDate");
+    expect(clauses).toContain("personalRating");
+    expect(clauses).toContain("notIn");
   });
 
   it("personalScoreTrust treats expected vs experienced differently", () => {
