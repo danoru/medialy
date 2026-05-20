@@ -6,6 +6,7 @@ import {
   Typography,
 } from "@mui/material";
 import { updateDisplayName } from "@/app/settings/actions";
+import { AppearanceCard } from "@/app/settings/AppearanceCard";
 import { signOutAction } from "@/app/auth-actions";
 import { ActionToastButton } from "@/components/shared/Toasts";
 import { requireUser } from "@/lib/user";
@@ -57,6 +58,8 @@ export default async function SettingsPage() {
           </Stack>
         </CardContent>
       </Card>
+
+      <AppearanceCard />
 
       <Card variant="outlined">
         <CardContent>

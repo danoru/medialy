@@ -42,16 +42,10 @@ export const CinematicCard = styled(Card, {
   shouldForwardProp: (prop) => prop !== "accent",
 })<AccentCardProps>(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
-  backgroundImage:
-    theme.palette.mode === "dark"
-      ? `linear-gradient(180deg, ${alpha("#FFFFFF", 0.022)}, transparent 120px)`
-      : "none",
+  backgroundImage: `linear-gradient(180deg, ${alpha("#FFFFFF", 0.022)}, transparent 120px)`,
   border: `1px solid ${theme.palette.border.subtle}`,
   borderRadius: dashboardSurfaceRadius,
-  boxShadow:
-    theme.palette.mode === "dark"
-      ? "0 6px 24px rgba(0, 0, 0, 0.35)"
-      : "0 6px 24px rgba(15, 15, 20, 0.08)",
+  boxShadow: "0 6px 24px rgba(0, 0, 0, 0.35)",
   height: "100%",
   overflow: "hidden",
   position: "relative",
@@ -60,11 +54,17 @@ export const CinematicCard = styled(Card, {
   "&:hover": {
     borderColor: theme.palette.border.default,
     transform: "translateY(-2px)",
-    boxShadow:
-      theme.palette.mode === "dark"
-        ? "0 12px 36px rgba(0, 0, 0, 0.45)"
-        : "0 12px 36px rgba(15, 15, 20, 0.12)",
+    boxShadow: "0 12px 36px rgba(0, 0, 0, 0.45)",
   },
+  ...theme.applyStyles("light", {
+    backgroundImage: "none",
+    boxShadow: "0 6px 24px rgba(15, 15, 20, 0.08)",
+    "&:hover": {
+      borderColor: theme.palette.border.default,
+      transform: "translateY(-2px)",
+      boxShadow: "0 12px 36px rgba(15, 15, 20, 0.12)",
+    },
+  }),
 }));
 
 export const CinematicPanel = CinematicCard;
@@ -213,7 +213,7 @@ export function AmbientIcon({
     <Box
       sx={{
         alignItems: "center",
-        bgcolor: (theme) => alpha(accent, theme.palette.mode === "dark" ? 0.14 : 0.1),
+        bgcolor: alpha(accent, 0.14),
         border: `1px solid ${alpha(accent, 0.24)}`,
         borderRadius: 2,
         color: accent,

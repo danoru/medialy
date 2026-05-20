@@ -192,12 +192,14 @@ function componentOverrides() {
     MuiCssBaseline: {
       styleOverrides: (themeParam: Theme) => ({
         body: {
-          // Body background uses a mode-specific gradient that isn't a single
-          // palette token, so we resolve it from the active mode at runtime.
-          background:
-            themeParam.palette.mode === "dark"
-              ? darkTokens.bodyBackground
-              : lightTokens.bodyBackground,
+          // Body background is a mode-specific gradient (not a single palette
+          // token). With CSS variables the React-side `palette.mode` is pinned
+          // to whichever scheme created the theme, so emit both and let the
+          // active `data-mui-color-scheme` win.
+          background: darkTokens.bodyBackground,
+          ...themeParam.applyStyles("light", {
+            background: lightTokens.bodyBackground,
+          }),
           backgroundAttachment: "fixed",
           color: themeParam.palette.text.primary,
           transition: "color 200ms ease",
@@ -242,19 +244,19 @@ function componentOverrides() {
             backgroundColor: "transparent",
             "&:hover": {
               borderColor: themeParam.palette.border.strong,
-              backgroundColor:
-                themeParam.palette.mode === "dark"
-                  ? "rgba(255, 255, 255, 0.04)"
-                  : "rgba(15, 15, 20, 0.04)",
+              backgroundColor: "rgba(255, 255, 255, 0.04)",
+              ...themeParam.applyStyles("light", {
+                backgroundColor: "rgba(15, 15, 20, 0.04)",
+              }),
             },
           },
           "&.MuiButton-text": {
             color: themeParam.palette.text.primary,
             "&:hover": {
-              backgroundColor:
-                themeParam.palette.mode === "dark"
-                  ? "rgba(255, 255, 255, 0.05)"
-                  : "rgba(15, 15, 20, 0.04)",
+              backgroundColor: "rgba(255, 255, 255, 0.05)",
+              ...themeParam.applyStyles("light", {
+                backgroundColor: "rgba(15, 15, 20, 0.04)",
+              }),
             },
           },
         }),
@@ -265,10 +267,10 @@ function componentOverrides() {
       styleOverrides: {
         root: ({ theme: themeParam }: { theme: Theme }) => ({
           backgroundColor: themeParam.palette.background.paper,
-          backgroundImage:
-            themeParam.palette.mode === "dark"
-              ? `linear-gradient(180deg, ${alpha("#FFFFFF", 0.022)}, transparent 120px)`
-              : "none",
+          backgroundImage: `linear-gradient(180deg, ${alpha("#FFFFFF", 0.022)}, transparent 120px)`,
+          ...themeParam.applyStyles("light", {
+            backgroundImage: "none",
+          }),
           border: `1px solid ${themeParam.palette.border.subtle}`,
           borderRadius: 12,
           boxShadow: themeParam.shadows[2],
@@ -310,10 +312,10 @@ function componentOverrides() {
           color: themeParam.palette.text.secondary,
           transition: "color 160ms ease, background-color 160ms ease",
           "&:hover": {
-            backgroundColor:
-              themeParam.palette.mode === "dark"
-                ? "rgba(255, 255, 255, 0.06)"
-                : "rgba(15, 15, 20, 0.05)",
+            backgroundColor: "rgba(255, 255, 255, 0.06)",
+            ...themeParam.applyStyles("light", {
+              backgroundColor: "rgba(15, 15, 20, 0.05)",
+            }),
             color: themeParam.palette.text.primary,
           },
         }),

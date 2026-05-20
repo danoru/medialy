@@ -5,13 +5,11 @@ import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
-import DarkModeIcon from "@mui/icons-material/DarkMode";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import FavoriteIcon from "@mui/icons-material/Favorite";
 import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
 import ImportExportIcon from "@mui/icons-material/ImportExport";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import LightModeIcon from "@mui/icons-material/LightMode";
 import LoginIcon from "@mui/icons-material/Login";
 import LogoutIcon from "@mui/icons-material/Logout";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
@@ -31,7 +29,6 @@ import {
   Button,
   Divider,
   Drawer,
-  IconButton,
   InputBase,
   List,
   ListItemButton,
@@ -40,13 +37,11 @@ import {
   Menu,
   MenuItem,
   Toolbar,
-  Tooltip,
   Typography,
   alpha,
 } from "@mui/material";
 import { usePathname } from "next/navigation";
 import { signInAction, signOutAction } from "@/app/auth-actions";
-import { useThemeMode } from "@/lib/theme-mode";
 
 const drawerWidth = 232;
 const mobileNavHeight = 64;
@@ -177,7 +172,6 @@ export function AppShell({
   const displayName = userName ?? "Guest";
   const displayInitial = userInitial ?? "G";
   const pathname = usePathname();
-  const { mode, toggleMode } = useThemeMode();
   const showAddMedia = pathname !== "/media/new";
   const [profileMenuAnchor, setProfileMenuAnchor] =
     useState<HTMLElement | null>(null);
@@ -277,20 +271,6 @@ export function AppShell({
               </Box>
             </Button>
           ) : null}
-
-          <Tooltip title={mode === "dark" ? "Switch to light" : "Switch to dark"}>
-            <IconButton
-              aria-label="Toggle color mode"
-              onClick={toggleMode}
-              sx={{ height: 36, width: 36 }}
-            >
-              {mode === "dark" ? (
-                <LightModeIcon sx={{ fontSize: 18 }} />
-              ) : (
-                <DarkModeIcon sx={{ fontSize: 18 }} />
-              )}
-            </IconButton>
-          </Tooltip>
 
           {isAuthenticated ? (
             <>
