@@ -13,19 +13,10 @@ import {
   DashboardSection,
 } from "@/components/cinematic/CinematicPrimitives";
 import { formatMediaType } from "@/lib/format";
+import { mediaAccent } from "@/lib/media-ui-helpers";
 import type { ProfileData } from "@/lib/db/profile";
 
 const ACCENTS = ["#6366F1", "#0EA5A4", "#D97706", "#DC2626", "#16A34A"];
-
-const MEDIA_COLORS: Record<string, string> = {
-  MOVIE: "#6366F1",
-  TV_SHOW: "#0EA5A4",
-  VIDEO_GAME: "#D97706",
-  BOOK: "#DC2626",
-  BOARD_GAME: "#16A34A",
-  MUSIC: "#6366F1",
-  MUSICAL: "#DC2626",
-};
 
 const ACCENT = "#6366F1";
 
@@ -460,7 +451,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                   centerValue={header.stats.totalItems.toLocaleString()}
                   segments={data.mediaMix.map((entry) => ({
                     value: entry.count,
-                    color: MEDIA_COLORS[entry.mediaType] ?? ACCENTS[0],
+                    color: mediaAccent(entry.mediaType),
                   }))}
                 />
                 <Stack spacing={0.8} sx={{ flex: 1, minWidth: 0 }}>
@@ -473,8 +464,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                     >
                       <Box
                         sx={{
-                          bgcolor:
-                            MEDIA_COLORS[entry.mediaType] ?? ACCENTS[0],
+                          bgcolor: mediaAccent(entry.mediaType),
                           borderRadius: "3px",
                           height: 9,
                           width: 9,

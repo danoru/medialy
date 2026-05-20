@@ -6,7 +6,10 @@ import {
   Typography,
 } from "@mui/material";
 import Link from "next/link";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import MovieFilterIcon from "@mui/icons-material/MovieFilter";
+import { ReleaseCandidateStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/user";
 
@@ -14,15 +17,20 @@ export const metadata = { title: "Admin" };
 export const dynamic = "force-dynamic";
 
 /**
- * Admin landing — a hub for moderation surfaces. Today this is just tag
- * moderation; future admin tooling (user management, data health overrides,
- * scoring weights) hangs off `/admin/<thing>` below.
+ * Admin landing — a hub for moderation surfaces. Future admin tooling
+ * (user management, data health overrides, scoring weights) hangs off
+ * `/admin/<thing>` below.
  */
 export default async function AdminPage() {
   await requireAdmin("/admin");
-  const pendingTagCount = await prisma.tag.count({
-    where: { status: "PENDING" },
-  });
+  const [pendingTagCount, pendingSuggestionCount, pendingCandidateCount] =
+    await Promise.all([
+      prisma.tag.count({ where: { status: "PENDING" } }),
+      prisma.mediaEditSuggestion.count({ where: { status: "PENDING" } }),
+      prisma.releaseCandidate.count({
+        where: { status: ReleaseCandidateStatus.PENDING },
+      }),
+    ]);
 
   return (
     <Stack spacing={3}>
@@ -35,29 +43,71 @@ export default async function AdminPage() {
           Tools that affect every user — visible only to admins.
         </Typography>
       </Stack>
-      <Card variant="outlined">
-        <CardActionArea component={Link} href="/admin/tags">
+      <AdminCard
+        description="Review user-proposed edits and additions before they apply to shared media data. Lives on /upcoming."
+        href="/upcoming"
+        icon={<EditNoteIcon color="primary" />}
+        pendingCount={pendingSuggestionCount}
+        title="Suggested Edits"
+      />
+      <AdminCard
+        description="Items fetched from TMDB / TVMAZE / IGDB / RAWG awaiting approval before they reach the catalog."
+        href="/admin/candidates"
+        icon={<MovieFilterIcon color="primary" />}
+        pendingCount={pendingCandidateCount}
+        title="Discovery Candidates"
+      />
+      <AdminCard
+        description="Approve or reject freeform tags users submit from media forms."
+        href="/admin/tags"
+        icon={<LocalOfferIcon color="primary" />}
+        pendingCount={pendingTagCount}
+        title="Tag Moderation"
+      />
+    </Stack>
+  );
+}
+
+function AdminCard({
+  description,
+  href,
+  icon,
+  pendingCount,
+  title,
+}: {
+  description: string;
+  href: string;
+  icon: React.ReactNode;
+  pendingCount: number;
+  title: string;
+}) {
+  return (
+    <Card variant="outlined">
+      <Link
+        href={href}
+        style={{ textDecoration: "none", color: "inherit" }}
+      >
+        <CardActionArea>
           <CardContent>
             <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-              <LocalOfferIcon color="primary" />
+              {icon}
               <Stack sx={{ flex: 1 }}>
-                <Typography sx={{ fontWeight: 600 }}>Tag Moderation</Typography>
+                <Typography sx={{ fontWeight: 600 }}>{title}</Typography>
                 <Typography color="text.secondary" variant="body2">
-                  Approve or reject freeform tags users submit from media
-                  forms.
+                  {description}
                 </Typography>
               </Stack>
               <Typography
-                color={pendingTagCount > 0 ? "warning.main" : "text.secondary"}
+                color={pendingCount > 0 ? "warning.main" : "text.secondary"}
                 sx={{ fontWeight: 600 }}
                 variant="body2"
               >
-                {pendingTagCount} pending
+                {pendingCount} pending
               </Typography>
             </Stack>
           </CardContent>
         </CardActionArea>
-      </Card>
-    </Stack>
+      </Link>
+    </Card>
   );
 }

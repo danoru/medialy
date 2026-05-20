@@ -8,12 +8,9 @@ import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import MovieIcon from "@mui/icons-material/Movie";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
-import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
-import TvIcon from "@mui/icons-material/Tv";
 import { useMemo, useState } from "react";
 import {
   Box,
@@ -38,6 +35,16 @@ import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import type { FriendCompatibility, MediaItemDTO } from "@/lib/types";
 import { formatUpcomingRelativeLabel } from "@/lib/upcoming";
+import { formatScore } from "@/lib/score-display";
+import { releaseYearLabel } from "@/lib/date-labels";
+import {
+  mediaAccent,
+  mediaTypeIcon,
+  posterFallback,
+  shortMediaTypeLabel,
+} from "@/lib/media-ui-helpers";
+import { PosterTile } from "@/components/media/PosterCard";
+import { ScoreBadge as PosterScoreBadge } from "@/components/media/ScoreDisplay";
 
 type DashboardData = {
   userName: string | null;
@@ -342,14 +349,31 @@ export function DashboardClient({
           >
             {recommendationRailItems.length > 0 ? (
               <MediaRail>
-                {recommendationRailItems.map((recommendation) => (
-                  <PosterCard
-                    href={`/media/${recommendation.media.id}`}
-                    item={recommendation.media}
-                    key={recommendation.media.id}
-                    score={showPersonalSignals ? recommendation.score : undefined}
-                  />
-                ))}
+                {recommendationRailItems.map((recommendation) => {
+                  const score = showPersonalSignals
+                    ? recommendation.score
+                    : undefined;
+                  const releaseYear = releaseYearLabel(
+                    recommendation.media.releaseDate,
+                  );
+                  const meta = [
+                    formatMediaType(recommendation.media.mediaType),
+                    releaseYear,
+                    recommendation.media.genres[0],
+                  ].filter((value): value is string => Boolean(value));
+                  return (
+                    <PosterTile
+                      item={recommendation.media}
+                      key={recommendation.media.id}
+                      meta={meta}
+                      scoreBadge={
+                        typeof score === "number" ? (
+                          <PosterScoreBadge score={score} />
+                        ) : undefined
+                      }
+                    />
+                  );
+                })}
               </MediaRail>
             ) : (
               <EmptyPanel
@@ -433,13 +457,27 @@ export function DashboardClient({
                   mt: 1.5,
                 }}
               >
-                {topItemsPage.map((recommendation) => (
-                  <TopPosterTile
-                    item={recommendation.media}
-                    key={recommendation.media.id}
-                    score={recommendation.score}
-                  />
-                ))}
+                {topItemsPage.map((recommendation) => {
+                  const releaseYear = releaseYearLabel(
+                    recommendation.media.releaseDate,
+                  );
+                  const meta = [
+                    shortMediaTypeLabel(recommendation.media.mediaType),
+                    releaseYear,
+                  ].filter((value): value is string => Boolean(value));
+                  return (
+                    <PosterTile
+                      item={recommendation.media}
+                      key={recommendation.media.id}
+                      meta={meta}
+                      scoreBadge={
+                        typeof recommendation.score === "number" ? (
+                          <PosterScoreBadge score={recommendation.score} />
+                        ) : undefined
+                      }
+                    />
+                  );
+                })}
               </Box>
             ) : (
               <EmptyPanel
@@ -797,142 +835,6 @@ function OnDarkChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TopPosterTile({
-  item,
-  score,
-}: {
-  item: MediaItemDTO;
-  score?: number;
-}) {
-  const releaseYear = releaseYearLabel(item.releaseDate);
-  const meta = [shortMediaTypeLabel(item.mediaType), releaseYear].filter(
-    Boolean,
-  );
-
-  return (
-    <Link
-      href={`/media/${item.id}`}
-      style={{ color: "inherit", display: "block", textDecoration: "none" }}
-    >
-      <Box
-        sx={{
-          aspectRatio: "2 / 3",
-          bgcolor: "surface.2",
-          border: "1px solid",
-        borderColor: "border.subtle",
-          borderRadius: 2,
-          minWidth: 0,
-          overflow: "hidden",
-          position: "relative",
-          transition: "transform 200ms ease, border-color 200ms ease",
-          "&:hover": {
-            borderColor: "border.strong",
-            transform: "translateY(-3px)",
-            "& .tile-poster": { transform: "scale(1.06)" },
-          },
-        }}
-      >
-        <Box
-          className="tile-poster"
-          sx={{
-            backgroundImage: item.posterUrl
-              ? `url(${item.posterUrl})`
-              : posterFallback(item.mediaType),
-            backgroundPosition: "center",
-            backgroundSize: "cover",
-            inset: 0,
-            position: "absolute",
-            transition: "transform 500ms cubic-bezier(.2,.8,.2,1)",
-          }}
-        />
-        <Box
-          sx={{
-            background:
-              "linear-gradient(180deg, transparent 35%, rgba(8,8,11,0.45) 62%, rgba(8,8,11,0.92) 100%)",
-            inset: 0,
-            position: "absolute",
-          }}
-        />
-        {typeof score === "number" ? (
-          <Box
-            sx={{
-              bgcolor: "rgba(8,8,11,0.6)",
-              backdropFilter: "blur(6px)",
-              borderRadius: 1,
-              color: "#FFFFFF",
-              fontSize: "0.625rem",
-              fontWeight: 700,
-              px: 0.75,
-              py: 0.35,
-              position: "absolute",
-              right: 6,
-              top: 6,
-              zIndex: 3,
-            }}
-          >
-            {formatDashboardScore(score)}
-          </Box>
-        ) : null}
-        {!item.posterUrl ? (
-          <Box
-            sx={{
-              alignItems: "center",
-              color: alpha(mediaAccent(item.mediaType), 0.9),
-              display: "flex",
-              inset: 0,
-              justifyContent: "center",
-              position: "absolute",
-              zIndex: 1,
-              "& svg": { fontSize: 28 },
-            }}
-          >
-            {mediaTypeIcon(item.mediaType)}
-          </Box>
-        ) : null}
-        <Box
-          sx={{
-            bottom: 0,
-            left: 0,
-            p: 1,
-            position: "absolute",
-            right: 0,
-            zIndex: 3,
-          }}
-        >
-          <Typography
-            sx={{
-              color: "#FFFFFF",
-              display: "-webkit-box",
-              fontSize: "0.75rem",
-              fontWeight: 600,
-              lineHeight: 1.15,
-              overflow: "hidden",
-              WebkitBoxOrient: "vertical",
-              WebkitLineClamp: 2,
-            }}
-            title={item.title}
-          >
-            {item.title}
-          </Typography>
-          {meta.length > 0 ? (
-            <Typography
-              sx={{
-                color: "rgba(255,255,255,0.7)",
-                fontSize: "0.625rem",
-                fontWeight: 500,
-                lineHeight: 1,
-                mt: 0.5,
-              }}
-            >
-              {meta.join(" · ")}
-            </Typography>
-          ) : null}
-        </Box>
-      </Box>
-    </Link>
-  );
-}
-
 function GenreBarChart({
   genres,
 }: {
@@ -1147,156 +1049,6 @@ function MediaRail({ children }: { children: React.ReactNode }) {
     >
       {children}
     </Box>
-  );
-}
-
-function PosterCard({
-  href,
-  item,
-  score,
-}: {
-  href: string;
-  item: MediaItemDTO;
-  score?: number;
-}) {
-  const releaseYear = releaseYearLabel(item.releaseDate);
-  const meta = [
-    formatMediaType(item.mediaType),
-    releaseYear,
-    item.genres[0],
-  ].filter(Boolean);
-
-  return (
-    <Link
-      href={href}
-      style={{
-        color: "inherit",
-        display: "block",
-        height: "100%",
-        textDecoration: "none",
-      }}
-    >
-      <Box
-        sx={{
-          bgcolor: "surface.2",
-          border: "1px solid",
-        borderColor: "border.subtle",
-          borderRadius: 2,
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          minHeight: 0,
-          overflow: "hidden",
-          position: "relative",
-          scrollSnapAlign: "start",
-          transition: "transform 200ms ease, border-color 200ms ease",
-          width: "100%",
-          "&:hover": {
-            borderColor: "border.strong",
-            transform: "translateY(-3px)",
-            "& .poster-art": { transform: "scale(1.05)" },
-          },
-        }}
-      >
-        <Box
-          className="poster-art"
-          sx={{
-            backgroundImage: item.posterUrl
-              ? `url(${item.posterUrl})`
-              : posterFallback(item.mediaType),
-            backgroundPosition: "center",
-            backgroundSize: "cover",
-            inset: 0,
-            position: "absolute",
-            transition: "transform 500ms cubic-bezier(.2,.8,.2,1)",
-          }}
-        />
-        <Box
-          sx={{
-            background:
-              "linear-gradient(180deg, transparent 40%, rgba(8,8,11,0.4) 64%, rgba(8,8,11,0.92) 100%)",
-            inset: 0,
-            position: "absolute",
-          }}
-        />
-        {typeof score === "number" ? (
-          <Box
-            sx={{
-              bgcolor: "rgba(8,8,11,0.6)",
-              backdropFilter: "blur(6px)",
-              borderRadius: 1,
-              color: "#FFFFFF",
-              fontSize: "0.625rem",
-              fontWeight: 700,
-              px: 0.75,
-              py: 0.35,
-              position: "absolute",
-              right: 8,
-              top: 8,
-              zIndex: 2,
-            }}
-          >
-            {Math.round(score)}%
-          </Box>
-        ) : null}
-        {!item.posterUrl ? (
-          <Box
-            sx={{
-              alignItems: "center",
-              color: alpha(mediaAccent(item.mediaType), 0.9),
-              display: "flex",
-              height: "100%",
-              justifyContent: "center",
-              position: "relative",
-              zIndex: 1,
-              "& svg": { fontSize: 28 },
-            }}
-          >
-            {mediaTypeIcon(item.mediaType)}
-          </Box>
-        ) : null}
-        <Box
-          sx={{
-            bottom: 0,
-            left: 0,
-            px: 1.25,
-            py: 1,
-            position: "absolute",
-            right: 0,
-            zIndex: 2,
-          }}
-        >
-          <Typography
-            sx={{
-              color: "#FFFFFF",
-              display: "-webkit-box",
-              fontSize: "0.8125rem",
-              fontWeight: 600,
-              lineHeight: 1.15,
-              overflow: "hidden",
-              WebkitBoxOrient: "vertical",
-              WebkitLineClamp: 2,
-            }}
-          >
-            {item.title}
-          </Typography>
-          {meta.length > 0 ? (
-            <Typography
-              noWrap
-              sx={{
-                color: "rgba(255,255,255,0.7)",
-                fontSize: "0.625rem",
-                fontWeight: 500,
-                lineHeight: 1.2,
-                mt: 0.5,
-              }}
-            >
-              {meta.join(" · ")}
-            </Typography>
-          ) : null}
-        </Box>
-      </Box>
-    </Link>
   );
 }
 
@@ -1562,7 +1314,7 @@ function MediaSignalRow({
                 Score
               </Typography>
               <Typography sx={{ fontSize: "0.625rem", fontWeight: 600 }}>
-                {formatDashboardScore(score)}
+                {formatScore(score)}
               </Typography>
             </Stack>
             <LinearProgress value={normalized} variant="determinate" />
@@ -1573,46 +1325,10 @@ function MediaSignalRow({
   );
 }
 
-function formatDashboardScore(value: number) {
-  return value.toFixed(1);
-}
-
 function pickReason(item: MediaItemDTO) {
   const genre = item.genres[0];
   if (genre) {
     return `Because your library points toward ${genre.toLowerCase()} with strong local signals.`;
   }
   return "Because your ratings, rankings, and local signals make this stand out tonight.";
-}
-
-function releaseYearLabel(value: Date | string | null | undefined) {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return String(date.getFullYear());
-}
-
-function mediaTypeIcon(mediaType: MediaType) {
-  if (mediaType === "TV_SHOW") return <TvIcon fontSize="small" />;
-  if (mediaType === "VIDEO_GAME") return <SportsEsportsIcon fontSize="small" />;
-  return <MovieIcon fontSize="small" />;
-}
-
-// Mode-agnostic accent hues per media type — readable on both light and
-// dark surfaces.
-function mediaAccent(mediaType: MediaType) {
-  if (mediaType === "TV_SHOW") return "#0EA5A4";
-  if (mediaType === "VIDEO_GAME") return "#D97706";
-  return "#6366F1";
-}
-
-function posterFallback(mediaType: MediaType) {
-  const accent = mediaAccent(mediaType);
-  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
-}
-
-function shortMediaTypeLabel(mediaType: MediaType) {
-  if (mediaType === "TV_SHOW") return "TV";
-  if (mediaType === "VIDEO_GAME") return "Games";
-  return "Movies";
 }
