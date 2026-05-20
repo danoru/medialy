@@ -68,6 +68,21 @@ export async function requireUserId(callbackUrl?: string): Promise<string> {
   return user.id;
 }
 
+/**
+ * Admin-only gate. Redirects to `/signin?callbackUrl=...` when unauthenticated
+ * and to `/` (silent denial) when authenticated but not an admin — the latter
+ * matches the "admin nav isn't even visible" UX, so the only people who hit
+ * this path are URL-walking. Re-verifies against the DB rather than trusting
+ * a stale token claim.
+ */
+export async function requireAdmin(callbackUrl?: string): Promise<User> {
+  const user = await requireUser(callbackUrl);
+  if (!user.isAdmin) {
+    redirect("/");
+  }
+  return user;
+}
+
 export function userInitial(displayName: string): string {
   return displayName.trim().charAt(0).toUpperCase() || "U";
 }

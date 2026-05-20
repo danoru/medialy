@@ -1,6 +1,7 @@
 "use client";
 
 import AddIcon from "@mui/icons-material/Add";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import BarChartIcon from "@mui/icons-material/BarChart";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
@@ -146,11 +147,13 @@ export function AppShell({
   userName,
   userInitial,
   isAuthenticated = false,
+  isAdmin = false,
 }: {
   children: React.ReactNode;
   userName?: string | null;
   userInitial?: string | null;
   isAuthenticated?: boolean;
+  isAdmin?: boolean;
 }) {
   const displayName = userName ?? "Guest";
   const displayInitial = userInitial ?? "G";
@@ -324,6 +327,18 @@ export function AppShell({
                   </ListItemIcon>
                   Settings
                 </MenuItem>
+                {isAdmin ? (
+                  <MenuItem
+                    component="a"
+                    href="/admin"
+                    onClick={() => setProfileMenuAnchor(null)}
+                  >
+                    <ListItemIcon>
+                      <AdminPanelSettingsIcon fontSize="small" />
+                    </ListItemIcon>
+                    Admin
+                  </MenuItem>
+                ) : null}
                 <Divider />
                 {/* Sign-out is a form posting to a server action so the
                     session cookie is cleared server-side and the user lands
@@ -546,6 +561,18 @@ export function AppShell({
                   onClick={() => setMobileMoreOpen(false)}
                   selected={isSelectedPath(pathname, "/settings")}
                 />
+                {isAdmin ? (
+                  <MobileDrawerItem
+                    item={{
+                      description: "Moderation tools.",
+                      href: "/admin",
+                      icon: <AdminPanelSettingsIcon />,
+                      label: "Admin",
+                    }}
+                    onClick={() => setMobileMoreOpen(false)}
+                    selected={isSelectedPath(pathname, "/admin")}
+                  />
+                ) : null}
                 <form action={signOutAction}>
                   <ListItemButton
                     component="button"

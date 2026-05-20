@@ -1,162 +1,105 @@
 import {
   Card,
   CardContent,
-  Checkbox,
-  Chip,
-  FormControlLabel,
-  MenuItem,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
-import { TagCategory } from "@prisma/client";
-import { approveTag, rejectTag } from "@/app/settings/actions";
-import { StatePanel } from "@/components/shared/StatePanel";
+import { updateDisplayName } from "@/app/settings/actions";
+import { signOutAction } from "@/app/auth-actions";
 import { ActionToastButton } from "@/components/shared/Toasts";
-import { formatMediaType } from "@/lib/format";
-import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
-import { prisma } from "@/lib/prisma";
-import { mediaTypesFromJson } from "@/lib/taxonomy";
+import { requireUser } from "@/lib/user";
 
 export const metadata = { title: "Settings" };
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const pendingTags = await prisma.tag.findMany({
-    where: { status: "PENDING" },
-    orderBy: { name: "asc" },
-  });
+  const user = await requireUser("/settings");
 
   return (
     <Stack spacing={3}>
+      <Stack spacing={0.5}>
+        <Typography variant="eyebrow">Settings</Typography>
+        <Typography component="h1" sx={{ fontWeight: 650 }} variant="h4">
+          Account
+        </Typography>
+        <Typography color="text.secondary" variant="body2">
+          Update how Medialy refers to you and manage your session.
+        </Typography>
+      </Stack>
+
       <Card variant="outlined">
         <CardContent>
           <Stack spacing={2}>
-            <Typography sx={{ fontWeight: 700 }} variant="h5">
-              Tag Moderation
+            <Typography sx={{ fontWeight: 700 }} variant="h6">
+              Profile
             </Typography>
-            {pendingTags.length === 0 ? (
-              <StatePanel
-                description="New freeform tags created from media forms will appear here for approval."
-                minHeight={160}
-                title="No pending tag suggestions"
-              />
-            ) : (
-              <Stack spacing={1}>
-                {pendingTags.map((tag) => (
-                  <Stack
-                    key={tag.id}
-                    spacing={1.2}
-                    sx={{
-                      border: "1px solid",
-                      borderColor: "divider",
-                      borderRadius: "8px",
-                      p: 1.5,
-                    }}
+            <form action={updateDisplayName}>
+              <Stack spacing={2}>
+                <TextField
+                  defaultValue={user.displayName}
+                  helperText="Shown in the top bar, profile header, and anywhere Medialy needs to address you."
+                  label="Display name"
+                  name="displayName"
+                  required
+                  slotProps={{ htmlInput: { maxLength: 64 } }}
+                />
+                <Stack direction="row">
+                  <ActionToastButton
+                    successMessage="Display name updated."
+                    variant="contained"
                   >
-                    <Stack
-                      direction="row"
-                      spacing={1}
-                      sx={{ alignItems: "center" }}
-                    >
-                      <Typography sx={{ fontWeight: 650 }}>
-                        {tag.name}
-                      </Typography>
-                      <Chip label="Pending" size="small" />
-                    </Stack>
-                    <form action={approveTag.bind(null, tag.id)}>
-                      <Stack spacing={1.2}>
-                        <Stack
-                          direction={{ xs: "column", md: "row" }}
-                          spacing={1}
-                        >
-                          <TextField
-                            defaultValue={tag.name}
-                            label="Canonical name"
-                            name="name"
-                            size="small"
-                            sx={{ minWidth: { md: 220 } }}
-                          />
-                          <TextField
-                            defaultValue={tag.category}
-                            label="Category"
-                            name="category"
-                            select
-                            size="small"
-                            sx={{ minWidth: { md: 180 } }}
-                          >
-                            {Object.values(TagCategory).map((category) => (
-                              <MenuItem key={category} value={category}>
-                                {category}
-                              </MenuItem>
-                            ))}
-                          </TextField>
-                          <TextField
-                            defaultValue={tag.countryCode ?? ""}
-                            label="Country code"
-                            name="countryCode"
-                            size="small"
-                            sx={{ maxWidth: { md: 140 } }}
-                          />
-                        </Stack>
-                        <Stack
-                          direction="row"
-                          sx={{ flexWrap: "wrap", gap: 1 }}
-                        >
-                          {VISIBLE_MEDIA_TYPES.map((mediaType) => (
-                            <FormControlLabel
-                              control={
-                                <Checkbox
-                                  defaultChecked={mediaTypesFromJson(
-                                    tag.mediaTypesJson,
-                                  ).includes(mediaType)}
-                                  name="mediaTypes"
-                                  size="small"
-                                  value={mediaType}
-                                />
-                              }
-                              key={mediaType}
-                              label={formatMediaType(mediaType)}
-                            />
-                          ))}
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                defaultChecked={tag.discoverable}
-                                name="discoverable"
-                                size="small"
-                              />
-                            }
-                            label="Discoverable"
-                          />
-                        </Stack>
-                        <Stack direction="row" spacing={1}>
-                          <ActionToastButton
-                            size="small"
-                            successMessage="Tag approved."
-                            variant="contained"
-                          >
-                            Approve
-                          </ActionToastButton>
-                        </Stack>
-                      </Stack>
-                    </form>
-                    <form action={rejectTag.bind(null, tag.id)}>
-                      <Stack direction="row" spacing={1}>
-                        <ActionToastButton
-                          color="error"
-                          size="small"
-                          successMessage="Tag rejected."
-                          variant="outlined"
-                        >
-                          Reject
-                        </ActionToastButton>
-                      </Stack>
-                    </form>
-                  </Stack>
-                ))}
+                    Save
+                  </ActionToastButton>
+                </Stack>
               </Stack>
-            )}
+            </form>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography sx={{ fontWeight: 700 }} variant="h6">
+              Linked account
+            </Typography>
+            <Stack spacing={0.5}>
+              <Typography color="text.secondary" variant="caption">
+                Google
+              </Typography>
+              <Typography>{user.email ?? "Not linked"}</Typography>
+              {user.name ? (
+                <Typography color="text.secondary" variant="body2">
+                  {user.name}
+                </Typography>
+              ) : null}
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card variant="outlined">
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography sx={{ fontWeight: 700 }} variant="h6">
+              Session
+            </Typography>
+            <Typography color="text.secondary" variant="body2">
+              End your session on this device. You can sign back in at any
+              time from the top bar.
+            </Typography>
+            <form action={signOutAction}>
+              <Stack direction="row">
+                <ActionToastButton
+                  color="error"
+                  successMessage="Signed out."
+                  variant="outlined"
+                >
+                  Sign Out
+                </ActionToastButton>
+              </Stack>
+            </form>
           </Stack>
         </CardContent>
       </Card>
