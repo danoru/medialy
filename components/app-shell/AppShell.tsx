@@ -11,6 +11,8 @@ import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
 import ImportExportIcon from "@mui/icons-material/ImportExport";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import LightModeIcon from "@mui/icons-material/LightMode";
+import LoginIcon from "@mui/icons-material/Login";
+import LogoutIcon from "@mui/icons-material/Logout";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import MovieIcon from "@mui/icons-material/Movie";
 import PeopleIcon from "@mui/icons-material/People";
@@ -42,6 +44,7 @@ import {
   alpha,
 } from "@mui/material";
 import { usePathname } from "next/navigation";
+import { signOutAction } from "@/app/auth-actions";
 import { useThemeMode } from "@/lib/theme-mode";
 
 const drawerWidth = 232;
@@ -142,10 +145,12 @@ export function AppShell({
   children,
   userName,
   userInitial,
+  isAuthenticated = false,
 }: {
   children: React.ReactNode;
   userName?: string | null;
   userInitial?: string | null;
+  isAuthenticated?: boolean;
 }) {
   const displayName = userName ?? "Guest";
   const displayInitial = userInitial ?? "G";
@@ -252,71 +257,113 @@ export function AppShell({
             </IconButton>
           </Tooltip>
 
-          <Button
-            aria-controls={profileMenuOpen ? "profile-menu" : undefined}
-            aria-expanded={profileMenuOpen ? "true" : undefined}
-            aria-haspopup="true"
-            onClick={(event) => setProfileMenuAnchor(event.currentTarget)}
-            sx={{
-              color: "text.primary",
-              display: { xs: "none", sm: "inline-flex" },
-              gap: 0.75,
-              height: 36,
-              minWidth: 0,
-              px: 0.75,
-            }}
-          >
-            <Avatar
+          {isAuthenticated ? (
+            <>
+              <Button
+                aria-controls={profileMenuOpen ? "profile-menu" : undefined}
+                aria-expanded={profileMenuOpen ? "true" : undefined}
+                aria-haspopup="true"
+                onClick={(event) => setProfileMenuAnchor(event.currentTarget)}
+                sx={{
+                  color: "text.primary",
+                  display: { xs: "none", sm: "inline-flex" },
+                  gap: 0.75,
+                  height: 36,
+                  minWidth: 0,
+                  px: 0.75,
+                }}
+              >
+                <Avatar
+                  sx={{
+                    bgcolor: (theme) =>
+                      alpha(theme.palette.accent.primary, 0.16),
+                    color: "primary.main",
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    height: 24,
+                    width: 24,
+                  }}
+                >
+                  {displayInitial}
+                </Avatar>
+                <Typography
+                  variant="labelMd"
+                  component="span"
+                  sx={{ fontWeight: 550 }}
+                >
+                  {displayName}
+                </Typography>
+                <KeyboardArrowDownIcon
+                  sx={{ color: "text.secondary", fontSize: 16 }}
+                />
+              </Button>
+              <Menu
+                anchorEl={profileMenuAnchor}
+                id="profile-menu"
+                onClose={() => setProfileMenuAnchor(null)}
+                open={profileMenuOpen}
+                slotProps={{ paper: { sx: { minWidth: 176 } } }}
+              >
+                <MenuItem
+                  component="a"
+                  href="/profile"
+                  onClick={() => setProfileMenuAnchor(null)}
+                >
+                  <ListItemIcon>
+                    <PersonIcon fontSize="small" />
+                  </ListItemIcon>
+                  Profile
+                </MenuItem>
+                <MenuItem
+                  component="a"
+                  href="/settings"
+                  onClick={() => setProfileMenuAnchor(null)}
+                >
+                  <ListItemIcon>
+                    <SettingsIcon fontSize="small" />
+                  </ListItemIcon>
+                  Settings
+                </MenuItem>
+                <Divider />
+                {/* Sign-out is a form posting to a server action so the
+                    session cookie is cleared server-side and the user lands
+                    on `/` as an anonymous visitor. */}
+                <form action={signOutAction}>
+                  <MenuItem
+                    component="button"
+                    type="submit"
+                    sx={{ width: "100%" }}
+                  >
+                    <ListItemIcon>
+                      <LogoutIcon fontSize="small" />
+                    </ListItemIcon>
+                    Sign Out
+                  </MenuItem>
+                </form>
+              </Menu>
+            </>
+          ) : (
+            <Button
+              component="a"
+              href="/signin"
+              startIcon={<LoginIcon sx={{ fontSize: 18 }} />}
               sx={{
-                bgcolor: (theme) => alpha(theme.palette.accent.primary, 0.16),
-                color: "primary.main",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                height: 24,
-                width: 24,
+                color: "text.primary",
+                display: { xs: "none", sm: "inline-flex" },
+                height: 36,
+                px: 1.25,
               }}
+              variant="text"
             >
-              {displayInitial}
-            </Avatar>
-            <Typography
-              variant="labelMd"
-              component="span"
-              sx={{ fontWeight: 550 }}
-            >
-              {displayName}
-            </Typography>
-            <KeyboardArrowDownIcon
-              sx={{ color: "text.secondary", fontSize: 16 }}
-            />
-          </Button>
-          <Menu
-            anchorEl={profileMenuAnchor}
-            id="profile-menu"
-            onClose={() => setProfileMenuAnchor(null)}
-            open={profileMenuOpen}
-            slotProps={{ paper: { sx: { minWidth: 176 } } }}
-          >
-            <MenuItem
-              component="a"
-              href="/profile"
-              onClick={() => setProfileMenuAnchor(null)}
-            >
-              <ListItemIcon>
-                <PersonIcon fontSize="small" />
-              </ListItemIcon>
-              Profile
-            </MenuItem>
-            <MenuItem
-              component="a"
-              href="/settings"
-              onClick={() => setProfileMenuAnchor(null)}
-            >
-              <ListItemIcon>
-                <SettingsIcon fontSize="small" />
-              </ListItemIcon>
-              Settings
-            </MenuItem>
-          </Menu>
+              <Typography
+                variant="labelMd"
+                component="span"
+                sx={{ fontWeight: 550 }}
+              >
+                Sign In
+              </Typography>
+            </Button>
+          )}
         </Toolbar>
       </AppBar>
 
@@ -477,26 +524,56 @@ export function AppShell({
               />
             ))}
             <Divider sx={{ my: 0.75 }} />
-            <MobileDrawerItem
-              item={{
-                description: "Your account profile.",
-                href: "/profile",
-                icon: <PersonIcon />,
-                label: "Profile",
-              }}
-              onClick={() => setMobileMoreOpen(false)}
-              selected={isSelectedPath(pathname, "/profile")}
-            />
-            <MobileDrawerItem
-              item={{
-                description: "Application settings.",
-                href: "/settings",
-                icon: <SettingsIcon />,
-                label: "Settings",
-              }}
-              onClick={() => setMobileMoreOpen(false)}
-              selected={isSelectedPath(pathname, "/settings")}
-            />
+            {isAuthenticated ? (
+              <>
+                <MobileDrawerItem
+                  item={{
+                    description: "Your account profile.",
+                    href: "/profile",
+                    icon: <PersonIcon />,
+                    label: "Profile",
+                  }}
+                  onClick={() => setMobileMoreOpen(false)}
+                  selected={isSelectedPath(pathname, "/profile")}
+                />
+                <MobileDrawerItem
+                  item={{
+                    description: "Application settings.",
+                    href: "/settings",
+                    icon: <SettingsIcon />,
+                    label: "Settings",
+                  }}
+                  onClick={() => setMobileMoreOpen(false)}
+                  selected={isSelectedPath(pathname, "/settings")}
+                />
+                <form action={signOutAction}>
+                  <ListItemButton
+                    component="button"
+                    type="submit"
+                    sx={{ width: "100%" }}
+                  >
+                    <ListItemIcon>
+                      <LogoutIcon />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Sign Out"
+                      secondary="End your session."
+                    />
+                  </ListItemButton>
+                </form>
+              </>
+            ) : (
+              <MobileDrawerItem
+                item={{
+                  description: "Sign in with Google to track your library.",
+                  href: "/signin",
+                  icon: <LoginIcon />,
+                  label: "Sign In",
+                }}
+                onClick={() => setMobileMoreOpen(false)}
+                selected={isSelectedPath(pathname, "/signin")}
+              />
+            )}
           </List>
         </Box>
       </Drawer>
