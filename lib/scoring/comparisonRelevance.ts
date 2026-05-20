@@ -1,4 +1,5 @@
 import type { ScoredMediaItem } from "@/lib/scoring/types";
+import { COMPARISON_RELEVANCE } from "@/lib/scoring/config";
 import { clamp } from "@/lib/scoring/pairwise";
 
 export function calculateComparisonRelevance(
@@ -12,27 +13,27 @@ export function calculateComparisonRelevance(
   const ratingScore = proximityScore(
     first.personalRating,
     second.personalRating,
-    4,
+    COMPARISON_RELEVANCE.ratingMaxDistance,
   );
   const pairwiseScore = proximityScore(
     first.pairwiseScore,
     second.pairwiseScore,
-    500,
+    COMPARISON_RELEVANCE.pairwiseMaxDistance,
   );
   const yearScore = proximityScore(
     yearFromDate(first.releaseDate),
     yearFromDate(second.releaseDate),
-    30,
+    COMPARISON_RELEVANCE.yearMaxDistance,
   );
 
   return round(
     clamp(
-      0.25 +
-        genreScore * 0.35 +
-        tagScore * 0.08 +
-        ratingScore * 0.2 +
-        pairwiseScore * 0.1 +
-        yearScore * 0.05,
+      COMPARISON_RELEVANCE.base +
+        genreScore * COMPARISON_RELEVANCE.genre +
+        tagScore * COMPARISON_RELEVANCE.tag +
+        ratingScore * COMPARISON_RELEVANCE.rating +
+        pairwiseScore * COMPARISON_RELEVANCE.pairwise +
+        yearScore * COMPARISON_RELEVANCE.year,
       0,
       1,
     ),
@@ -50,7 +51,8 @@ function tagOverlapScore(first: ScoredMediaItem, second: ScoredMediaItem) {
 }
 
 export function relevanceToEloWeight(relevance: number) {
-  return round(clamp(0.35 + relevance * 0.65, 0.35, 1));
+  const floor = COMPARISON_RELEVANCE.eloWeightFloor;
+  return round(clamp(floor + relevance * (1 - floor), floor, 1));
 }
 
 function genreOverlapScore(first: ScoredMediaItem, second: ScoredMediaItem) {

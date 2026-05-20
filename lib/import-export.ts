@@ -5,9 +5,12 @@ import {
   mediaReleaseYear,
   mediaTitleKey,
   upsertMediaRelations,
+  userMediaMutationData,
 } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
+import { requireUserId } from "@/lib/user";
+import { upsertUserMedia } from "@/lib/db/user-media";
 import type {
   CsvMediaRow,
   ImportPreview,
@@ -153,6 +156,7 @@ const mediaImportTemplateRows = [
 ];
 
 export async function buildJsonExport(): Promise<MedialyExport> {
+  const userId = await requireUserId();
   const [
     media,
     genres,
@@ -169,6 +173,7 @@ export async function buildJsonExport(): Promise<MedialyExport> {
         genres: { include: { genre: true } },
         tags: { include: { tag: true } },
         credits: { include: { contributor: true }, orderBy: { order: "asc" } },
+        userMedia: { where: { userId }, take: 1 },
       },
     }),
     prisma.genre.findMany(),
@@ -230,11 +235,13 @@ export function buildMediaImportTemplateCsv() {
 }
 
 export async function buildMediaCsvExport() {
+  const userId = await requireUserId();
   const items = await prisma.mediaItem.findMany({
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
       credits: { include: { contributor: true }, orderBy: { order: "asc" } },
+      userMedia: { where: { userId }, take: 1 },
     },
     orderBy: { title: "asc" },
   });
@@ -253,13 +260,14 @@ export async function buildMediaCsvExport() {
     "description",
     "externalUrl",
   ];
-  const rows = items.map((item) =>
-    [
+  const rows = items.map((item) => {
+    const um = item.userMedia[0];
+    return [
       item.title,
       item.mediaType,
-      item.status,
+      um?.status ?? "UNTRACKED",
       formatDate(item.releaseDate),
-      item.personalRating ?? "",
+      um?.personalRating ?? "",
       item.genres.map((entry) => entry.genre.name).join(";"),
       item.tags.map((entry) => entry.tag.name).join(";"),
       creditNames(item.credits, "DIRECTOR"),
@@ -270,8 +278,8 @@ export async function buildMediaCsvExport() {
       item.externalUrl ?? "",
     ]
       .map(csvEscape)
-      .join(","),
-  );
+      .join(",");
+  });
 
   return [header.join(","), ...rows].join("\n");
 }
@@ -520,14 +528,15 @@ export async function importMediaRowsWithSource(
   sourceType: "CSV" | "XLSX",
   fileName?: string,
 ): Promise<ImportResult> {
+  const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
   let importedCount = 0;
 
   for (const [index, input] of rows.entries()) {
     try {
-      const media = await upsertImportedMedia(input);
+      const media = await upsertImportedMedia(input, userId);
       await upsertMediaRelations(media.id, input);
-      await recomputeMediaScores(media.id);
+      await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
       errors.push({
@@ -560,14 +569,15 @@ export async function importLetterboxdRows(
   rows: MediaFormInput[],
   fileName?: string,
 ): Promise<ImportResult> {
+  const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
   let importedCount = 0;
 
   for (const [index, input] of rows.entries()) {
     try {
-      const media = await upsertImportedMedia(input);
+      const media = await upsertImportedMedia(input, userId);
       await upsertMediaRelations(media.id, input);
-      await recomputeMediaScores(media.id);
+      await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
       errors.push({
@@ -602,6 +612,7 @@ export async function importJsonExport(
 ): Promise<ImportResult> {
   assertExportVersion(input);
   const bundle = input as MedialyExport;
+  const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
   let importedCount = 0;
 
@@ -648,9 +659,9 @@ export async function importJsonExport(
         developers: jsonCreditNames(item.credits, "DEVELOPER"),
         publishers: jsonCreditNames(item.credits, "PUBLISHER"),
       });
-      const media = await upsertImportedMedia(input);
+      const media = await upsertImportedMedia(input, userId);
       await upsertMediaRelations(media.id, input);
-      await recomputeMediaScores(media.id);
+      await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
       errors.push({
@@ -712,7 +723,7 @@ function jsonCreditNames(
   );
 }
 
-async function upsertImportedMedia(input: MediaFormInput) {
+async function upsertImportedMedia(input: MediaFormInput, userId: string) {
   return prisma.$transaction(async (tx) => {
     const existing = await findExistingImportedMedia(tx, input);
 
@@ -722,14 +733,18 @@ async function upsertImportedMedia(input: MediaFormInput) {
         input,
         existing.id,
       );
-      return tx.mediaItem.update({
+      const updated = await tx.mediaItem.update({
         where: { id: existing.id },
         data,
       });
+      await upsertUserMedia(userId, updated.id, userMediaMutationData(input), tx);
+      return updated;
     }
 
     const data = await mediaMutationDataWithUniqueTitle(tx, input);
-    return tx.mediaItem.create({ data });
+    const created = await tx.mediaItem.create({ data });
+    await upsertUserMedia(userId, created.id, userMediaMutationData(input), tx);
+    return created;
   });
 }
 

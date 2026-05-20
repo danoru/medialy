@@ -6,7 +6,7 @@ import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
-import type { CreditRole } from "@prisma/client";
+import type { CreditRole, MediaStatus, MediaType } from "@prisma/client";
 import type { ReactElement, ReactNode } from "react";
 import { notFound } from "next/navigation";
 import {
@@ -35,9 +35,12 @@ import { ConfirmMediaAction } from "@/components/media/ConfirmMediaAction";
 import { MediaDetailActions } from "@/components/media/MediaDetailActions";
 import { MediaRatingControl } from "@/components/media/MediaRatingControl";
 import { ActionToastButton } from "@/components/shared/Toasts";
+import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
-import { formatStatus } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
 import { prisma } from "@/lib/prisma";
+import { getCurrentUserId } from "@/lib/user";
+import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 
 export const dynamic = "force-dynamic";
 
@@ -63,14 +66,21 @@ export default async function MediaDetailPage({
   params: PageParams;
 }) {
   const { id } = await params;
-  const item = await prisma.mediaItem.findUnique({
+  const userId = await getCurrentUserId();
+  // Anonymous viewers see the public detail page without personal joins
+  // (comparisons/notes belong to a user). We use a sentinel that never
+  // matches so the typed query is happy and the relations come back empty.
+  const userIdFilter = userId ?? "__anonymous__";
+  const rawItem = await prisma.mediaItem.findUnique({
     include: {
       comparisonsLost: {
+        where: { userId: userIdFilter },
         include: { winner: true },
         orderBy: { createdAt: "desc" },
         take: 10,
       },
       comparisonsWon: {
+        where: { userId: userIdFilter },
         include: { loser: true },
         orderBy: { createdAt: "desc" },
         take: 10,
@@ -78,31 +88,60 @@ export default async function MediaDetailPage({
       externalRatings: { orderBy: [{ source: "asc" }] },
       genres: { include: { genre: true } },
       credits: { include: { contributor: true }, orderBy: { order: "asc" } },
-      notes: { orderBy: { updatedAt: "desc" } },
+      notes: { where: { userId: userIdFilter }, orderBy: { updatedAt: "desc" } },
       tags: { include: { tag: true } },
+      ...userMediaInclude(userId),
     },
     where: { id },
   });
-  if (!item) notFound();
+  if (!rawItem) notFound();
+  const item = mergeUserMedia(rawItem);
 
   const comparisons = [
     ...item.comparisonsWon.map((entry) => ({
       createdAt: entry.createdAt,
       id: entry.id,
       opponent: entry.loser.title,
-      result: "Beat",
+      result: "Beat" as const,
+      delta: entry.winnerDelta,
+      scoreAfter: entry.winnerScoreAfter,
+      expectedWinProb: entry.expectedWinnerWinProb,
     })),
     ...item.comparisonsLost.map((entry) => ({
       createdAt: entry.createdAt,
       id: entry.id,
       opponent: entry.winner.title,
-      result: "Lost to",
+      result: "Lost to" as const,
+      delta: entry.loserDelta,
+      scoreAfter: entry.loserScoreAfter,
+      expectedWinProb:
+        entry.expectedWinnerWinProb == null
+          ? null
+          : 1 - entry.expectedWinnerWinProb,
     })),
   ]
     .sort(
       (first, second) => second.createdAt.getTime() - first.createdAt.getTime(),
     )
     .slice(0, 10);
+
+  // Sparkline data: walk the persisted scoreAfter timeline (oldest → newest).
+  const eloTimelineSource = [
+    ...item.comparisonsWon.map((entry) => ({
+      at: entry.createdAt,
+      scoreAfter: entry.winnerScoreAfter,
+    })),
+    ...item.comparisonsLost.map((entry) => ({
+      at: entry.createdAt,
+      scoreAfter: entry.loserScoreAfter,
+    })),
+  ]
+    .filter(
+      (entry): entry is { at: Date; scoreAfter: number } =>
+        entry.scoreAfter != null,
+    )
+    .sort((a, b) => a.at.getTime() - b.at.getTime());
+  const eloTimeline = eloTimelineSource.map((entry) => entry.scoreAfter);
   const genres = item.genres.map((entry) => entry.genre.name);
   const tags = item.tags.map((entry) => entry.tag.name);
   const releaseLabel = item.releaseDate
@@ -159,10 +198,10 @@ export default async function MediaDetailPage({
                 />
               ) : (
                 <Stack sx={posterPlaceholderSx}>
-                  <Typography sx={{ fontSize: 12, fontWeight: 800 }}>
+                  <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
                     Poster missing
                   </Typography>
-                  <Typography color="text.secondary" sx={{ fontSize: 11 }}>
+                  <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
                     Add artwork to improve this page.
                   </Typography>
                 </Stack>
@@ -213,7 +252,7 @@ export default async function MediaDetailPage({
                     {creditLabel(item.mediaType, primaryCredit.role)}{" "}
                     <Box
                       component="span"
-                      sx={{ color: detailTokens.accent.cyan }}
+                      sx={{ color: "text.primary", fontWeight: 600 }}
                     >
                       {primaryCredit.names.join(", ")}
                     </Box>
@@ -231,11 +270,13 @@ export default async function MediaDetailPage({
               </Stack>
 
               <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.7 }}>
-                <StatusChip status={item.status} />
-                {item.isFavorite ? (
+                {userId ? (
+                  <StatusChip mediaType={item.mediaType} status={item.status} />
+                ) : null}
+                {userId && item.isFavorite ? (
                   <GlassChip icon={<StarRoundedIcon />} label="Favorite" warm />
                 ) : null}
-                {item.isArchived ? (
+                {userId && item.isArchived ? (
                   <GlassChip
                     icon={<ArchiveRoundedIcon />}
                     label="Archived"
@@ -296,6 +337,7 @@ export default async function MediaDetailPage({
               )}
             </SectionBlock> */}
 
+            {userId ? (
             <Box id="notes" sx={panelSx(detailTokens.accent.emerald)}>
               <SectionHeader title="Notes" />
               <Stack spacing={1.2}>
@@ -360,6 +402,7 @@ export default async function MediaDetailPage({
                 ))}
               </Stack>
             </Box>
+            ) : null}
 
             <Box sx={panelSx(detailTokens.accent.cyan)}>
               <Stack
@@ -382,6 +425,46 @@ export default async function MediaDetailPage({
                 </Button>
               </Stack>
 
+              {eloTimeline.length >= 2 && (
+                <Tooltip
+                  title={`Pairwise score trajectory across ${eloTimeline.length} comparisons. Baseline = ${1000} (starting Elo).`}
+                  arrow
+                  placement="top"
+                >
+                  <Stack
+                    direction="row"
+                    sx={{
+                      alignItems: "center",
+                      gap: 1.5,
+                      mb: 1.5,
+                      px: 1,
+                      py: 1,
+                      borderRadius: 2,
+                      bgcolor: "surface.1",
+                    }}
+                  >
+                    <Sparkline
+                      values={eloTimeline}
+                      width={200}
+                      height={40}
+                      baseline={1000}
+                      ariaLabel="Pairwise score over time"
+                    />
+                    <Stack>
+                      <Typography
+                        sx={{ fontSize: "0.6875rem", color: "text.secondary" }}
+                      >
+                        Pairwise trajectory
+                      </Typography>
+                      <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+                        {Math.round(eloTimeline[0])} →{" "}
+                        {Math.round(eloTimeline[eloTimeline.length - 1])}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                </Tooltip>
+              )}
+
               {comparisons.length > 0 ? (
                 <Box sx={comparisonTableSx}>
                   <Box sx={comparisonHeaderSx}>
@@ -391,23 +474,36 @@ export default async function MediaDetailPage({
                     <Typography sx={comparisonHeaderCellSx}>Date</Typography>
                     <Typography sx={comparisonHeaderCellSx}>Result</Typography>
                   </Box>
-                  {comparisons.map((entry) => (
-                    <Box key={entry.id} sx={comparisonRowSx}>
-                      <Typography sx={comparisonOpponentSx}>
-                        {entry.opponent}
-                      </Typography>
-                      <Typography sx={comparisonDateSx}>
-                        {entry.createdAt.toLocaleDateString()}
-                      </Typography>
-                      <Typography sx={comparisonResultSx(entry.result)}>
-                        {entry.result}
-                      </Typography>
-                    </Box>
-                  ))}
+                  {comparisons.map((entry) => {
+                    const deltaLabel =
+                      entry.delta == null
+                        ? null
+                        : `${entry.delta >= 0 ? "+" : ""}${Math.round(entry.delta)}`;
+                    const upsetTooltip =
+                      entry.expectedWinProb == null
+                        ? `${entry.result} ${entry.opponent}`
+                        : `Expected win ${(entry.expectedWinProb * 100).toFixed(0)}%. ${deltaLabel ? `Pairwise moved ${deltaLabel}.` : ""}`;
+                    return (
+                      <Box key={entry.id} sx={comparisonRowSx}>
+                        <Typography sx={comparisonOpponentSx}>
+                          {entry.opponent}
+                        </Typography>
+                        <Typography sx={comparisonDateSx}>
+                          {entry.createdAt.toLocaleDateString()}
+                        </Typography>
+                        <Tooltip title={upsetTooltip} arrow placement="left">
+                          <Typography sx={comparisonResultSx(entry.result)}>
+                            {entry.result}
+                            {deltaLabel ? ` (${deltaLabel})` : ""}
+                          </Typography>
+                        </Tooltip>
+                      </Box>
+                    );
+                  })}
                 </Box>
               ) : (
                 <Stack sx={emptyStateSx}>
-                  <Typography sx={{ fontSize: 18, fontWeight: 900 }}>
+                  <Typography sx={{ fontSize: "1.125rem", fontWeight: 650 }}>
                     No comparisons yet
                   </Typography>
                   <Typography color="text.secondary" sx={{ maxWidth: 430 }}>
@@ -420,22 +516,45 @@ export default async function MediaDetailPage({
           </Stack>
 
           <Stack spacing={1.25} sx={rightRailSx}>
-            <MediaDetailActions
-              favoriteAction={toggleFavoriteMediaItem.bind(null, item.id)}
-              isFavorite={item.isFavorite}
-              status={item.status}
-              statusAction={updateMediaStatus.bind(null, item.id)}
-            />
+            {userId ? (
+              <MediaDetailActions
+                favoriteAction={toggleFavoriteMediaItem.bind(null, item.id)}
+                isFavorite={item.isFavorite}
+                mediaType={item.mediaType}
+                status={item.status}
+                statusAction={updateMediaStatus.bind(null, item.id)}
+              />
+            ) : (
+              <Box sx={scorePanelSx}>
+                <Stack spacing={1}>
+                  <Typography sx={kickerSx}>Track this</Typography>
+                  <Typography color="text.secondary" sx={metadataTextSx}>
+                    Sign in to rate, track status, favorite, and take notes.
+                  </Typography>
+                  <Button
+                    href={`/signin?callbackUrl=${encodeURIComponent(`/media/${item.id}`)}`}
+                    size="small"
+                    variant="contained"
+                  >
+                    Sign in
+                  </Button>
+                </Stack>
+              </Box>
+            )}
 
             <Box sx={scorePanelSx}>
               <Stack spacing={1.25}>
-                <Typography sx={kickerSx}>Your rating</Typography>
-                <MediaRatingControl
-                  action={updateMediaRating.bind(null, item.id)}
-                  personalRating={item.personalRating}
-                />
+                {userId ? (
+                  <>
+                    <Typography sx={kickerSx}>Your rating</Typography>
+                    <MediaRatingControl
+                      action={updateMediaRating.bind(null, item.id)}
+                      personalRating={item.personalRating}
+                    />
 
-                <Divider sx={panelDividerSx} />
+                    <Divider sx={panelDividerSx} />
+                  </>
+                ) : null}
 
                 <Box sx={scoreGridSx}>
                   <ScoreLine
@@ -543,46 +662,52 @@ function GlassChip({
   warm?: boolean;
   warning?: boolean;
 }) {
-  const accent = success
-    ? detailTokens.accent.green
+  const tone: "success" | "warning" | "neutral" | "muted" = success
+    ? "success"
     : warm || warning
-      ? detailTokens.accent.amber
-      : detailTokens.accent.cyan;
+      ? "warning"
+      : muted
+        ? "muted"
+        : "neutral";
   return (
     <Chip
       icon={icon}
       label={label}
       size="small"
+      variant={tone === "muted" ? "outlined" : "filled"}
       sx={{
-        backgroundColor: alpha(
-          muted ? detailTokens.text.frost : accent,
-          muted ? 0.075 : 0.13,
-        ),
-        border: `1px solid ${alpha(success || warm || warning ? accent : detailTokens.text.frost, muted ? 0.11 : 0.2)}`,
-        color: success
-          ? "#86EFAC"
-          : warm || warning
-            ? "#FDE68A"
-            : muted
-              ? "text.secondary"
-              : "text.primary",
-        fontSize: "0.82rem",
+        ...(tone === "success" && {
+          bgcolor: (theme) => alpha(theme.palette.success.main, 0.14),
+          color: "success.main",
+        }),
+        ...(tone === "warning" && {
+          bgcolor: (theme) => alpha(theme.palette.warning.main, 0.14),
+          color: "warning.main",
+        }),
+        ...(tone === "neutral" && {
+          bgcolor: "surface.2",
+          color: "text.primary",
+        }),
+        ...(tone === "muted" && { color: "text.secondary" }),
         fontWeight: 550,
-        "& .MuiChip-icon": {
-          color: "inherit",
-          fontSize: 17,
-        },
+        "& .MuiChip-icon": { color: "inherit", fontSize: 16 },
       }}
     />
   );
 }
 
-function StatusChip({ status }: { status: string }) {
+function StatusChip({
+  mediaType,
+  status,
+}: {
+  mediaType: MediaType;
+  status: MediaStatus;
+}) {
   const isCompleted = status === "COMPLETED";
   return (
     <GlassChip
       icon={isCompleted ? <CheckCircleRoundedIcon /> : undefined}
-      label={formatStatus(status)}
+      label={statusLabel(status, mediaType)}
       success={isCompleted}
     />
   );
@@ -724,32 +849,28 @@ function formatRatingSource(source: string) {
     .join(" ");
 }
 
+// Mode-agnostic accent hues — readable on both light and dark surfaces.
 const detailTokens = {
   accent: {
-    amber: "#F59E0B",
-    cyan: "#5AE7FF",
-    danger: "#F87171",
-    emerald: "#00D6A3",
-    green: "#22C55E",
-    purple: "#9A5CFF",
-  },
-  background: {
-    base: "#050816",
-    panel: "#101527",
-    panelDeep: "#090D19",
+    amber: "#D97706",
+    cyan: "#0EA5A4",
+    danger: "#DC2626",
+    emerald: "#059669",
+    green: "#16A34A",
+    purple: "#6366F1",
   },
   text: {
     frost: "#D8E6FF",
   },
 };
 
-function panelSx(accent: string) {
+function panelSx(_accent?: string) {
   return {
-    background: `linear-gradient(155deg, ${alpha(detailTokens.background.panel, 0.78)} 0%, ${alpha(detailTokens.background.panelDeep, 0.91)} 100%)`,
-    border: `1px solid ${alpha(detailTokens.text.frost, 0.09)}`,
-    borderRadius: "8px",
-    boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.055)}, 0 18px 52px ${alpha("#000000", 0.24)}, 0 0 36px ${alpha(accent, 0.055)}`,
-    p: { xs: 1.5, md: 1.75 },
+    bgcolor: "background.paper",
+    border: (theme: Theme) => `1px solid ${theme.palette.border.subtle}`,
+    borderRadius: 3,
+    boxShadow: (theme: Theme) => theme.shadows[1],
+    p: { xs: 2, md: 2.5 },
   } satisfies SxProps<Theme>;
 }
 
@@ -764,148 +885,130 @@ const backButtonSx: SxProps<Theme> = {
 };
 
 const bodyTextSx: SxProps<Theme> = {
-  fontSize: { xs: 15, md: 16 },
-  fontWeight: 500,
-  lineHeight: 1.75,
+  fontSize: "0.9375rem",
+  lineHeight: 1.7,
 };
 
 const archiveButtonSx: SxProps<Theme> = {
-  backgroundColor: alpha(detailTokens.accent.amber, 0.12),
-  borderColor: alpha(detailTokens.accent.amber, 0.36),
-  color: "#FDE68A",
-  "&:hover": {
-    backgroundColor: alpha(detailTokens.accent.amber, 0.1),
-    borderColor: alpha(detailTokens.accent.amber, 0.52),
-  },
+  bgcolor: (theme) => alpha(theme.palette.warning.main, 0.12),
+  borderColor: (theme) => alpha(theme.palette.warning.main, 0.36),
+  color: "warning.main",
 };
 
 const calloutTitleSx: SxProps<Theme> = {
-  color: detailTokens.accent.purple,
-  fontSize: 13,
-  fontWeight: 700,
+  color: "primary.main",
+  fontSize: "0.8125rem",
+  fontWeight: 600,
 };
 
 const comparisonDateSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: 13,
-  fontWeight: 500,
+  fontSize: "0.8125rem",
 };
 
 const comparisonHeaderCellSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: "0.6875rem",
+  fontWeight: 600,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
 };
 
 const comparisonHeaderSx: SxProps<Theme> = {
-  backgroundColor: alpha(detailTokens.text.frost, 0.035),
-  borderBottom: `1px solid ${alpha(detailTokens.text.frost, 0.08)}`,
+  bgcolor: "surface.1",
+  borderBottom: (theme) => `1px solid ${theme.palette.border.subtle}`,
   display: "grid",
   gap: 1,
   gridTemplateColumns: { xs: "1fr", sm: "1fr 112px 110px" },
-  px: 1.15,
-  py: 0.85,
+  px: 1.5,
+  py: 1,
 };
 
 const comparisonOpponentSx: SxProps<Theme> = {
-  fontWeight: 650,
+  fontWeight: 550,
   minWidth: 0,
 };
 
 function comparisonResultSx(result: string): SxProps<Theme> {
   const won = result === "Beat";
   return {
-    backgroundColor: alpha(
-      won ? detailTokens.accent.green : detailTokens.accent.danger,
-      0.1,
-    ),
-    border: `1px solid ${alpha(won ? detailTokens.accent.green : detailTokens.accent.danger, 0.26)}`,
-    borderRadius: "999px",
-    color: won ? "#86EFAC" : "#FCA5A5",
-    fontSize: 12,
-    fontWeight: 700,
+    bgcolor: (theme) =>
+      alpha(
+        won ? theme.palette.success.main : theme.palette.error.main,
+        0.12,
+      ),
+    borderRadius: 999,
+    color: won ? "success.main" : "error.main",
+    fontSize: "0.75rem",
+    fontWeight: 600,
     justifySelf: { sm: "start" },
-    px: 0.9,
+    px: 1,
     py: 0.25,
   };
 }
 
 const comparisonRowSx: SxProps<Theme> = {
   alignItems: { xs: "flex-start", sm: "center" },
-  borderBottom: `1px solid ${alpha(detailTokens.text.frost, 0.075)}`,
+  borderBottom: (theme) => `1px solid ${theme.palette.border.subtle}`,
   display: "grid",
   gap: { xs: 0.65, sm: 1 },
   gridTemplateColumns: { xs: "1fr", sm: "1fr 112px 110px" },
-  px: 1.15,
-  py: 1,
-  "&:last-child": {
-    borderBottom: 0,
-  },
+  px: 1.5,
+  py: 1.15,
+  "&:last-child": { borderBottom: 0 },
 };
 
 const comparisonTableSx: SxProps<Theme> = {
-  border: `1px solid ${alpha(detailTokens.text.frost, 0.075)}`,
-  borderRadius: "8px",
+  border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+  borderRadius: 2,
   overflow: "hidden",
 };
 
 const creditLineSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: 15,
-  fontWeight: 700,
+  fontSize: "0.9375rem",
+  fontWeight: 550,
 };
 
 const creditRoleSx: SxProps<Theme> = {
   color: "text.secondary",
   flexShrink: 0,
-  fontSize: 14,
-  fontWeight: 650,
+  fontSize: "0.875rem",
+  fontWeight: 550,
   width: { xs: "100%", sm: 128 },
 };
 
 const creditRowsSx: SxProps<Theme> = {
-  borderTop: `1px solid ${alpha(detailTokens.text.frost, 0.08)}`,
+  borderTop: (theme) => `1px solid ${theme.palette.border.subtle}`,
 };
 
 function creditRowSx(featured: boolean): SxProps<Theme> {
   return {
     alignItems: { xs: "flex-start", sm: "center" },
-    borderBottom: `1px solid ${alpha(detailTokens.text.frost, 0.08)}`,
+    borderBottom: (theme) => `1px solid ${theme.palette.border.subtle}`,
     display: "flex",
     gap: 1,
     py: 1,
-    ...(featured
-      ? {
-          backgroundColor: alpha(detailTokens.accent.cyan, 0.04),
-          mx: -1,
-          px: 1,
-        }
-      : {}),
+    ...(featured ? { bgcolor: "surface.1", mx: -1, px: 1 } : {}),
   };
 }
 
 const dataCalloutSx: SxProps<Theme> = {
   alignItems: "center",
-  backgroundColor: alpha(detailTokens.accent.purple, 0.1),
-  border: `1px solid ${alpha(detailTokens.accent.purple, 0.22)}`,
-  borderRadius: "8px",
+  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+  border: (theme) => `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
+  borderRadius: 2,
   display: "flex",
   gap: 1,
   justifyContent: "space-between",
-  px: 1.25,
-  py: 1,
+  px: 1.5,
+  py: 1.25,
 };
 
 const deleteButtonSx: SxProps<Theme> = {
-  backgroundColor: alpha(detailTokens.accent.danger, 0.12),
-  borderColor: alpha(detailTokens.accent.danger, 0.38),
-  color: "#FCA5A5",
-  "&:hover": {
-    backgroundColor: alpha(detailTokens.accent.danger, 0.1),
-    borderColor: alpha(detailTokens.accent.danger, 0.55),
-  },
+  bgcolor: (theme) => alpha(theme.palette.error.main, 0.12),
+  borderColor: (theme) => alpha(theme.palette.error.main, 0.38),
+  color: "error.main",
 };
 
 const detailGridSx: SxProps<Theme> = {
@@ -939,14 +1042,15 @@ function externalLogoSx(source: string): SxProps<Theme> {
   const isMetacritic = source === "METACRITIC";
   return {
     alignItems: "center",
-    backgroundColor: isMetacritic
-      ? detailTokens.accent.amber
-      : alpha(detailTokens.accent.cyan, 0.16),
-    borderRadius: "6px",
-    color: isMetacritic ? "#111827" : detailTokens.accent.cyan,
+    bgcolor: (theme) =>
+      isMetacritic
+        ? theme.palette.warning.main
+        : alpha(theme.palette.primary.main, 0.16),
+    borderRadius: 1.5,
+    color: isMetacritic ? "#111827" : "primary.main",
     display: "flex",
-    fontSize: 16,
-    fontWeight: 800,
+    fontSize: "0.9375rem",
+    fontWeight: 700,
     height: 30,
     justifyContent: "center",
     lineHeight: 1,
@@ -956,120 +1060,109 @@ function externalLogoSx(source: string): SxProps<Theme> {
 
 const externalRatingTileSx: SxProps<Theme> = {
   alignItems: "center",
-  backgroundColor: alpha(detailTokens.text.frost, 0.045),
-  border: `1px solid ${alpha(detailTokens.text.frost, 0.075)}`,
-  borderRadius: "8px",
+  bgcolor: "surface.1",
+  border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+  borderRadius: 2,
   display: "flex",
   flexDirection: "column",
-  gap: 0.55,
+  gap: 0.65,
   minHeight: 112,
-  p: 1.25,
+  p: 1.5,
   textAlign: "center",
 };
 
 const externalScoreSx: SxProps<Theme> = {
   color: "text.primary",
-  fontSize: 15,
-  fontWeight: 550,
+  fontSize: "0.9375rem",
+  fontWeight: 600,
 };
 
 const externalSourceLabelSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: 13,
-  fontWeight: 550,
+  fontSize: "0.8125rem",
 };
 
 const heroTitleSx: SxProps<Theme> = {
-  fontFamily: "Satoshi, Inter, sans-serif",
-  fontSize: { xs: 42, md: 62 },
-  fontWeight: 750,
-  letterSpacing: 0,
-  lineHeight: 0.95,
+  fontFamily: (theme) => theme.typography.displayHero.fontFamily,
+  fontSize: { xs: "2rem", md: "3rem" },
+  fontWeight: 700,
+  letterSpacing: "-0.03em",
+  lineHeight: 1.05,
   textWrap: "balance",
 };
 
 const kickerSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.76rem",
-  fontWeight: 650,
-  letterSpacing: "0.08em",
-  opacity: 0.78,
+  fontSize: "0.6875rem",
+  fontWeight: 600,
+  letterSpacing: "0.1em",
   textTransform: "uppercase",
 };
 
 const metaPillSx: SxProps<Theme> = {
   color: "text.primary",
-  fontSize: 15,
-  fontWeight: 650,
+  fontSize: "0.9375rem",
+  fontWeight: 600,
 };
 
 const metadataTextSx: SxProps<Theme> = {
-  fontSize: "0.82rem",
-  fontWeight: 500,
-  opacity: 0.72,
+  color: "text.secondary",
+  fontSize: "0.8125rem",
 };
 
 const metricInfoIconSx: SxProps<Theme> = {
-  color: alpha(detailTokens.text.frost, 0.58),
+  color: "text.disabled",
   cursor: "help",
   fontSize: 16,
 };
 
 const metricLabelSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: 12,
-  fontWeight: 650,
+  fontSize: "0.6875rem",
+  fontWeight: 600,
   letterSpacing: "0.07em",
   textTransform: "uppercase",
 };
 
 const noteRowSx: SxProps<Theme> = {
-  backgroundColor: alpha(detailTokens.text.frost, 0.045),
-  border: `1px solid ${alpha(detailTokens.text.frost, 0.075)}`,
-  borderRadius: "8px",
-  p: 1,
+  bgcolor: "surface.1",
+  border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+  borderRadius: 2,
+  p: 1.25,
 };
 
-const pageSx: SxProps<Theme> = {
-  background:
-    "radial-gradient(circle at 18% 8%, rgba(55, 120, 255, 0.1), transparent 32%), radial-gradient(circle at 82% 0%, rgba(0, 214, 163, 0.08), transparent 28%), linear-gradient(180deg, #050816 0%, #07101B 48%, #050816 100%)",
-  borderRadius: { xs: 0, md: "8px" },
-  boxShadow: `inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
-  mx: { xs: -2, sm: -3 },
-  my: { xs: -1, md: -2 },
-  px: { xs: 2, sm: 3, md: 3.5 },
-  py: { xs: 2, md: 3 },
-};
+const pageSx: SxProps<Theme> = {};
 
 const panelDividerSx: SxProps<Theme> = {
-  borderColor: alpha(detailTokens.text.frost, 0.1),
+  borderColor: "border.subtle",
 };
 
 const panelTitleSx: SxProps<Theme> = {
-  fontFamily: "Satoshi, Inter, sans-serif",
-  fontSize: 20,
-  fontWeight: 700,
-  letterSpacing: 0,
+  fontFamily: (theme) => theme.typography.h5.fontFamily,
+  fontSize: "1.0625rem",
+  fontWeight: 650,
+  letterSpacing: "-0.02em",
 };
 
 const personChipSx: SxProps<Theme> = {
-  backgroundColor: alpha(detailTokens.text.frost, 0.07),
-  border: `1px solid ${alpha(detailTokens.text.frost, 0.1)}`,
+  bgcolor: "surface.2",
   color: "text.primary",
-  fontWeight: 600,
+  fontWeight: 550,
 };
 
 const posterColumnSx: SxProps<Theme> = {
   alignSelf: "start",
   display: "flex",
   flexDirection: "column",
-  gap: 1.2,
+  gap: 1.5,
 };
 
 const posterFrameSx: SxProps<Theme> = {
   aspectRatio: "2 / 3",
-  borderRadius: "8px",
-  boxShadow: "0 28px 90px rgba(0,0,0,0.56), 0 0 36px rgba(90,231,255,0.12)",
+  bgcolor: "surface.2",
+  border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+  borderRadius: 3,
+  boxShadow: (theme) => theme.shadows[6],
   justifySelf: { xs: "center", lg: "stretch" },
   maxWidth: { xs: 280, sm: 330, lg: "none" },
   overflow: "hidden",
@@ -1078,8 +1171,7 @@ const posterFrameSx: SxProps<Theme> = {
 
 const posterPlaceholderSx: SxProps<Theme> = {
   alignItems: "center",
-  background:
-    "radial-gradient(circle at 32% 20%, rgba(85,216,255,0.18), transparent 34%), linear-gradient(145deg, #111827, #05070E)",
+  bgcolor: "surface.2",
   height: "100%",
   justifyContent: "center",
   p: 2,
@@ -1098,28 +1190,29 @@ const scoreGridSx: SxProps<Theme> = {
   gap: 1,
   gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1fr 1fr" },
   "& > *": {
-    backgroundColor: alpha(detailTokens.text.frost, 0.045),
-    border: `1px solid ${alpha(detailTokens.text.frost, 0.075)}`,
-    borderRadius: "8px",
-    p: 1.15,
+    bgcolor: "surface.1",
+    border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+    borderRadius: 2,
+    p: 1.25,
   },
 };
 
 const scorePanelSx: SxProps<Theme> = {
-  ...panelSx(detailTokens.accent.purple),
-  background: `linear-gradient(155deg, ${alpha(detailTokens.background.panel, 0.82)} 0%, ${alpha(detailTokens.background.panelDeep, 0.94)} 100%)`,
+  ...panelSx(),
 };
 
 const scoreValueSx: SxProps<Theme> = {
-  fontSize: 27,
-  fontWeight: 650,
+  fontFamily: (theme) => theme.typography.statValue.fontFamily,
+  fontSize: "1.625rem",
+  fontWeight: 700,
+  letterSpacing: "-0.03em",
   lineHeight: 1,
 };
 
 const textareaSx: SxProps<Theme> = {
   "& .MuiOutlinedInput-root": {
-    backgroundColor: alpha("#020617", 0.48),
-    borderRadius: "8px",
+    bgcolor: "surface.1",
+    borderRadius: 2,
   },
   "& textarea": {
     lineHeight: 1.6,

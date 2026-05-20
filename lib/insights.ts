@@ -10,6 +10,8 @@ import type {
   MediaTypeGenreInsights,
 } from "@/lib/types";
 import { normalizeComparableTitle } from "@/lib/text-normalization";
+import { getCurrentUserId } from "@/lib/user";
+import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 
 const SCORE_BANDS = [
   { label: "9 - 10", min: 9, max: 10 },
@@ -19,8 +21,12 @@ const SCORE_BANDS = [
   { label: "1 - 2", min: 0, max: 2.999 },
 ] as const;
 
-export async function getGenreInsights(): Promise<GenreInsight[]> {
-  const insightsByType = await getGenreInsightsByMediaType();
+export async function getGenreInsights(
+  userId?: string | null,
+): Promise<GenreInsight[]> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  const insightsByType = await getGenreInsightsByMediaType(resolvedUserId);
   const totalItems = insightsByType.reduce(
     (sum, entry) => sum + entry.totalCount,
     0,
@@ -65,20 +71,32 @@ export async function getGenreInsights(): Promise<GenreInsight[]> {
     .sort(compareGenreInsights);
 }
 
-export async function getGenreInsightsByMediaType(): Promise<
-  MediaTypeGenreInsights[]
-> {
-  const items = await prisma.mediaItem.findMany({
-    where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
+export async function getGenreInsightsByMediaType(
+  userId?: string | null,
+): Promise<MediaTypeGenreInsights[]> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  const archivedFilter =
+    resolvedUserId == null
+      ? {}
+      : {
+          OR: [
+            { userMedia: { none: { userId: resolvedUserId } } },
+            { userMedia: { some: { userId: resolvedUserId, isArchived: false } } },
+          ],
+        };
+  const rawItems = await prisma.mediaItem.findMany({
+    where: {
+      mediaType: visibleMediaTypeFilter(),
+      ...archivedFilter,
+    },
     include: {
-      genres: {
-        include: {
-          genre: true,
-        },
-      },
+      genres: { include: { genre: true } },
+      ...userMediaInclude(resolvedUserId),
     },
     orderBy: [{ title: "asc" }],
   });
+  const items = rawItems.map(mergeUserMedia);
   const recentCutoff = new Date();
   recentCutoff.setDate(recentCutoff.getDate() - 90);
 
@@ -273,17 +291,34 @@ function compareGenreInsights(first: GenreInsight, second: GenreInsight) {
   );
 }
 
-export async function getDataHealthReport(): Promise<DataHealthReport> {
-  const items = await prisma.mediaItem.findMany({
-    where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
+export async function getDataHealthReport(
+  userId?: string | null,
+): Promise<DataHealthReport> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  const archivedFilter =
+    resolvedUserId == null
+      ? {}
+      : {
+          OR: [
+            { userMedia: { none: { userId: resolvedUserId } } },
+            { userMedia: { some: { userId: resolvedUserId, isArchived: false } } },
+          ],
+        };
+  const rawItems = await prisma.mediaItem.findMany({
+    where: {
+      mediaType: visibleMediaTypeFilter(),
+      ...archivedFilter,
+    },
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
+      ...userMediaInclude(resolvedUserId),
     },
     orderBy: { title: "asc" },
   });
 
-  const dtos = items.map(toMediaItemDTO);
+  const dtos = rawItems.map((item) => toMediaItemDTO(mergeUserMedia(item)));
   const duplicateGroups = new Map<string, typeof dtos>();
 
   for (const item of dtos) {
@@ -305,25 +340,37 @@ export async function getDataHealthReport(): Promise<DataHealthReport> {
   };
 }
 
-export async function getFriendCompatibility(): Promise<FriendCompatibility[]> {
+export async function getFriendCompatibility(
+  userId?: string | null,
+): Promise<FriendCompatibility[]> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  if (resolvedUserId == null) return [];
   const friends = await prisma.friend.findMany({
+    where: { userId: resolvedUserId },
     include: {
       ratings: {
         where: { media: { mediaType: visibleMediaTypeFilter() } },
-        include: { media: true },
+        include: {
+          media: {
+            include: {
+              userMedia: { where: { userId: resolvedUserId }, take: 1 },
+            },
+          },
+        },
       },
     },
     orderBy: { name: "asc" },
   });
 
   return friends.map((friend) => {
-    const overlapping = friend.ratings.filter(
-      (rating) =>
-        rating.rating !== null && rating.media.personalRating !== null,
-    );
+    const overlapping = friend.ratings.filter((rating) => {
+      const ownRating = rating.media.userMedia[0]?.personalRating ?? null;
+      return rating.rating !== null && ownRating !== null;
+    });
     const compatibility = calculateFriendCompatibility(
       overlapping.map((rating) => ({
-        userRating: rating.media.personalRating ?? 0,
+        userRating: rating.media.userMedia[0]?.personalRating ?? 0,
         friendRating: rating.rating ?? 0,
       })),
     );

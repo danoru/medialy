@@ -136,6 +136,12 @@ async function connectTags(mediaId: string, names: string[]) {
 }
 
 async function main() {
+  const user = await prisma.user.upsert({
+    where: { id: "usr_default" },
+    update: {},
+    create: { id: "usr_default", displayName: "Daniel" },
+  });
+
   for (const item of mediaItems) {
     const media = await prisma.mediaItem.upsert({
       where: {
@@ -145,21 +151,29 @@ async function main() {
         },
       },
       update: {
-        status: item.status,
         description: item.description,
         releaseDate: item.releaseDate ? new Date(item.releaseDate) : null,
-        personalRating: item.personalRating ?? null,
-        pairwiseScore: 1000,
-        comparisonCount: 0,
-        isFavorite: item.isFavorite ?? false,
       },
       create: {
         title: item.title,
         mediaType: item.mediaType,
-        status: item.status,
         description: item.description,
         releaseDate: item.releaseDate ? new Date(item.releaseDate) : undefined,
-        personalRating: item.personalRating,
+      },
+    });
+
+    await prisma.userMedia.upsert({
+      where: { userId_mediaId: { userId: user.id, mediaId: media.id } },
+      update: {
+        status: item.status,
+        personalRating: item.personalRating ?? null,
+        isFavorite: item.isFavorite ?? false,
+      },
+      create: {
+        userId: user.id,
+        mediaId: media.id,
+        status: item.status,
+        personalRating: item.personalRating ?? null,
         pairwiseScore: 1000,
         comparisonCount: 0,
         isFavorite: item.isFavorite ?? false,
@@ -171,27 +185,29 @@ async function main() {
   }
 
   const watchlist = await prisma.customList.upsert({
-    where: { name: "Starter Watchlist" },
+    where: { userId_name: { userId: user.id, name: "Starter Watchlist" } },
     update: {},
     create: {
+      userId: user.id,
       name: "Starter Watchlist",
       kind: "WATCHLIST",
       description: "Seeded examples for the first Medialy dashboard.",
     },
   });
 
-  const watchlistItems = await prisma.mediaItem.findMany({
-    where: { status: { in: ["WATCHLIST", "BACKLOG"] } },
+  const watchlistItems = await prisma.userMedia.findMany({
+    where: { userId: user.id, status: { in: ["WATCHLIST", "BACKLOG"] } },
     orderBy: { pairwiseScore: "desc" },
+    select: { mediaId: true },
   });
 
-  for (const [index, media] of watchlistItems.entries()) {
+  for (const [index, row] of watchlistItems.entries()) {
     await prisma.listItem.upsert({
-      where: { listId_mediaId: { listId: watchlist.id, mediaId: media.id } },
+      where: { listId_mediaId: { listId: watchlist.id, mediaId: row.mediaId } },
       update: { rank: index + 1 },
       create: {
         listId: watchlist.id,
-        mediaId: media.id,
+        mediaId: row.mediaId,
         rank: index + 1,
       },
     });

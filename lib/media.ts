@@ -6,6 +6,13 @@ import type {
 } from "@prisma/client";
 import { replaceMediaCredits, type CreditDTO } from "@/lib/credits";
 import { prisma } from "@/lib/prisma";
+import {
+  DEFAULT_USER_MEDIA,
+  mergeUserMedia,
+  userMediaInclude,
+  type UserMediaFields,
+} from "@/lib/db/user-media";
+import { getCurrentUserId } from "@/lib/user";
 import type { MediaFormInput, MediaItemDTO } from "@/lib/types";
 import { normalizeSearchText } from "@/lib/text-normalization";
 import {
@@ -35,9 +42,18 @@ type MediaWithTaxonomy = MediaItem & {
   }>;
 };
 
+/**
+ * `toMediaItemDTO` expects the per-user fields already merged onto the item
+ * (via `mergeUserMedia` from `@/lib/db/user-media`). Callers that load
+ * MediaItem with `userMediaInclude(userId)` should merge before passing in.
+ */
+type MediaWithTaxonomyAndUserFields = MediaWithTaxonomy & UserMediaFields;
+
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
-export function toMediaItemDTO(item: MediaWithTaxonomy): MediaItemDTO {
+export function toMediaItemDTO(
+  item: MediaWithTaxonomyAndUserFields,
+): MediaItemDTO {
   return {
     ...item,
     genres: item.genres.map((entry) => entry.genre.name).sort(),
@@ -63,22 +79,24 @@ export function toMediaItemDTO(item: MediaWithTaxonomy): MediaItemDTO {
 }
 
 export async function getMediaItemDTO(id: string) {
+  const userId = await getCurrentUserId();
   const item = await prisma.mediaItem.findUnique({
     where: { id },
-    include: includeTaxonomy,
+    include: { ...includeTaxonomy, ...userMediaInclude(userId) },
   });
 
-  return item ? toMediaItemDTO(item) : null;
+  return item ? toMediaItemDTO(mergeUserMedia(item)) : null;
 }
 
 export async function getMediaItemDTOs(where: Prisma.MediaItemWhereInput = {}) {
+  const userId = await getCurrentUserId();
   const items = await prisma.mediaItem.findMany({
     where,
-    include: includeTaxonomy,
+    include: { ...includeTaxonomy, ...userMediaInclude(userId) },
     orderBy: [{ title: "asc" }],
   });
 
-  return items.map(toMediaItemDTO);
+  return items.map((item) => toMediaItemDTO(mergeUserMedia(item)));
 }
 
 export async function upsertTaxonomy(
@@ -193,12 +211,21 @@ export function mediaMutationData(input: MediaFormInput) {
     title: input.title,
     originalTitle: input.originalTitle || null,
     mediaType: input.mediaType,
-    status: input.status,
     description: input.description || null,
     releaseDate: input.releaseDate,
     externalUrl: input.externalUrl || null,
     metadataJson: input.metadataJson || null,
-    personalRating: input.personalRating,
+  };
+}
+
+/**
+ * Extracts the per-user fields from a `MediaFormInput` so callers can write
+ * them to `UserMedia` after creating/updating the underlying `MediaItem`.
+ */
+export function userMediaMutationData(input: MediaFormInput) {
+  return {
+    status: input.status,
+    personalRating: input.personalRating ?? null,
     isFavorite: input.isFavorite,
   };
 }

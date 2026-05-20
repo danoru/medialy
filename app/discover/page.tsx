@@ -10,10 +10,33 @@ import {
 } from "@mui/material";
 import type { MediaItem, MediaType } from "@prisma/client";
 import { alpha } from "@mui/material/styles";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { formatMediaType } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
+import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
 import { isDiscoverSubgenreForGenre } from "@/lib/taxonomy";
+import { getCurrentUserId } from "@/lib/user";
+import { DEFAULT_USER_MEDIA, userMediaInclude } from "@/lib/db/user-media";
+import type { UserMedia } from "@prisma/client";
+
+function mergeUserMediaInline<T extends { userMedia: UserMedia[] }>(row: T) {
+  const { userMedia, ...rest } = row;
+  const um = userMedia[0];
+  return {
+    ...(rest as Omit<T, "userMedia">),
+    status: um?.status ?? DEFAULT_USER_MEDIA.status,
+    personalRating: um?.personalRating ?? null,
+    computedPersonalScore: um?.computedPersonalScore ?? null,
+    personalScoreConfidence:
+      um?.personalScoreConfidence ?? DEFAULT_USER_MEDIA.personalScoreConfidence,
+    pairwiseScore: um?.pairwiseScore ?? DEFAULT_USER_MEDIA.pairwiseScore,
+    comparisonCount:
+      um?.comparisonCount ?? DEFAULT_USER_MEDIA.comparisonCount,
+    isFavorite: um?.isFavorite ?? false,
+    isArchived: um?.isArchived ?? false,
+  };
+}
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Discover" };
@@ -21,6 +44,14 @@ export const metadata = { title: "Discover" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 type DiscoveryItem = MediaItem & {
+  status: import("@prisma/client").MediaStatus;
+  personalRating: number | null;
+  computedPersonalScore: number | null;
+  personalScoreConfidence: number;
+  pairwiseScore: number;
+  comparisonCount: number;
+  isFavorite: boolean;
+  isArchived: boolean;
   genres: Array<{ genre: { name: string } }>;
   tags: Array<{
     tag: {
@@ -82,10 +113,20 @@ export default async function TopListsPage({
   const requestedSubgenre = stringParam(params.subgenre);
   const requestedCountry = stringParam(params.country)?.toUpperCase();
 
-  const discoverItems = await prisma.mediaItem.findMany({
+  const userId = await getCurrentUserId();
+  const archivedFilter =
+    userId == null
+      ? {}
+      : {
+          OR: [
+            { userMedia: { none: { userId } } },
+            { userMedia: { some: { userId, isArchived: false } } },
+          ],
+        };
+  const rawDiscoverItems = await prisma.mediaItem.findMany({
     where: {
-      isArchived: false,
       mediaType: selectedType,
+      ...archivedFilter,
       ...(requestedCountry
         ? {
             tags: {
@@ -104,13 +145,18 @@ export default async function TopListsPage({
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
+      ...userMediaInclude(userId),
     },
-    orderBy: [
-      { computedPersonalScore: "desc" },
-      { personalRating: "desc" },
-      { pairwiseScore: "desc" },
-    ],
   });
+  const discoverItems: DiscoveryItem[] = rawDiscoverItems
+    .map((row) => mergeUserMediaInline(row))
+    .sort(
+      (a, b) =>
+        (b.computedPersonalScore ?? -Infinity) -
+          (a.computedPersonalScore ?? -Infinity) ||
+        (b.personalRating ?? -Infinity) - (a.personalRating ?? -Infinity) ||
+        b.pairwiseScore - a.pairwiseScore,
+    );
 
   const genreWorlds = getGenreWorlds(discoverItems, selectedType);
   const selectedWorld =
@@ -135,50 +181,40 @@ export default async function TopListsPage({
   const heroItems = essentials.slice(0, 5);
 
   return (
-    <Box
-      sx={{
-        background:
-          "radial-gradient(circle at 14% 0%, rgba(139, 92, 246, 0.18), transparent 34rem), radial-gradient(circle at 84% 4%, rgba(34, 211, 238, 0.1), transparent 30rem), linear-gradient(180deg, rgba(5, 8, 18, 0.1), rgba(5, 8, 18, 0.84) 42%, #050812)",
-        mx: { xs: -1, sm: -1.5, md: -2 },
-        px: { xs: 1, sm: 1.5, md: 2 },
-        pb: 3,
-      }}
-    >
-      <Stack spacing={2}>
-        <Card
-          variant="outlined"
+    <Box>
+      <Stack spacing={2.5}>
+        <Box
           sx={{
-            background: "rgba(6, 9, 18, 0.72)",
-            borderColor: alpha("#FFFFFF", 0.08),
-            overflow: "hidden",
+            borderBottom: (theme) => `1px solid ${theme.palette.border.subtle}`,
           }}
         >
-          <CardContent sx={{ p: { xs: 1, md: 1.25 } }}>
-            <Tabs
-              allowScrollButtonsMobile
-              scrollButtons="auto"
-              value={selectedType}
-              variant="scrollable"
-              sx={{
-                minHeight: 36,
-                "& .MuiTab-root": {
-                  minHeight: 36,
-                  px: 1.25,
-                },
-              }}
-            >
-              {VISIBLE_MEDIA_TYPES.map((type) => (
-                <Tab
-                  component="a"
-                  href={topListsHref(type)}
-                  key={type}
-                  label={formatMediaType(type)}
-                  value={type}
-                />
-              ))}
-            </Tabs>
-          </CardContent>
-        </Card>
+          <Tabs
+            allowScrollButtonsMobile
+            scrollButtons="auto"
+            value={selectedType}
+            variant="scrollable"
+            sx={{
+              minHeight: 40,
+              "& .MuiTab-root": {
+                fontSize: "0.875rem",
+                fontWeight: 550,
+                minHeight: 40,
+                px: 1.5,
+                textTransform: "none",
+              },
+            }}
+          >
+            {VISIBLE_MEDIA_TYPES.map((type) => (
+              <Tab
+                component="a"
+                href={topListsHref(type)}
+                key={type}
+                label={formatMediaType(type)}
+                value={type}
+              />
+            ))}
+          </Tabs>
+        </Box>
 
         <HeroSection
           copy={heroDek}
@@ -199,7 +235,7 @@ export default async function TopListsPage({
             <Box
               sx={{
                 display: "grid",
-                gap: 1.25,
+                gap: 2,
                 gridTemplateColumns: { xs: "1fr", lg: "1.15fr 0.85fr" },
               }}
             >
@@ -230,7 +266,7 @@ export default async function TopListsPage({
             <Box
               sx={{
                 display: "grid",
-                gap: 1.25,
+                gap: 2,
                 gridTemplateColumns: { xs: "1fr", xl: "0.9fr 1.1fr" },
               }}
             >
@@ -296,19 +332,15 @@ function HeroSection({
         >
           <Typography
             variant="eyebrow"
-            sx={{ color: alpha("#E2E8F0", 0.68), display: "block", mb: 1 }}
+            sx={{ display: "block", mb: 1.5 }}
           >
             {eyebrow}
           </Typography>
           <Typography
             component="h1"
+            variant="displayHero"
             sx={{
-              fontFamily:
-                'var(--font-heading), "Satoshi", "Inter", system-ui, sans-serif',
-              fontSize: { xs: "2.45rem", sm: "4.8rem", md: "6.4rem" },
-              fontWeight: 900,
-              letterSpacing: 0,
-              lineHeight: 0.86,
+              fontSize: { xs: "2.25rem", sm: "3.5rem", md: "4.5rem" },
               maxWidth: 760,
               textWrap: "balance",
             }}
@@ -318,10 +350,10 @@ function HeroSection({
           <Typography
             color="text.secondary"
             sx={{
-              fontSize: { xs: "0.98rem", md: "1.12rem" },
+              fontSize: { xs: "0.9375rem", md: "1.0625rem" },
               lineHeight: 1.55,
               maxWidth: 560,
-              mt: 1.5,
+              mt: 2,
             }}
           >
             {copy}
@@ -342,9 +374,8 @@ function HeroSection({
         >
           <Box
             sx={{
-              background:
-                "radial-gradient(circle at 50% 52%, rgba(139, 92, 246, 0.3), transparent 24rem)",
-              filter: "blur(2px)",
+              background: (theme) =>
+                `radial-gradient(circle at 50% 52%, ${alpha(theme.palette.primary.main, 0.14)}, transparent 22rem)`,
               inset: 0,
               position: "absolute",
             }}
@@ -403,17 +434,19 @@ function GenreRail({
               key={genre.name}
               label={genre.name}
               sx={{
-                bgcolor:
+                bgcolor: (theme) =>
                   selectedGenre === genre.name
-                    ? alpha("#8B5CF6", 0.36)
-                    : alpha("#FFFFFF", 0.055),
-                border: `1px solid ${
-                  selectedGenre === genre.name
-                    ? alpha("#A78BFA", 0.36)
-                    : alpha("#FFFFFF", 0.1)
-                }`,
-                color: "text.primary",
+                    ? alpha(theme.palette.primary.main, 0.16)
+                    : theme.palette.surface[1],
+                border: (theme) =>
+                  `1px solid ${
+                    selectedGenre === genre.name
+                      ? alpha(theme.palette.primary.main, 0.4)
+                      : theme.palette.border.subtle
+                  }`,
+                color: selectedGenre === genre.name ? "primary.main" : "text.primary",
                 flex: "0 0 auto",
+                fontWeight: selectedGenre === genre.name ? 600 : 500,
               }}
             />
           ))}
@@ -440,7 +473,7 @@ function StartHerePanel({
       <Box
         sx={{
           display: "grid",
-          gap: 0.8,
+          gap: 1,
           gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" },
           mt: 1.25,
         }}
@@ -461,38 +494,39 @@ function GatewayCard({ index, item }: { index: number; item: DiscoveryItem }) {
       href={`/media/${item.id}`}
       sx={{
         alignItems: "center",
-        background:
-          "linear-gradient(135deg, rgba(15, 20, 38, 0.78), rgba(6, 9, 18, 0.9))",
-        border: `1px solid ${alpha("#FFFFFF", 0.08)}`,
-        borderRadius: "8px",
+        bgcolor: "surface.1",
+        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        borderRadius: 2,
         color: "inherit",
         display: "grid",
-        gap: 0.8,
+        gap: 1,
         gridTemplateColumns: "58px 1fr auto",
         minHeight: 86,
         overflow: "hidden",
-        p: 0.75,
+        p: 1,
         textDecoration: "none",
         transition: "border-color 160ms ease, transform 160ms ease",
         "&:hover": {
-          borderColor: alpha("#A78BFA", 0.34),
+          borderColor: (theme) => theme.palette.border.strong,
           transform: "translateY(-2px)",
         },
       }}
     >
       <MiniPoster item={item} />
       <Box sx={{ minWidth: 0 }}>
-        <Typography noWrap sx={{ fontWeight: 850, lineHeight: 1.15 }}>
+        <Typography noWrap sx={{ fontWeight: 600, lineHeight: 1.2 }}>
           {item.title}
         </Typography>
         <Typography color="text.secondary" noWrap variant="body2">
           {item.tags
             .map((entry) => entry.tag.name)
             .slice(0, 2)
-            .join(" / ") || "Essential entry point"}
+            .join(" · ") || "Essential entry point"}
         </Typography>
       </Box>
-      <Typography sx={{ color: alpha("#FFFFFF", 0.36), fontWeight: 900 }}>
+      <Typography
+        sx={{ color: "text.disabled", fontSize: "1.1rem", fontWeight: 700 }}
+      >
         {String(index + 1).padStart(2, "0")}
       </Typography>
     </Box>
@@ -616,24 +650,25 @@ function ShelfPoster({ item, rank }: { item: DiscoveryItem; rank: number }) {
         <Box
           sx={{
             alignItems: "center",
-            background: alpha("#050812", 0.78),
-            border: `1px solid ${alpha("#FFFFFF", 0.14)}`,
-            borderRadius: "6px",
+            bgcolor: "rgba(8,8,11,0.65)",
+            backdropFilter: "blur(6px)",
+            borderRadius: 1,
+            color: "#FFFFFF",
             display: "flex",
-            fontSize: 11,
-            fontWeight: 900,
-            height: 26,
+            fontSize: "0.6875rem",
+            fontWeight: 700,
+            height: 24,
             justifyContent: "center",
             left: 8,
             position: "absolute",
             top: 8,
-            width: 30,
+            width: 28,
           }}
         >
           {rank}
         </Box>
       </Box>
-      <Typography noWrap sx={{ fontWeight: 800, mt: 0.7 }}>
+      <Typography noWrap sx={{ fontWeight: 600, mt: 1 }}>
         {item.title}
       </Typography>
       <Typography color="text.secondary" noWrap variant="caption">
@@ -660,27 +695,30 @@ function IfYouLikedPanel({
             key={`${chain.seed.id}-${chain.next.id}`}
             sx={{
               alignItems: "center",
-              background: alpha("#FFFFFF", 0.045),
-              border: `1px solid ${alpha("#FFFFFF", 0.08)}`,
-              borderRadius: "8px",
+              bgcolor: "surface.1",
+              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              borderRadius: 2,
               display: "grid",
-              gap: 0.8,
+              gap: 1,
               gridTemplateColumns: {
                 xs: "38px minmax(0, 1fr) 30px 38px minmax(0, 1fr)",
                 sm: "48px 1fr auto 48px 1fr",
               },
-              p: 0.7,
+              p: 1,
             }}
           >
             <MiniPoster item={chain.seed} />
-            <Typography noWrap sx={{ fontWeight: 800 }}>
+            <Typography noWrap sx={{ fontWeight: 600 }}>
               {chain.seed.title}
             </Typography>
-            <Typography color="text.secondary" sx={{ fontWeight: 900 }}>
+            <Typography
+              color="text.secondary"
+              sx={{ fontSize: "0.75rem", fontWeight: 550 }}
+            >
               then
             </Typography>
             <MiniPoster item={chain.next} />
-            <Typography noWrap sx={{ fontWeight: 800 }}>
+            <Typography noWrap sx={{ fontWeight: 600 }}>
               {chain.next.title}
             </Typography>
           </Box>
@@ -719,23 +757,32 @@ function CuratedCollections({
             href={topListsHref(selectedType, collection.genre, null, country)}
             key={collection.title}
             sx={{
-              background:
-                "linear-gradient(145deg, rgba(139, 92, 246, 0.16), rgba(34, 211, 238, 0.055) 45%, rgba(6, 9, 18, 0.88))",
-              border: `1px solid ${alpha("#FFFFFF", 0.08)}`,
-              borderRadius: "8px",
+              bgcolor: "surface.1",
+              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              borderRadius: 2,
               color: "inherit",
+              display: "flex",
+              flexDirection: "column",
               minHeight: 142,
-              p: 1.15,
+              p: 1.5,
               textDecoration: "none",
               transition: "border-color 160ms ease, transform 160ms ease",
               "&:hover": {
-                borderColor: alpha("#A78BFA", 0.34),
+                borderColor: (theme) => theme.palette.border.strong,
                 transform: "translateY(-2px)",
               },
             }}
           >
             <Typography variant="eyebrow">{collection.genre}</Typography>
-            <Typography sx={{ fontSize: "1.05rem", fontWeight: 900, mt: 2 }}>
+            <Typography
+              sx={{
+                fontFamily: (theme) => theme.typography.h5.fontFamily,
+                fontSize: "1rem",
+                fontWeight: 650,
+                letterSpacing: "-0.015em",
+                mt: 1.5,
+              }}
+            >
               {collection.title}
             </Typography>
             <Typography color="text.secondary" sx={{ mt: 0.6 }} variant="body2">
@@ -764,15 +811,15 @@ function PosterCard({
       sx={{
         aspectRatio: "2 / 3",
         backgroundImage: item.posterUrl
-          ? `linear-gradient(180deg, transparent 58%, ${alpha("#050812", 0.62)}), url(${item.posterUrl})`
+          ? `linear-gradient(180deg, transparent 58%, rgba(8,8,11,0.55)), url(${item.posterUrl})`
           : posterFallback(item.mediaType),
         backgroundPosition: "center",
         backgroundSize: "cover",
-        border: `1px solid ${alpha("#FFFFFF", elevated ? 0.18 : 0.1)}`,
-        borderRadius: "8px",
-        boxShadow: elevated
-          ? `0 28px 90px ${alpha("#000000", 0.62)}, 0 0 54px ${alpha("#8B5CF6", 0.3)}`
-          : `0 18px 54px ${alpha("#000000", 0.42)}`,
+        border: (theme) =>
+          `1px solid ${elevated ? theme.palette.border.strong : theme.palette.border.subtle}`,
+        borderRadius: 2,
+        boxShadow: (theme) =>
+          elevated ? theme.shadows[8] : theme.shadows[3],
         display: "block",
         minWidth: 0,
         overflow: "hidden",
@@ -781,7 +828,7 @@ function PosterCard({
         transition: "transform 180ms ease, box-shadow 180ms ease",
         width: "100%",
         "&:hover": {
-          boxShadow: `0 26px 80px ${alpha("#000000", 0.58)}, 0 0 42px ${alpha("#22D3EE", 0.18)}`,
+          boxShadow: (theme) => theme.shadows[10],
           transform: "translateY(-4px)",
         },
         ...sx,
@@ -800,8 +847,8 @@ function MiniPoster({ item }: { item: DiscoveryItem }) {
           : posterFallback(item.mediaType),
         backgroundPosition: "center",
         backgroundSize: "cover",
-        borderRadius: "6px",
-        boxShadow: `inset 0 0 0 1px ${alpha("#FFFFFF", 0.08)}`,
+        borderRadius: 1,
+        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
         width: "100%",
       }}
     />
@@ -810,16 +857,8 @@ function MiniPoster({ item }: { item: DiscoveryItem }) {
 
 function DiscoveryPanel({ children }: { children: React.ReactNode }) {
   return (
-    <Card
-      variant="outlined"
-      sx={{
-        background:
-          "linear-gradient(145deg, rgba(11, 16, 32, 0.8), rgba(6, 9, 18, 0.94))",
-        borderColor: alpha("#FFFFFF", 0.075),
-        height: "100%",
-      }}
-    >
-      <CardContent sx={{ p: { xs: 1.2, md: 1.45 } }}>{children}</CardContent>
+    <Card sx={{ height: "100%" }}>
+      <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>{children}</CardContent>
     </Card>
   );
 }
@@ -845,20 +884,25 @@ function EmptyText({ children }: { children: React.ReactNode }) {
   );
 }
 
-const sectionTitleSx = {
-  fontFamily: 'var(--font-heading), "Satoshi", "Inter", system-ui, sans-serif',
-  fontSize: { xs: "1.35rem", md: "1.65rem" },
-  fontWeight: 900,
-  letterSpacing: 0,
-  lineHeight: 1,
-  mt: 0.5,
+const sectionTitleSx: SxProps<Theme> = {
+  fontFamily: (theme) => theme.typography.h4.fontFamily,
+  fontSize: { xs: "1.25rem", md: "1.5rem" },
+  fontWeight: 650,
+  letterSpacing: "-0.025em",
+  lineHeight: 1.15,
+  mt: 0.75,
 };
 
-function subgenreChipSx(active: boolean) {
+function subgenreChipSx(active: boolean): SxProps<Theme> {
   return {
-    bgcolor: active ? alpha("#22D3EE", 0.18) : alpha("#FFFFFF", 0.055),
-    border: `1px solid ${active ? alpha("#22D3EE", 0.34) : alpha("#FFFFFF", 0.1)}`,
-    color: "text.primary",
+    bgcolor: (theme) =>
+      active
+        ? alpha(theme.palette.primary.main, 0.16)
+        : theme.palette.surface[1],
+    border: (theme) =>
+      `1px solid ${active ? alpha(theme.palette.primary.main, 0.4) : theme.palette.border.subtle}`,
+    color: active ? "primary.main" : "text.primary",
+    fontWeight: active ? 600 : 500,
   };
 }
 
@@ -955,13 +999,9 @@ function getStartHere(items: DiscoveryItem[]) {
 
 function getHiddenGems(items: DiscoveryItem[]) {
   if (items.length <= 4) return items.slice(2, 6);
-  const medianComparisons = [...items]
-    .map((item) => item.comparisonCount)
-    .sort((a, b) => a - b)[Math.floor(items.length / 2)];
-
-  return sortByScore(
-    items.filter((item) => item.comparisonCount <= medianComparisons),
-  ).slice(0, 8);
+  return rankHiddenGems(items, { limit: 8, requireQualifies: false }).filter(
+    (item) => item.hiddenGem.score > 0,
+  );
 }
 
 function getRelationshipChains(items: DiscoveryItem[]) {
@@ -1023,24 +1063,21 @@ function sortByScore(items: DiscoveryItem[]) {
   );
 }
 
-function discoverScore(
-  item: Pick<
-    MediaItem,
-    "computedPersonalScore" | "personalRating" | "pairwiseScore" | "status"
-  >,
-) {
+type ScorableItem = {
+  computedPersonalScore: number | null;
+  personalRating: number | null;
+  pairwiseScore: number;
+  status: import("@prisma/client").MediaStatus;
+};
+
+function discoverScore(item: ScorableItem) {
   if (item.computedPersonalScore != null) return item.computedPersonalScore;
   if (item.personalRating != null) return item.personalRating;
   if (item.status === "COMPLETED") return item.pairwiseScore / 100;
   return 0;
 }
 
-function formatScore(
-  item: Pick<
-    MediaItem,
-    "computedPersonalScore" | "personalRating" | "pairwiseScore" | "status"
-  >,
-) {
+function formatScore(item: ScorableItem) {
   const score = discoverScore(item);
   return score > 0 ? score.toFixed(1) : "Unrated";
 }
@@ -1063,12 +1100,12 @@ function topListsHref(
 }
 
 function posterFallback(mediaType: MediaType) {
-  const label =
+  const accent =
     mediaType === "VIDEO_GAME"
-      ? "linear-gradient(145deg, #122218, #0B1020 44%, #1A1230)"
+      ? "#D97706"
       : mediaType === "TV_SHOW"
-        ? "linear-gradient(145deg, #111A2E, #0B1020 48%, #251233)"
-        : "linear-gradient(145deg, #221225, #0B1020 46%, #122433)";
+        ? "#0EA5A4"
+        : "#6366F1";
 
-  return `${label}`;
+  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
 }

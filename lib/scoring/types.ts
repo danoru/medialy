@@ -21,6 +21,7 @@ export type ExternalRatingLike = {
   source: ExternalRatingSource;
   score: number;
   scale: number;
+  fetchedAt?: Date | string;
 };
 
 export type MedialyMatchReason = {

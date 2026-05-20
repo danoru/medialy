@@ -12,9 +12,11 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import { getRecommendations } from "@/lib/recommendations";
-import { formatMediaType, formatStatus } from "@/lib/format";
+import { formatMediaType } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { StatePanel } from "@/components/shared/StatePanel";
+import { requireUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Recommendations" };
@@ -26,6 +28,7 @@ export default async function RecommendationsPage({
 }: {
   searchParams: SearchParams;
 }) {
+  await requireUserId("/recommendations");
   const params = await searchParams;
   const recommendations = await getRecommendations();
   const requestedType = stringParam(params.type);
@@ -47,7 +50,7 @@ export default async function RecommendationsPage({
   return (
     <Stack spacing={3}>
       <Box>
-        <Typography component="h1" sx={{ fontWeight: 900 }} variant="h4">
+        <Typography component="h1" sx={{ fontWeight: 650 }} variant="h4">
           Discovery Recommendations
         </Typography>
         <Typography color="text.secondary" sx={{ mt: 0.5 }}>
@@ -92,7 +95,7 @@ export default async function RecommendationsPage({
                     style={{ textDecoration: "none" }}
                   >
                     <Typography
-                      sx={{ color: "primary.main", fontWeight: 800 }}
+                      sx={{ color: "primary.main", fontWeight: 650 }}
                       variant="h6"
                     >
                       {index + 1}. {recommendation.media.title}
@@ -107,7 +110,10 @@ export default async function RecommendationsPage({
                       size="small"
                     />
                     <Chip
-                      label={formatStatus(recommendation.media.status)}
+                      label={statusLabel(
+                        recommendation.media.status,
+                        recommendation.media.mediaType,
+                      )}
                       size="small"
                       variant="outlined"
                     />
