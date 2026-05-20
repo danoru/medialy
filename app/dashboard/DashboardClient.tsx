@@ -117,7 +117,21 @@ const panelActionSx: SxProps<Theme> = {
   "&:hover": { color: "text.primary" },
 };
 
-export function DashboardClient({ data }: { data: DashboardData }) {
+export function DashboardClient({
+  data,
+  isAuthenticated,
+  isAdmin,
+}: {
+  data: DashboardData;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+}) {
+  // Anonymous viewers see public quality/consensus signals only — match %,
+  // confidence %, and personal-status panels (watchlist, comparisons) all
+  // depend on a user's taste graph and are hidden when no one is signed in.
+  // System integrity is moderation surface area, so it's admin-only.
+  const showPersonalSignals = isAuthenticated;
+  const showSystemIntegrity = isAdmin;
   const initialTonightPickType =
     dashboardMediaTypes.find((mediaType) =>
       data.tonightPicksByMediaType.some(
@@ -237,24 +251,30 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             label="Total items"
             value={data.totalItems.toLocaleString()}
           />
-          <CompactStatCard
-            accent={mediaAccent("TV_SHOW")}
-            icon={<PlaylistAddCheckIcon fontSize="small" />}
-            label="Watchlist"
-            value={data.watchlistCount.toLocaleString()}
-          />
-          <CompactStatCard
-            accent={mediaAccent("VIDEO_GAME")}
-            icon={<CompareArrowsIcon fontSize="small" />}
-            label="Comparisons"
-            value={data.comparisonCount.toLocaleString()}
-          />
-          <CompactStatCard
-            accent="#D97706"
-            icon={<ReportProblemIcon fontSize="small" />}
-            label="Metadata gaps"
-            value={data.missingMetadataCount.toLocaleString()}
-          />
+          {showPersonalSignals ? (
+            <CompactStatCard
+              accent={mediaAccent("TV_SHOW")}
+              icon={<PlaylistAddCheckIcon fontSize="small" />}
+              label="Watchlist"
+              value={data.watchlistCount.toLocaleString()}
+            />
+          ) : null}
+          {showPersonalSignals ? (
+            <CompactStatCard
+              accent={mediaAccent("VIDEO_GAME")}
+              icon={<CompareArrowsIcon fontSize="small" />}
+              label="Comparisons"
+              value={data.comparisonCount.toLocaleString()}
+            />
+          ) : null}
+          {showSystemIntegrity ? (
+            <CompactStatCard
+              accent="#D97706"
+              icon={<ReportProblemIcon fontSize="small" />}
+              label="Metadata gaps"
+              value={data.missingMetadataCount.toLocaleString()}
+            />
+          ) : null}
         </Stack>
       </Stack>
 
@@ -263,21 +283,29 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           display: "grid",
           gap: 2,
           gridTemplateAreas: {
-            xs: `
-              "pick"
-              "recs"
-              "top"
-              "genre"
-              "watch"
-              "side"
-              "health"
-            `,
-            lg: `
-              "pick pick pick pick pick recs recs recs recs recs recs recs"
-              "top top top top top top top top genre genre genre genre"
-              "watch watch watch watch watch watch side side side side side side"
-              "health health health health health health health health health health health health"
-            `,
+            xs: [
+              `"pick"`,
+              `"recs"`,
+              `"top"`,
+              `"genre"`,
+              showPersonalSignals ? `"watch"` : null,
+              `"side"`,
+              showSystemIntegrity ? `"health"` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            lg: [
+              `"pick pick pick pick pick recs recs recs recs recs recs recs"`,
+              `"top top top top top top top top genre genre genre genre"`,
+              showPersonalSignals
+                ? `"watch watch watch watch watch watch side side side side side side"`
+                : `"side side side side side side side side side side side side"`,
+              showSystemIntegrity
+                ? `"health health health health health health health health health health health health"`
+                : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
           },
           gridTemplateColumns: { xs: "1fr", lg: "repeat(12, minmax(0, 1fr))" },
         }}
@@ -290,6 +318,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               item={heroRecommendation.media}
               onTypeChange={setTonightPickType}
               score={heroRecommendation.score}
+              showMatch={showPersonalSignals}
               value={tonightPickType}
             />
           ) : (
@@ -318,7 +347,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     href={`/media/${recommendation.media.id}`}
                     item={recommendation.media}
                     key={recommendation.media.id}
-                    score={recommendation.score}
+                    score={showPersonalSignals ? recommendation.score : undefined}
                   />
                 ))}
               </MediaRail>
@@ -451,6 +480,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </DashboardSection>
         </Box>
 
+        {showPersonalSignals ? (
         <Box sx={{ gridArea: "watch", minWidth: 0 }}>
           <DashboardSection
             action={
@@ -473,6 +503,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             </Stack>
           </DashboardSection>
         </Box>
+        ) : null}
 
         <Box
           sx={{
@@ -515,12 +546,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </Box>
         </Box>
 
-        <Box sx={{ gridArea: "health", minWidth: 0 }}>
-          <DataHealthStrip
-            duplicateCount={data.duplicateCount}
-            health={data.health}
-          />
-        </Box>
+        {showSystemIntegrity ? (
+          <Box sx={{ gridArea: "health", minWidth: 0 }}>
+            <DataHealthStrip
+              duplicateCount={data.duplicateCount}
+              health={data.health}
+            />
+          </Box>
+        ) : null}
       </Box>
     </Stack>
   );
@@ -532,6 +565,7 @@ function TonightPickCard({
   item,
   onTypeChange,
   score,
+  showMatch,
   value,
 }: {
   counts: Array<{ mediaType: MediaType; count: number }>;
@@ -539,6 +573,7 @@ function TonightPickCard({
   item: MediaItemDTO;
   onTypeChange: (value: MediaType) => void;
   score: number;
+  showMatch: boolean;
   value: MediaType;
 }) {
   const releaseYear = releaseYearLabel(item.releaseDate);
@@ -605,16 +640,18 @@ function TonightPickCard({
           value={value}
         />
       </Box>
-      <ScoreBadge
-        label="Match"
-        sx={{
-          position: "absolute",
-          right: { xs: 16, sm: 20 },
-          top: { xs: 16, sm: 18 },
-          zIndex: 5,
-        }}
-        value={`${Math.round(score)}%`}
-      />
+      {showMatch ? (
+        <ScoreBadge
+          label="Match"
+          sx={{
+            position: "absolute",
+            right: { xs: 16, sm: 20 },
+            top: { xs: 16, sm: 18 },
+            zIndex: 5,
+          }}
+          value={`${Math.round(score)}%`}
+        />
+      ) : null}
       <Stack
         spacing={1.25}
         sx={{
@@ -654,7 +691,9 @@ function TonightPickCard({
           {heroMeta.map((entry) => (
             <OnDarkChip key={entry}>{entry}</OnDarkChip>
           ))}
-          <OnDarkChip>{`${Math.round(confidence * 100)}% confidence`}</OnDarkChip>
+          {showMatch ? (
+            <OnDarkChip>{`${Math.round(confidence * 100)}% confidence`}</OnDarkChip>
+          ) : null}
         </Stack>
         <Typography
           sx={{
@@ -1118,7 +1157,7 @@ function PosterCard({
 }: {
   href: string;
   item: MediaItemDTO;
-  score: number;
+  score?: number;
 }) {
   const releaseYear = releaseYearLabel(item.releaseDate);
   const meta = [
@@ -1180,24 +1219,26 @@ function PosterCard({
             position: "absolute",
           }}
         />
-        <Box
-          sx={{
-            bgcolor: "rgba(8,8,11,0.6)",
-            backdropFilter: "blur(6px)",
-            borderRadius: 1,
-            color: "#FFFFFF",
-            fontSize: "0.625rem",
-            fontWeight: 700,
-            px: 0.75,
-            py: 0.35,
-            position: "absolute",
-            right: 8,
-            top: 8,
-            zIndex: 2,
-          }}
-        >
-          {Math.round(score)}%
-        </Box>
+        {typeof score === "number" ? (
+          <Box
+            sx={{
+              bgcolor: "rgba(8,8,11,0.6)",
+              backdropFilter: "blur(6px)",
+              borderRadius: 1,
+              color: "#FFFFFF",
+              fontSize: "0.625rem",
+              fontWeight: 700,
+              px: 0.75,
+              py: 0.35,
+              position: "absolute",
+              right: 8,
+              top: 8,
+              zIndex: 2,
+            }}
+          >
+            {Math.round(score)}%
+          </Box>
+        ) : null}
         {!item.posterUrl ? (
           <Box
             sx={{
