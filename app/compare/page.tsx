@@ -262,9 +262,8 @@ export default async function ComparePage({
                   <Box
                     sx={{
                       alignItems: "center",
-                      bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
-                      border: (theme) =>
-                        `1px solid ${theme.palette.border.subtle}`,
+                      bgcolor: "rgba(var(--mui-palette-primary-mainChannel) / 0.12)",
+                      border: "1px solid var(--mui-palette-border-subtle)",
                       borderRadius: 2,
                       color: "primary.main",
                       display: "flex",
@@ -435,20 +434,12 @@ export default async function ComparePage({
                                     key={`${entry.kind}:${entry.name}`}
                                     label={entry.name}
                                     sx={{
-                                      bgcolor: (theme) =>
-                                        entry.shared
-                                          ? alpha(
-                                              theme.palette.primary.main,
-                                              0.12,
-                                            )
-                                          : "transparent",
-                                      borderColor: (theme) =>
-                                        entry.shared
-                                          ? alpha(
-                                              theme.palette.primary.main,
-                                              0.4,
-                                            )
-                                          : theme.palette.border.subtle,
+                                      bgcolor: entry.shared
+                                        ? "rgba(var(--mui-palette-primary-mainChannel) / 0.12)"
+                                        : "transparent",
+                                      borderColor: entry.shared
+                                        ? "rgba(var(--mui-palette-primary-mainChannel) / 0.4)"
+                                        : "var(--mui-palette-border-subtle)",
                                       color: entry.shared
                                         ? "primary.main"
                                         : "text.secondary",
@@ -627,8 +618,7 @@ export default async function ComparePage({
                 sx={{
                   alignItems: "center",
                   bgcolor: "background.paper",
-                  borderBottom: (theme) =>
-                    `1px solid ${theme.palette.border.subtle}`,
+                  borderBottom: "1px solid var(--mui-palette-border-subtle)",
                   columnGap: 2,
                   display: "grid",
                   gridTemplateColumns: {
@@ -799,7 +789,7 @@ function PosterThumb({ item }: { item: CompareItem }) {
         border: "1px solid",
         borderColor: "border.subtle",
         borderRadius: 2,
-        boxShadow: (theme) => theme.shadows[6],
+        boxShadow: 6,
         display: "block",
         flex: "0 0 auto",
         minHeight: { xs: 168, sm: 198 },
@@ -809,7 +799,7 @@ function PosterThumb({ item }: { item: CompareItem }) {
         transition: "transform 180ms ease, box-shadow 180ms ease",
         width: { xs: 112, sm: 132 },
         "&:hover": {
-          boxShadow: (theme) => theme.shadows[8],
+          boxShadow: 8,
           transform: "translateY(-2px)",
         },
       }}

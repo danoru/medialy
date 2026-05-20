@@ -44,7 +44,8 @@ export default async function ScoringConfigPage() {
         <Typography
           component="h1"
           sx={{
-            fontFamily: (theme) => theme.typography.h3.fontFamily,
+            fontFamily:
+              'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif',
             fontSize: { xs: "1.5rem", md: "1.875rem" },
             fontWeight: 650,
             letterSpacing: "-0.025em",
