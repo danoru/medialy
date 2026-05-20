@@ -615,7 +615,8 @@ export default async function ComparePage({
 
           <Box
             sx={{
-              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              border: "1px solid",
+              borderColor: "border.subtle",
               borderRadius: 2,
               overflow: "hidden",
             }}
@@ -795,7 +796,8 @@ function PosterThumb({ item }: { item: CompareItem }) {
           : posterFallback(item.mediaType),
         backgroundPosition: "center",
         backgroundSize: "cover",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         boxShadow: (theme) => theme.shadows[6],
         display: "block",

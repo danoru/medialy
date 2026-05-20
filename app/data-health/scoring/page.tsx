@@ -313,7 +313,8 @@ function FormulaSection({
               fontSize: "0.75rem",
               p: 1,
               bgcolor: "surface.1",
-              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              border: "1px solid",
+              borderColor: "border.subtle",
               borderRadius: 2,
               overflow: "auto",
             }}

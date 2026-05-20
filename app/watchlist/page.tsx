@@ -219,7 +219,8 @@ function WatchlistHeader({
           <Box
             sx={{
               bgcolor: "surface.1",
-              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              border: "1px solid",
+              borderColor: "border.subtle",
               borderRadius: 2,
               display: "flex",
               gap: 0.25,
@@ -755,7 +756,8 @@ function NextUpRow({ entry }: { entry: Recommendation }) {
         sx={{
           alignItems: "center",
           bgcolor: "surface.1",
-          border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          border: "1px solid",
+          borderColor: "border.subtle",
           borderRadius: 2,
           display: "grid",
           gap: 0.65,
@@ -765,7 +767,7 @@ function NextUpRow({ entry }: { entry: Recommendation }) {
           py: 0.55,
           transition: "border-color 160ms ease",
           "&:hover": {
-            borderColor: (theme) => theme.palette.border.default,
+            borderColor: "border.default",
           },
         }}
       >
@@ -1092,7 +1094,8 @@ function PosterBlock({ item }: { item: MediaItemDTO }) {
           : designedPosterFallback(item.mediaType),
         backgroundPosition: "center",
         backgroundSize: "cover",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         minHeight: 184,
         overflow: "hidden",
@@ -1161,7 +1164,8 @@ function SoftPill({ children }: { children: React.ReactNode }) {
     <Box
       sx={{
         bgcolor: "surface.2",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 1,
         color: "text.secondary",
         fontSize: "0.625rem",
@@ -1285,7 +1289,8 @@ function EmptyState({ selectedLabel }: { selectedLabel: string }) {
 
 const compactPanelSx: SxProps<Theme> = {
   bgcolor: "background.paper",
-  border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+  border: "1px solid",
+  borderColor: "border.subtle",
   borderRadius: 3,
   boxShadow: (theme) => theme.shadows[1],
   overflow: "hidden",
@@ -1293,19 +1298,19 @@ const compactPanelSx: SxProps<Theme> = {
 
 const compactControlSx = {
   bgcolor: "surface.1",
-  borderColor: (theme) => theme.palette.border.subtle,
+  borderColor: "border.subtle",
   color: "text.secondary",
   minHeight: 34,
   px: 1.05,
   "&:hover": {
     bgcolor: "surface.2",
-    borderColor: (theme) => theme.palette.border.strong,
+    borderColor: "border.strong",
   },
 } satisfies SxProps<Theme>;
 
 const paginationButtonSx = {
   bgcolor: "surface.1",
-  borderColor: (theme) => theme.palette.border.subtle,
+  borderColor: "border.subtle",
   color: "text.secondary",
   fontSize: "0.75rem",
   minHeight: 29,
@@ -1313,7 +1318,7 @@ const paginationButtonSx = {
   px: 0.8,
   "&:hover": {
     bgcolor: "surface.2",
-    borderColor: (theme) => theme.palette.border.strong,
+    borderColor: "border.strong",
   },
 } satisfies SxProps<Theme>;
 

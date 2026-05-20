@@ -31,6 +31,9 @@ export function ThemeModeProvider({
   const [mode, setModeState] = useState<ThemeMode>(initialMode);
 
   useEffect(() => {
+    // Drive the MUI CSS-variables theme via the documented attribute. Switching
+    // this flips every `var(--mui-palette-*)` value, no React re-render needed.
+    document.documentElement.dataset.muiColorScheme = mode;
     document.documentElement.dataset.theme = mode;
   }, [mode]);
 

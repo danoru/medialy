@@ -185,7 +185,8 @@ export default async function TopListsPage({
       <Stack spacing={2.5}>
         <Box
           sx={{
-            borderBottom: (theme) => `1px solid ${theme.palette.border.subtle}`,
+            borderBottom: "1px solid",
+            borderBottomColor: "border.subtle",
           }}
         >
           <Tabs
@@ -495,7 +496,8 @@ function GatewayCard({ index, item }: { index: number; item: DiscoveryItem }) {
       sx={{
         alignItems: "center",
         bgcolor: "surface.1",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         color: "inherit",
         display: "grid",
@@ -507,7 +509,7 @@ function GatewayCard({ index, item }: { index: number; item: DiscoveryItem }) {
         textDecoration: "none",
         transition: "border-color 160ms ease, transform 160ms ease",
         "&:hover": {
-          borderColor: (theme) => theme.palette.border.strong,
+          borderColor: "border.strong",
           transform: "translateY(-2px)",
         },
       }}
@@ -696,7 +698,8 @@ function IfYouLikedPanel({
             sx={{
               alignItems: "center",
               bgcolor: "surface.1",
-              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              border: "1px solid",
+              borderColor: "border.subtle",
               borderRadius: 2,
               display: "grid",
               gap: 1,
@@ -758,7 +761,8 @@ function CuratedCollections({
             key={collection.title}
             sx={{
               bgcolor: "surface.1",
-              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              border: "1px solid",
+              borderColor: "border.subtle",
               borderRadius: 2,
               color: "inherit",
               display: "flex",
@@ -768,7 +772,7 @@ function CuratedCollections({
               textDecoration: "none",
               transition: "border-color 160ms ease, transform 160ms ease",
               "&:hover": {
-                borderColor: (theme) => theme.palette.border.strong,
+                borderColor: "border.strong",
                 transform: "translateY(-2px)",
               },
             }}
@@ -848,7 +852,8 @@ function MiniPoster({ item }: { item: DiscoveryItem }) {
         backgroundPosition: "center",
         backgroundSize: "cover",
         borderRadius: 1,
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         width: "100%",
       }}
     />

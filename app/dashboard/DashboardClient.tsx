@@ -553,7 +553,8 @@ function TonightPickCard({
       component="section"
       sx={{
         bgcolor: "background.paper",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 3,
         height: { xs: 420, md: 468 },
         overflow: "hidden",
@@ -778,14 +779,15 @@ function TopPosterTile({
         sx={{
           aspectRatio: "2 / 3",
           bgcolor: "surface.2",
-          border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          border: "1px solid",
+        borderColor: "border.subtle",
           borderRadius: 2,
           minWidth: 0,
           overflow: "hidden",
           position: "relative",
           transition: "transform 200ms ease, border-color 200ms ease",
           "&:hover": {
-            borderColor: (theme) => theme.palette.border.strong,
+            borderColor: "border.strong",
             transform: "translateY(-3px)",
             "& .tile-poster": { transform: "scale(1.06)" },
           },
@@ -910,7 +912,8 @@ function GenreBarChart({
       sx={{
         alignItems: "end",
         bgcolor: "surface.1",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         display: "grid",
         flex: 1,
@@ -1018,7 +1021,8 @@ function MediaTypeTabs({
     : {
         alignSelf: "flex-start",
         bgcolor: "surface.1",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         display: "inline-flex",
         gap: 0.25,
@@ -1136,7 +1140,8 @@ function PosterCard({
       <Box
         sx={{
           bgcolor: "surface.2",
-          border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          border: "1px solid",
+        borderColor: "border.subtle",
           borderRadius: 2,
           display: "flex",
           flexDirection: "column",
@@ -1148,7 +1153,7 @@ function PosterCard({
           transition: "transform 200ms ease, border-color 200ms ease",
           width: "100%",
           "&:hover": {
-            borderColor: (theme) => theme.palette.border.strong,
+            borderColor: "border.strong",
             transform: "translateY(-3px)",
             "& .poster-art": { transform: "scale(1.05)" },
           },
@@ -1262,14 +1267,15 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
       sx={{
         alignItems: "center",
         bgcolor: "surface.1",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         minHeight: 46,
         px: 1.25,
         py: 0.75,
         transition: "border-color 160ms ease",
         "&:hover": {
-          borderColor: (theme) => theme.palette.border.default,
+          borderColor: "border.default",
         },
       }}
     >
@@ -1363,7 +1369,8 @@ function HealthPill({ label, value }: { label: string; value: number }) {
       sx={{
         alignItems: "center",
         bgcolor: "surface.1",
-        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        border: "1px solid",
+        borderColor: "border.subtle",
         borderRadius: 2,
         display: "flex",
         gap: 1,
@@ -1404,7 +1411,8 @@ function EmptyPanel({ icon, label }: { icon: React.ReactNode; label: string }) {
       sx={{
         alignItems: "center",
         bgcolor: "surface.1",
-        border: (theme) => `1px dashed ${theme.palette.border.default}`,
+        border: "1px dashed",
+        borderColor: "border.default",
         borderRadius: 2,
         color: "text.secondary",
         flex: 1,
@@ -1444,12 +1452,13 @@ function MediaSignalRow({
       <Box
         sx={{
           bgcolor: "surface.1",
-          border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          border: "1px solid",
+        borderColor: "border.subtle",
           borderRadius: 2,
           p: 1.25,
           transition: "border-color 160ms ease",
           "&:hover": {
-            borderColor: (theme) => theme.palette.border.default,
+            borderColor: "border.default",
           },
           "& .MuiLinearProgress-root": {
             bgcolor: (theme) => alpha(theme.palette.text.primary, 0.08),
