@@ -7,6 +7,7 @@ import {
   importReleaseCandidate,
   setReleaseCandidateStatus,
 } from "@/lib/release-candidates";
+import { requireAdmin } from "@/lib/user";
 
 function revalidateUpcomingChange(id: string) {
   revalidatePath("/upcoming");
@@ -16,13 +17,14 @@ function revalidateUpcomingChange(id: string) {
 }
 
 function revalidateCandidateChange() {
-  revalidatePath("/upcoming");
+  revalidatePath("/admin/candidates");
   revalidatePath("/recommendations");
   revalidatePath("/dashboard");
   revalidatePath("/media");
 }
 
 export async function clearReleaseDate(id: string) {
+  await requireAdmin("/upcoming");
   const item = await prisma.mediaItem.findUnique({
     where: { id },
     select: { releaseDate: true },
@@ -41,21 +43,25 @@ export async function clearReleaseDate(id: string) {
 }
 
 export async function approveReleaseCandidate(id: string) {
+  await requireAdmin("/admin/candidates");
   await setReleaseCandidateStatus(id, ReleaseCandidateStatus.APPROVED);
   revalidateCandidateChange();
 }
 
 export async function rejectReleaseCandidate(id: string) {
+  await requireAdmin("/admin/candidates");
   await setReleaseCandidateStatus(id, ReleaseCandidateStatus.REJECTED);
   revalidateCandidateChange();
 }
 
 export async function ignoreReleaseCandidate(id: string) {
+  await requireAdmin("/admin/candidates");
   await setReleaseCandidateStatus(id, ReleaseCandidateStatus.IGNORED);
   revalidateCandidateChange();
 }
 
 export async function importApprovedReleaseCandidate(id: string) {
+  await requireAdmin("/admin/candidates");
   await importReleaseCandidate(id);
   revalidateCandidateChange();
 }
