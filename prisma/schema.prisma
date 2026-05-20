@@ -37,6 +37,7 @@ model MediaItem {
   notes           Note[]
   externalRatings ExternalRating[]
   userMedia       UserMedia[]
+  editSuggestions MediaEditSuggestion[]
 
   @@unique([title, mediaType])
   @@index([mediaType])
@@ -279,6 +280,36 @@ model User {
   comparisons   PairwiseComparison[]
   notes         Note[]
   customLists   CustomList[]
+  editSuggestions       MediaEditSuggestion[] @relation("EditSuggestionAuthor")
+  reviewedSuggestions   MediaEditSuggestion[] @relation("EditSuggestionReviewer")
+}
+
+/// A non-admin's proposed edit (or addition) to a `MediaItem`, awaiting admin
+/// review. `beforeJson` snapshots the item state at submission time so admins
+/// can see what changed even if the underlying item has since been touched;
+/// `afterJson` holds the serialized `MediaFormInput` payload. `mediaId` is
+/// nullable so the same queue can hold proposed new items.
+model MediaEditSuggestion {
+  id           String                  @id @default(cuid())
+  mediaId      String?
+  userId       String
+  beforeJson   String?
+  afterJson    String
+  status       EditSuggestionStatus    @default(PENDING)
+  note         String?
+  createdAt    DateTime                @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewNote   String?
+
+  media    MediaItem? @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  user     User       @relation("EditSuggestionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User?      @relation("EditSuggestionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([mediaId])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 /// Auth.js Prisma adapter — third-party identity (Google OAuth) linked to a User.
@@ -458,6 +489,12 @@ enum ImportStatus {
   SUCCESS
   PARTIAL
   FAILED
+}
+
+enum EditSuggestionStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum TagStatus {
