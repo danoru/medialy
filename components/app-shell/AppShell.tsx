@@ -52,11 +52,14 @@ const drawerWidth = 232;
 const mobileNavHeight = 64;
 const topBarHeight = 56;
 
+type NavVisibility = "public" | "auth" | "admin";
+
 type NavItem = {
   label: string;
   href: string;
   icon: React.ReactNode;
   description: string;
+  visibility: NavVisibility;
 };
 
 const navItems: NavItem[] = [
@@ -65,82 +68,98 @@ const navItems: NavItem[] = [
     href: "/dashboard",
     icon: <DashboardIcon />,
     description: "Library, recommendations, watchlist, and health signals.",
+    visibility: "public",
   },
   {
     label: "Media",
     href: "/media",
     icon: <MovieIcon />,
     description: "Browse, filter, add, and edit your local media.",
+    visibility: "public",
   },
   {
     label: "Discover",
     href: "/discover",
     icon: <FavoriteIcon />,
     description: "Top items by score, type, genre, and confidence.",
+    visibility: "public",
   },
   {
     label: "Watchlist",
     href: "/watchlist",
     icon: <PlaylistAddCheckIcon />,
     description: "Prioritized backlog and watchlist items.",
+    visibility: "auth",
   },
   {
     label: "Upcoming",
     href: "/upcoming",
     icon: <CalendarMonthIcon />,
     description: "Track release dates and review discovery candidates.",
+    visibility: "public",
   },
   {
     label: "Compare",
     href: "/compare",
     icon: <CompareArrowsIcon />,
     description: "Pairwise picks that sharpen your rankings.",
+    visibility: "auth",
   },
   {
     label: "Friends",
     href: "/friends",
     icon: <PeopleIcon />,
     description: "Local friend ratings, overlap, and compatibility.",
+    visibility: "auth",
   },
   {
     label: "Insights",
     href: "/insights",
     icon: <BarChartIcon />,
     description: "Genre distribution, strengths, low-data areas.",
+    visibility: "public",
   },
   {
     label: "Data Health",
     href: "/data-health",
     icon: <HealthAndSafetyIcon />,
     description: "Missing metadata, low comparison coverage, duplicates.",
+    visibility: "admin",
   },
   {
     label: "Import / Export",
     href: "/import-export",
     icon: <ImportExportIcon />,
     description: "JSON, CSV, and XLSX workflows.",
+    visibility: "auth",
   },
 ];
 
-const mobilePrimaryNavHrefs = [
+function isItemVisible(
+  item: NavItem,
+  isAuthenticated: boolean,
+  isAdmin: boolean,
+) {
+  if (item.visibility === "admin") return isAdmin;
+  if (item.visibility === "auth") return isAuthenticated;
+  return true;
+}
+
+// Mobile bottom-nav slots: anchor the first three to the most-used public
+// destinations, then swap the fourth depending on session state so signed-in
+// users still get one-tap Watchlist access.
+const mobilePrimaryHrefsAuthed = [
   "/dashboard",
   "/media",
   "/discover",
   "/watchlist",
 ] as const;
-
-const mobilePrimaryNav = navItems.filter((item) =>
-  mobilePrimaryNavHrefs.includes(
-    item.href as (typeof mobilePrimaryNavHrefs)[number],
-  ),
-);
-
-const mobileSecondaryNav = navItems.filter(
-  (item) =>
-    !mobilePrimaryNavHrefs.includes(
-      item.href as (typeof mobilePrimaryNavHrefs)[number],
-    ),
-);
+const mobilePrimaryHrefsPublic = [
+  "/dashboard",
+  "/media",
+  "/discover",
+  "/upcoming",
+] as const;
 
 export function AppShell({
   children,
@@ -164,6 +183,18 @@ export function AppShell({
     useState<HTMLElement | null>(null);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const profileMenuOpen = Boolean(profileMenuAnchor);
+  const visibleNavItems = navItems.filter((item) =>
+    isItemVisible(item, isAuthenticated, isAdmin),
+  );
+  const mobilePrimaryHrefs = isAuthenticated
+    ? mobilePrimaryHrefsAuthed
+    : mobilePrimaryHrefsPublic;
+  const mobilePrimaryNav = mobilePrimaryHrefs
+    .map((href) => visibleNavItems.find((item) => item.href === href))
+    .filter((item): item is NavItem => Boolean(item));
+  const mobileSecondaryNav = visibleNavItems.filter(
+    (item) => !mobilePrimaryHrefs.includes(item.href as never),
+  );
   const mobileBottomValue =
     mobilePrimaryNav.find((item) => isSelectedPath(pathname, item.href))
       ?.href ?? "more";
@@ -467,7 +498,7 @@ export function AppShell({
           </Toolbar>
           <Divider />
           <List component="nav" sx={{ flex: 1, overflowY: "auto", p: 1 }}>
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const selected = isSelectedPath(pathname, item.href);
               return (
                 <ListItemButton
@@ -572,6 +603,7 @@ export function AppShell({
                     href: "/profile",
                     icon: <PersonIcon />,
                     label: "Profile",
+                    visibility: "auth",
                   }}
                   onClick={() => setMobileMoreOpen(false)}
                   selected={isSelectedPath(pathname, "/profile")}
@@ -582,6 +614,7 @@ export function AppShell({
                     href: "/settings",
                     icon: <SettingsIcon />,
                     label: "Settings",
+                    visibility: "auth",
                   }}
                   onClick={() => setMobileMoreOpen(false)}
                   selected={isSelectedPath(pathname, "/settings")}
@@ -593,6 +626,7 @@ export function AppShell({
                       href: "/admin",
                       icon: <AdminPanelSettingsIcon />,
                       label: "Admin",
+                      visibility: "admin",
                     }}
                     onClick={() => setMobileMoreOpen(false)}
                     selected={isSelectedPath(pathname, "/admin")}
