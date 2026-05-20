@@ -267,14 +267,15 @@ export function AppShell({
                 aria-controls={profileMenuOpen ? "profile-menu" : undefined}
                 aria-expanded={profileMenuOpen ? "true" : undefined}
                 aria-haspopup="true"
+                aria-label={`Account menu for ${displayName}`}
                 onClick={(event) => setProfileMenuAnchor(event.currentTarget)}
                 sx={{
                   color: "text.primary",
-                  display: { xs: "none", sm: "inline-flex" },
+                  display: "inline-flex",
                   gap: 0.75,
                   height: 36,
                   minWidth: 0,
-                  px: 0.75,
+                  px: { xs: 0.25, sm: 0.75 },
                 }}
               >
                 <Avatar
@@ -284,8 +285,8 @@ export function AppShell({
                     color: "primary.main",
                     fontSize: "0.75rem",
                     fontWeight: 600,
-                    height: 24,
-                    width: 24,
+                    height: 28,
+                    width: 28,
                   }}
                 >
                   {displayInitial}
@@ -293,12 +294,19 @@ export function AppShell({
                 <Typography
                   variant="labelMd"
                   component="span"
-                  sx={{ fontWeight: 550 }}
+                  sx={{
+                    display: { xs: "none", sm: "inline" },
+                    fontWeight: 550,
+                  }}
                 >
                   {displayName}
                 </Typography>
                 <KeyboardArrowDownIcon
-                  sx={{ color: "text.secondary", fontSize: 16 }}
+                  sx={{
+                    color: "text.secondary",
+                    display: { xs: "none", sm: "inline-block" },
+                    fontSize: 16,
+                  }}
                 />
               </Button>
               <Menu
@@ -359,27 +367,40 @@ export function AppShell({
               </Menu>
             </>
           ) : (
-            <form action={signInAction.bind(null, pathname)}>
+            <Box
+              action={signInAction.bind(null, pathname)}
+              component="form"
+              sx={{ display: "inline-flex" }}
+            >
               <Button
+                aria-label="Sign in"
                 type="submit"
-                startIcon={<LoginIcon sx={{ fontSize: 18 }} />}
+                startIcon={
+                  <LoginIcon
+                    sx={{ fontSize: 18, mr: { xs: -0.5, sm: 0 } }}
+                  />
+                }
                 sx={{
                   color: "text.primary",
-                  display: { xs: "none", sm: "inline-flex" },
+                  display: "inline-flex",
                   height: 36,
-                  px: 1.25,
+                  minWidth: 0,
+                  px: { xs: 1, sm: 1.25 },
                 }}
                 variant="text"
               >
                 <Typography
                   variant="labelMd"
                   component="span"
-                  sx={{ fontWeight: 550 }}
+                  sx={{
+                    display: { xs: "none", sm: "inline" },
+                    fontWeight: 550,
+                  }}
                 >
                   Sign In
                 </Typography>
               </Button>
-            </form>
+            </Box>
           )}
         </Toolbar>
       </AppBar>
