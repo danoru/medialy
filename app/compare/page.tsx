@@ -759,17 +759,17 @@ function MediaTitleLink({
   tone?: "default" | "winner";
 }) {
   return (
-    <Typography
-      component={Link}
-      href={href}
-      sx={{
-        color: "primary.main",
-        fontWeight: tone === "winner" ? 650 : 600,
-        textDecoration: "none",
-      }}
-    >
-      {children}
-    </Typography>
+    <Link href={href} style={{ textDecoration: "none" }}>
+      <Typography
+        component="span"
+        sx={{
+          color: "primary.main",
+          fontWeight: tone === "winner" ? 650 : 600,
+        }}
+      >
+        {children}
+      </Typography>
+    </Link>
   );
 }
 

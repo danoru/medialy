@@ -54,7 +54,13 @@ export default async function FriendsPage({
       orderBy: { name: "asc" },
     }),
     prisma.mediaItem.findMany({
-      where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
+      where: {
+        mediaType: visibleMediaTypeFilter(),
+        OR: [
+          { userMedia: { none: { userId } } },
+          { userMedia: { some: { userId, isArchived: false } } },
+        ],
+      },
       orderBy: { title: "asc" },
     }),
     getFriendCompatibility(),
