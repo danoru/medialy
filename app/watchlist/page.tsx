@@ -30,13 +30,16 @@ import {
   Tabs,
   Typography,
 } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha } from "@mui/material/styles";
 import type { MediaType } from "@prisma/client";
 import Link from "next/link";
 import { getRecommendations } from "@/lib/recommendations";
-import { formatMediaType, formatStatus } from "@/lib/format";
+import { formatMediaType } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import type { MediaItemDTO, Recommendation } from "@/lib/types";
+import { requireUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Watchlist" };
@@ -45,15 +48,13 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const QUEUE_STATUSES = new Set(["WATCHLIST", "BACKLOG"]);
 const QUEUE_PAGE_SIZE = 10;
-const panelBorder = alpha("#9CCBFF", 0.11);
-const panelBg =
-  "linear-gradient(145deg, rgba(8, 17, 31, 0.9), rgba(5, 8, 18, 0.96))";
 
 export default async function WatchlistPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
+  await requireUserId("/watchlist");
   const params = await searchParams;
   const requestedType = stringParam(params.type);
   const selectedType = isVisibleMediaType(requestedType)
@@ -91,14 +92,8 @@ export default async function WatchlistPage({
   const highMatchCount = entries.filter((entry) => entry.score >= 70).length;
 
   return (
-    <Box
-      sx={{
-        mx: { xs: -1, sm: -1.5, md: -2 },
-        px: { xs: 1, sm: 1.5, md: 2 },
-        pb: 2,
-      }}
-    >
-      <Stack spacing={1.15}>
+    <Box sx={{ pb: 2 }}>
+      <Stack spacing={1.5}>
         <WatchlistHeader
           countsByType={countsByType}
           entriesCount={entries.length}
@@ -171,9 +166,9 @@ function WatchlistHeader({
           <Box
             sx={{
               alignItems: "center",
-              bgcolor: alpha("#F8FAFC", 0.92),
-              borderRadius: "6px",
-              color: "#08111F",
+              bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+              borderRadius: 1.5,
+              color: "primary.main",
               display: "flex",
               height: 28,
               justifyContent: "center",
@@ -185,10 +180,11 @@ function WatchlistHeader({
           <Typography
             component="h1"
             sx={{
-              fontSize: { xs: 24, md: 27 },
-              fontWeight: 950,
-              letterSpacing: 0,
-              lineHeight: 1,
+              fontFamily: (theme) => theme.typography.h3.fontFamily,
+              fontSize: { xs: "1.5rem", md: "1.875rem" },
+              fontWeight: 650,
+              letterSpacing: "-0.025em",
+              lineHeight: 1.1,
             }}
           >
             Watchlist
@@ -222,9 +218,9 @@ function WatchlistHeader({
           </Button>
           <Box
             sx={{
-              bgcolor: alpha("#07101D", 0.82),
-              border: `1px solid ${panelBorder}`,
-              borderRadius: "8px",
+              bgcolor: "surface.1",
+              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              borderRadius: 2,
               display: "flex",
               gap: 0.25,
               p: 0.3,
@@ -236,7 +232,7 @@ function WatchlistHeader({
             <IconButton
               aria-label="Grid view"
               size="small"
-              sx={{ color: "#8B5CF6" }}
+              sx={{ color: "primary.main" }}
             >
               <GridViewIcon fontSize="small" />
             </IconButton>
@@ -253,7 +249,7 @@ function WatchlistHeader({
               minHeight: 35,
               "& .MuiTabs-indicator": { display: "none" },
               "& .MuiTab-root": {
-                borderRadius: "7px",
+                borderRadius: 1.5,
                 color: "text.secondary",
                 gap: 0.65,
                 minHeight: 34,
@@ -261,9 +257,9 @@ function WatchlistHeader({
                 textTransform: "none",
               },
               "& .Mui-selected": {
-                background: `linear-gradient(135deg, ${alpha("#8B5CF6", 0.85)}, ${alpha("#22D3EE", 0.22)})`,
-                boxShadow: `0 0 18px ${alpha("#8B5CF6", 0.24)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.1)}`,
-                color: "#FFFFFF",
+                bgcolor: "background.paper",
+                boxShadow: (theme) => theme.shadows[1],
+                color: "text.primary",
               },
             }}
             value={selectedType}
@@ -313,19 +309,18 @@ function RankedQueuePanel({
           direction="row"
           sx={{
             alignItems: "center",
-            borderBottom: `1px solid ${alpha("#FFFFFF", 0.08)}`,
+            borderBottom: "1px solid",
+            borderColor: "divider",
             justifyContent: "space-between",
             px: 1.15,
             py: 0.9,
           }}
         >
           <Stack direction="row" spacing={0.7} sx={{ alignItems: "center" }}>
-            <Typography
-              sx={{ fontSize: 16, fontWeight: 900, letterSpacing: 0 }}
-            >
+            <Typography sx={{ fontSize: "1rem", fontWeight: 650 }}>
               Ranked Queue
             </Typography>
-            <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
               {selectedLabel}
             </Typography>
           </Stack>
@@ -341,10 +336,10 @@ function RankedQueuePanel({
           sx={{
             color: "text.secondary",
             display: { xs: "none", md: "grid" },
-            fontSize: 10,
-            fontWeight: 850,
+            fontSize: "0.625rem",
+            fontWeight: 600,
             gridTemplateColumns: "34px 48px minmax(0, 1fr) 275px 72px 28px",
-            letterSpacing: 0.7,
+            letterSpacing: "0.07em",
             px: 1.15,
             py: 0.65,
             textTransform: "uppercase",
@@ -360,7 +355,7 @@ function RankedQueuePanel({
 
         <Stack
           divider={
-            <Box sx={{ borderTop: `1px solid ${alpha("#FFFFFF", 0.07)}` }} />
+            <Box sx={{ borderTop: "1px solid", borderColor: "divider" }} />
           }
         >
           {entries.map((entry, index) => (
@@ -408,13 +403,14 @@ function QueuePagination({
       spacing={0.8}
       sx={{
         alignItems: { sm: "center" },
-        borderTop: `1px solid ${alpha("#FFFFFF", 0.08)}`,
+        borderTop: "1px solid",
+        borderColor: "divider",
         justifyContent: "space-between",
         px: 1.15,
         py: 0.75,
       }}
     >
-      <Typography color="text.secondary" sx={{ fontSize: 12 }}>
+      <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
         Showing {pageStartIndex + 1}-{pageEndIndex} of {totalCount}
       </Typography>
       {totalPages > 1 ? (
@@ -437,9 +433,10 @@ function QueuePagination({
                 ...paginationButtonSx,
                 ...(page === currentPage
                   ? {
-                      bgcolor: alpha("#8B5CF6", 0.36),
-                      borderColor: alpha("#8B5CF6", 0.5),
-                      color: "#FFFFFF",
+                      bgcolor: (theme) =>
+                        alpha(theme.palette.primary.main, 0.12),
+                      borderColor: "primary.main",
+                      color: "primary.main",
                     }
                   : {}),
               }}
@@ -487,7 +484,7 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
           px: 1.15,
           py: 0.55,
           transition: "background-color 160ms ease",
-          "&:hover": { bgcolor: alpha("#FFFFFF", 0.045) },
+          "&:hover": { bgcolor: "surface.1" },
         }}
       >
         <RankBadge rank={rank} score={entry.score} />
@@ -496,23 +493,23 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
           <Stack direction="row" sx={{ alignItems: "center", gap: 0.55 }}>
             <Typography
               noWrap
-              sx={{ fontSize: 14, fontWeight: 900, minWidth: 0 }}
+              sx={{ fontSize: "0.875rem", fontWeight: 600, minWidth: 0 }}
             >
               {item.title}
             </Typography>
             {item.isFavorite ? (
-              <StarRoundedIcon sx={{ color: "#FBBF24", fontSize: 15 }} />
+              <StarRoundedIcon sx={{ color: "warning.main", fontSize: 15 }} />
             ) : null}
           </Stack>
           <Stack
             direction="row"
             sx={{ alignItems: "center", flexWrap: "wrap", gap: 0.4, mt: 0.45 }}
           >
-            <Typography color="text.secondary" sx={{ fontSize: 11.5 }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
               {formatMediaType(item.mediaType)}
             </Typography>
             {releaseYear ? <DotMeta>{releaseYear}</DotMeta> : null}
-            <DotMeta>{formatStatus(item.status)}</DotMeta>
+            <DotMeta>{statusLabel(item.status, item.mediaType)}</DotMeta>
             {item.genres.slice(0, 3).map((genre) => (
               <SoftPill key={genre}>{genre}</SoftPill>
             ))}
@@ -532,14 +529,17 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
             <Typography
               sx={{
                 color: matchTone(entry.score),
-                fontSize: 12,
-                fontWeight: 900,
+                fontSize: "0.75rem",
+                fontWeight: 600,
                 lineHeight: 1.15,
               }}
             >
               {matchLabel(entry.score)}
             </Typography>
-            <Typography color="text.secondary" sx={{ fontSize: 10.5, mt: 0.2 }}>
+            <Typography
+              color="text.secondary"
+              sx={{ fontSize: "0.625rem", mt: 0.2 }}
+            >
               {Math.round(entry.confidence * 100)}% conf.
             </Typography>
           </Box>
@@ -559,7 +559,7 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
 
         <Typography
           color="text.secondary"
-          sx={{ display: { xs: "none", md: "block" }, fontSize: 12 }}
+          sx={{ display: { xs: "none", md: "block" }, fontSize: "0.75rem" }}
         >
           {updatedLabel}
         </Typography>
@@ -587,7 +587,7 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
           action={
             <MoreVertIcon sx={{ color: "text.secondary", fontSize: 19 }} />
           }
-          icon={<AutoAwesomeIcon sx={{ color: "#A78BFA", fontSize: 18 }} />}
+          icon={<AutoAwesomeIcon sx={{ color: "primary.main", fontSize: 18 }} />}
           title="Tonight Pick"
         />
 
@@ -605,7 +605,7 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
               href={`/media/${item.id}`}
               style={{ color: "inherit", textDecoration: "none" }}
             >
-              <Typography noWrap sx={{ fontSize: 16, fontWeight: 930 }}>
+              <Typography noWrap sx={{ fontSize: "1rem", fontWeight: 650 }}>
                 {item.title}
               </Typography>
             </Link>
@@ -619,7 +619,9 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
               }}
             >
               {releaseYear ? (
-                <Typography sx={{ fontSize: 12 }}>{releaseYear}</Typography>
+                <Typography sx={{ fontSize: "0.75rem" }}>
+                  {releaseYear}
+                </Typography>
               ) : null}
               <DotMeta>{formatMediaType(item.mediaType)}</DotMeta>
               {item.genres.slice(0, 2).map((genre) => (
@@ -635,8 +637,8 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
               <Typography
                 sx={{
                   color: matchTone(entry.score),
-                  fontSize: 28,
-                  fontWeight: 950,
+                  fontSize: "1.75rem",
+                  fontWeight: 650,
                   lineHeight: 0.9,
                 }}
               >
@@ -648,11 +650,17 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
                   direction="row"
                   sx={{ justifyContent: "space-between", mt: 0.3 }}
                 >
-                  <Typography color="text.secondary" sx={{ fontSize: 10.5 }}>
+                  <Typography
+                    color="text.secondary"
+                    sx={{ fontSize: "0.625rem" }}
+                  >
                     Medialy Match
                   </Typography>
                   <Typography
-                    sx={{ color: matchTone(entry.score), fontSize: 10.5 }}
+                    sx={{
+                      color: matchTone(entry.score),
+                      fontSize: "0.625rem",
+                    }}
                   >
                     {matchLabel(entry.score)}
                   </Typography>
@@ -680,12 +688,7 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
             fullWidth
             href={`/media/${item.id}`}
             startIcon={<CheckCircleIcon />}
-            sx={{
-              bgcolor: "#5B21B6",
-              boxShadow: `0 0 24px ${alpha("#8B5CF6", 0.26)}`,
-              minHeight: 34,
-              "&:hover": { bgcolor: "#6D28D9" },
-            }}
+            sx={{ minHeight: 34 }}
             variant="contained"
           >
             Open Details
@@ -709,7 +712,11 @@ function NextUpPanel({ entries }: { entries: Recommendation[] }) {
         <PanelTitle
           action={
             <Typography
-              sx={{ color: "#A78BFA", fontSize: 12, fontWeight: 800 }}
+              sx={{
+                color: "primary.main",
+                fontSize: "0.75rem",
+                fontWeight: 600,
+              }}
             >
               View all
             </Typography>
@@ -725,7 +732,7 @@ function NextUpPanel({ entries }: { entries: Recommendation[] }) {
           ) : (
             <Typography
               color="text.secondary"
-              sx={{ py: 1.5, textAlign: "center" }}
+              sx={{ fontSize: "0.8125rem", py: 1.5, textAlign: "center" }}
             >
               Add more queue items to build this lane.
             </Typography>
@@ -747,28 +754,31 @@ function NextUpRow({ entry }: { entry: Recommendation }) {
       <Box
         sx={{
           alignItems: "center",
-          bgcolor: alpha("#07101D", 0.68),
-          border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
-          borderRadius: "8px",
+          bgcolor: "surface.1",
+          border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+          borderRadius: 2,
           display: "grid",
           gap: 0.65,
           gridTemplateColumns: "26px 42px minmax(0, 1fr) 36px 20px",
           minHeight: 63,
           px: 0.7,
           py: 0.55,
-          "&:hover": { bgcolor: alpha("#FFFFFF", 0.045) },
+          transition: "border-color 160ms ease",
+          "&:hover": {
+            borderColor: (theme) => theme.palette.border.default,
+          },
         }}
       >
-        <PlayCircleIcon sx={{ color: alpha("#F8FAFC", 0.76), fontSize: 22 }} />
+        <PlayCircleIcon sx={{ color: "text.secondary", fontSize: 22 }} />
         <PosterThumb item={item} score={entry.score} small />
         <Box sx={{ minWidth: 0 }}>
-          <Typography noWrap sx={{ fontSize: 13, fontWeight: 850 }}>
+          <Typography noWrap sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
             {item.title}
           </Typography>
           <Typography
             color="text.secondary"
             noWrap
-            sx={{ fontSize: 11, mt: 0.2 }}
+            sx={{ fontSize: "0.6875rem", mt: 0.2 }}
           >
             {primarySignal(entry)}
           </Typography>
@@ -776,20 +786,20 @@ function NextUpRow({ entry }: { entry: Recommendation }) {
             value={entry.score}
             variant="determinate"
             sx={{
-              bgcolor: alpha("#FFFFFF", 0.07),
-              borderRadius: "8px",
+              bgcolor: (theme) => alpha(theme.palette.text.primary, 0.08),
+              borderRadius: 5,
               height: 4,
               mt: 0.55,
               "& .MuiLinearProgress-bar": {
                 bgcolor: matchTone(entry.score),
-                borderRadius: "8px",
+                borderRadius: 5,
               },
             }}
           />
         </Box>
         <Typography
           color="text.secondary"
-          sx={{ fontSize: 11, textAlign: "right" }}
+          sx={{ fontSize: "0.6875rem", textAlign: "right" }}
         >
           {Math.round(entry.score)}%
         </Typography>
@@ -833,7 +843,7 @@ function QueueMixPanel({
             <Box
               sx={{
                 alignItems: "center",
-                bgcolor: "#08111F",
+                bgcolor: "background.paper",
                 borderRadius: "50%",
                 display: "flex",
                 flexDirection: "column",
@@ -842,10 +852,12 @@ function QueueMixPanel({
                 width: 72,
               }}
             >
-              <Typography sx={{ fontSize: 20, fontWeight: 950, lineHeight: 1 }}>
+              <Typography
+                sx={{ fontSize: "1.25rem", fontWeight: 650, lineHeight: 1 }}
+              >
                 {total.toLocaleString()}
               </Typography>
-              <Typography color="text.secondary" sx={{ fontSize: 10.5 }}>
+              <Typography color="text.secondary" sx={{ fontSize: "0.625rem" }}>
                 Items
               </Typography>
             </Box>
@@ -870,11 +882,14 @@ function QueueMixPanel({
                       width: 7,
                     }}
                   />
-                  <Typography noWrap sx={{ fontSize: 12 }}>
+                  <Typography noWrap sx={{ fontSize: "0.75rem" }}>
                     {formatMediaType(entry.mediaType)}
                   </Typography>
                 </Stack>
-                <Typography color="text.secondary" sx={{ fontSize: 11 }}>
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontSize: "0.6875rem" }}
+                >
                   {entry.count}
                 </Typography>
               </Stack>
@@ -883,7 +898,8 @@ function QueueMixPanel({
         </Stack>
         <Box
           sx={{
-            borderTop: `1px solid ${alpha("#FFFFFF", 0.08)}`,
+            borderTop: "1px solid",
+            borderColor: "divider",
             display: "grid",
             gap: 0.75,
             gridTemplateColumns: "1fr 1fr",
@@ -918,7 +934,11 @@ function MatchSignalsPanel({
         <PanelTitle
           action={
             <Typography
-              sx={{ color: "#A78BFA", fontSize: 12, fontWeight: 800 }}
+              sx={{
+                color: "primary.main",
+                fontSize: "0.75rem",
+                fontWeight: 600,
+              }}
             >
               View all
             </Typography>
@@ -933,8 +953,9 @@ function MatchSignalsPanel({
         <Typography
           color="text.secondary"
           sx={{
-            borderTop: `1px solid ${alpha("#FFFFFF", 0.08)}`,
-            fontSize: 11,
+            borderTop: "1px solid",
+            borderColor: "divider",
+            fontSize: "0.6875rem",
             lineHeight: 1.35,
             mt: 1,
             pt: 0.8,
@@ -960,10 +981,10 @@ function SignalBar({
         <Box sx={{ color: accent, display: "flex" }}>
           {signalIcon(signal.label)}
         </Box>
-        <Typography sx={{ flex: 1, fontSize: 12.5, minWidth: 0 }}>
+        <Typography sx={{ flex: 1, fontSize: "0.75rem", minWidth: 0 }}>
           {signal.label}
         </Typography>
-        <Typography color="text.secondary" sx={{ fontSize: 11 }}>
+        <Typography color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
           {Math.round(signal.share)}%
         </Typography>
       </Stack>
@@ -971,12 +992,12 @@ function SignalBar({
         value={signal.share}
         variant="determinate"
         sx={{
-          bgcolor: alpha("#FFFFFF", 0.075),
-          borderRadius: "8px",
+          bgcolor: (theme) => alpha(theme.palette.text.primary, 0.08),
+          borderRadius: 5,
           height: 6,
           "& .MuiLinearProgress-bar": {
             bgcolor: accent,
-            borderRadius: "8px",
+            borderRadius: 5,
           },
         }}
       />
@@ -998,7 +1019,7 @@ function PanelTitle({
   return (
     <Stack direction="row" sx={{ alignItems: "center", gap: 0.55 }}>
       {icon}
-      <Typography sx={{ flex: 1, fontSize: 14.5, fontWeight: 900 }}>
+      <Typography sx={{ flex: 1, fontSize: "0.9375rem", fontWeight: 650 }}>
         {title}
       </Typography>
       {typeof count === "number" ? <Chip label={count} size="small" /> : null}
@@ -1012,14 +1033,17 @@ function RankBadge({ rank, score }: { rank: number; score: number }) {
     <Box
       sx={{
         alignItems: "center",
-        bgcolor:
-          rank <= 3 ? alpha(matchTone(score), 0.18) : alpha("#FFFFFF", 0.035),
-        border: `1px solid ${rank <= 3 ? alpha(matchTone(score), 0.42) : alpha("#FFFFFF", 0.14)}`,
-        borderRadius: "6px",
+        bgcolor: (theme) =>
+          rank <= 3
+            ? alpha(matchTone(score), 0.16)
+            : alpha(theme.palette.text.primary, 0.05),
+        border: (theme) =>
+          `1px solid ${rank <= 3 ? alpha(matchTone(score), 0.42) : theme.palette.border.subtle}`,
+        borderRadius: 1.5,
         color: rank <= 3 ? matchTone(score) : "text.secondary",
         display: "flex",
-        fontSize: 14,
-        fontWeight: 900,
+        fontSize: "0.875rem",
+        fontWeight: 600,
         height: 30,
         justifyContent: "center",
         width: 30,
@@ -1048,7 +1072,7 @@ function PosterThumb({
         backgroundPosition: "center",
         backgroundSize: "cover",
         border: `1px solid ${alpha(matchTone(score), 0.18)}`,
-        borderRadius: "6px",
+        borderRadius: 1.5,
         height: small ? 48 : 60,
         overflow: "hidden",
         position: "relative",
@@ -1068,8 +1092,8 @@ function PosterBlock({ item }: { item: MediaItemDTO }) {
           : designedPosterFallback(item.mediaType),
         backgroundPosition: "center",
         backgroundSize: "cover",
-        border: `1px solid ${alpha("#FFFFFF", 0.1)}`,
-        borderRadius: "8px",
+        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        borderRadius: 2,
         minHeight: 184,
         overflow: "hidden",
       }}
@@ -1082,7 +1106,8 @@ function ScoreRing({ score, size }: { score: number; size: number }) {
     <Box
       sx={{
         alignItems: "center",
-        background: `conic-gradient(${matchTone(score)} ${Math.round(score)}%, ${alpha("#FFFFFF", 0.09)} 0)`,
+        background: (theme) =>
+          `conic-gradient(${matchTone(score)} ${Math.round(score)}%, ${alpha(theme.palette.text.primary, 0.08)} 0)`,
         borderRadius: "50%",
         display: "flex",
         height: size,
@@ -1093,11 +1118,11 @@ function ScoreRing({ score, size }: { score: number; size: number }) {
       <Box
         sx={{
           alignItems: "center",
-          bgcolor: "#08111F",
+          bgcolor: "background.paper",
           borderRadius: "50%",
           display: "flex",
-          fontSize: 11,
-          fontWeight: 950,
+          fontSize: "0.6875rem",
+          fontWeight: 650,
           height: size - 10,
           justifyContent: "center",
           width: size - 10,
@@ -1117,10 +1142,10 @@ function ReasonChip({ label, value }: { label: string; value: number }) {
       sx={{
         bgcolor: alpha(color, 0.13),
         border: `1px solid ${alpha(color, 0.2)}`,
-        borderRadius: "6px",
+        borderRadius: 1,
         color,
-        fontSize: 10.5,
-        fontWeight: 760,
+        fontSize: "0.625rem",
+        fontWeight: 600,
         lineHeight: 1,
         px: 0.65,
         py: 0.4,
@@ -1135,12 +1160,12 @@ function SoftPill({ children }: { children: React.ReactNode }) {
   return (
     <Box
       sx={{
-        bgcolor: alpha("#FFFFFF", 0.055),
-        border: `1px solid ${alpha("#FFFFFF", 0.08)}`,
-        borderRadius: "6px",
-        color: alpha("#F8FAFC", 0.82),
-        fontSize: 10.5,
-        fontWeight: 720,
+        bgcolor: "surface.2",
+        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        borderRadius: 1,
+        color: "text.secondary",
+        fontSize: "0.625rem",
+        fontWeight: 600,
         lineHeight: 1,
         px: 0.55,
         py: 0.35,
@@ -1153,7 +1178,7 @@ function SoftPill({ children }: { children: React.ReactNode }) {
 
 function DotMeta({ children }: { children: React.ReactNode }) {
   return (
-    <Typography color="text.secondary" sx={{ fontSize: 11.5 }}>
+    <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
       / {children}
     </Typography>
   );
@@ -1174,9 +1199,11 @@ function MiniBars({ value }: { value: number }) {
         <Box
           key={index}
           sx={{
-            bgcolor:
-              index < activeBars ? matchTone(value) : alpha("#FFFFFF", 0.11),
-            borderRadius: "2px",
+            bgcolor: (theme) =>
+              index < activeBars
+                ? matchTone(value)
+                : alpha(theme.palette.text.primary, 0.08),
+            borderRadius: 0.5,
             height: 9,
           }}
         />
@@ -1201,15 +1228,21 @@ function StatPill({
       sx={{ alignItems: "center", minWidth: 0 }}
     >
       <Box
-        sx={{ color: "#22D3EE", display: "flex", "& svg": { fontSize: 18 } }}
+        sx={{
+          color: "primary.main",
+          display: "flex",
+          "& svg": { fontSize: 18 },
+        }}
       >
         {icon}
       </Box>
       <Box sx={{ minWidth: 0 }}>
-        <Typography color="text.secondary" noWrap sx={{ fontSize: 10.5 }}>
+        <Typography color="text.secondary" noWrap sx={{ fontSize: "0.625rem" }}>
           {label}
         </Typography>
-        <Typography sx={{ color: "#2EFFC3", fontSize: 14, fontWeight: 900 }}>
+        <Typography
+          sx={{ color: "text.primary", fontSize: "0.875rem", fontWeight: 650 }}
+        >
           {value}
         </Typography>
       </Box>
@@ -1232,12 +1265,13 @@ function EmptyState({ selectedLabel }: { selectedLabel: string }) {
         }}
       >
         <PlaylistAddCheckIcon sx={{ color: "text.secondary", fontSize: 38 }} />
-        <Typography
-          sx={{ fontSize: 20, fontWeight: 930, letterSpacing: 0, mt: 1 }}
-        >
+        <Typography sx={{ fontSize: "1.125rem", fontWeight: 650, mt: 1 }}>
           No {selectedLabel.toLowerCase()} queue yet
         </Typography>
-        <Typography color="text.secondary" sx={{ maxWidth: 520, mt: 0.6 }}>
+        <Typography
+          color="text.secondary"
+          sx={{ fontSize: "0.875rem", maxWidth: 520, mt: 0.6 }}
+        >
           Add watchlist or backlog items and they will appear as a ranked queue
           with compact match signals.
         </Typography>
@@ -1249,32 +1283,39 @@ function EmptyState({ selectedLabel }: { selectedLabel: string }) {
   );
 }
 
-const compactPanelSx = {
-  background: panelBg,
-  borderColor: panelBorder,
-  boxShadow: `0 18px 50px ${alpha("#000000", 0.28)}, inset 0 1px 0 ${alpha("#FFFFFF", 0.04)}`,
+const compactPanelSx: SxProps<Theme> = {
+  bgcolor: "background.paper",
+  border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+  borderRadius: 3,
+  boxShadow: (theme) => theme.shadows[1],
   overflow: "hidden",
-} as const;
+};
 
 const compactControlSx = {
-  bgcolor: alpha("#07101D", 0.82),
-  borderColor: panelBorder,
-  color: alpha("#F8FAFC", 0.84),
+  bgcolor: "surface.1",
+  borderColor: (theme) => theme.palette.border.subtle,
+  color: "text.secondary",
   minHeight: 34,
   px: 1.05,
   "&:hover": {
-    bgcolor: alpha("#FFFFFF", 0.06),
-    borderColor: alpha("#8B5CF6", 0.35),
+    bgcolor: "surface.2",
+    borderColor: (theme) => theme.palette.border.strong,
   },
-} as const;
+} satisfies SxProps<Theme>;
 
 const paginationButtonSx = {
-  ...compactControlSx,
-  fontSize: 11.5,
+  bgcolor: "surface.1",
+  borderColor: (theme) => theme.palette.border.subtle,
+  color: "text.secondary",
+  fontSize: "0.75rem",
   minHeight: 29,
   minWidth: 34,
   px: 0.8,
-} as const;
+  "&:hover": {
+    bgcolor: "surface.2",
+    borderColor: (theme) => theme.palette.border.strong,
+  },
+} satisfies SxProps<Theme>;
 
 function stringParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -1359,7 +1400,10 @@ function primarySignal(entry: Recommendation) {
     return `${bestReason.label} ${formatReasonValue(bestReason.value)}`;
   }
 
-  return entry.media.genres[0] ?? formatStatus(entry.media.status);
+  return (
+    entry.media.genres[0] ??
+    statusLabel(entry.media.status, entry.media.mediaType)
+  );
 }
 
 function matchLabel(score: number) {
@@ -1397,7 +1441,7 @@ function queueDonutBackground(
   mix: Array<{ count: number; mediaType: MediaType }>,
   total: number,
 ) {
-  if (total === 0) return alpha("#FFFFFF", 0.08);
+  if (total === 0) return alpha("#8A8F98", 0.18);
 
   let cursor = 0;
   const stops = mix
@@ -1454,9 +1498,5 @@ function shortMediaTypeLabel(mediaType: MediaType) {
 
 function designedPosterFallback(mediaType: MediaType) {
   const accent = mediaTypeColor(mediaType);
-  return [
-    `linear-gradient(160deg, ${alpha(accent, 0.34)}, transparent 42%)`,
-    `linear-gradient(20deg, ${alpha("#22D3EE", 0.14)}, transparent 48%)`,
-    "linear-gradient(145deg, rgba(17, 23, 42, 0.98), rgba(8, 17, 31, 0.99) 52%, rgba(5, 8, 18, 0.99))",
-  ].join(", ");
+  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
 }

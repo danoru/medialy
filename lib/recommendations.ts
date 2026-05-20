@@ -1,10 +1,16 @@
 import { prisma } from "@/lib/prisma";
+import { getCurrentUserId } from "@/lib/user";
+import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { calculateMedialyMatch } from "@/lib/scoring/medialyMatch";
+import {
+  personalScoreTrustForStatus,
+  recommendationEligibilityWhere,
+  type EligibilityOptions,
+} from "@/lib/scoring/eligibility";
 import { toMediaItemDTO } from "@/lib/media";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 import type { Recommendation, RecommendationReason } from "@/lib/types";
 import { GENRE_WEIGHT, TAG_WEIGHT } from "@/lib/scoring/taxonomySimilarity";
-import { startOfToday } from "@/lib/upcoming";
 import {
   EXCLUDED_RECOMMENDATION_STATUSES,
   isRecommendationEligibleStatus,
@@ -22,25 +28,36 @@ export {
 
 export async function getRecommendations(
   limit?: number,
+  eligibility: EligibilityOptions = {},
 ): Promise<Recommendation[]> {
-  const availableReleaseDateWhere = getRecommendationReleaseDateWhere();
-
-  const items = await prisma.mediaItem.findMany({
+  // Anonymous viewers get a best-effort recommendations list built from
+  // public signals (no personal taste graph). A sentinel id makes the
+  // per-user joins consistently return defaults.
+  const userId = (await getCurrentUserId()) ?? "__anonymous__";
+  const rawItems = await prisma.mediaItem.findMany({
     where: {
-      isArchived: false,
       mediaType: visibleMediaTypeFilter(),
-      status: { notIn: EXCLUDED_RECOMMENDATION_STATUSES },
-      ...availableReleaseDateWhere,
+      ...recommendationEligibilityWhere({ ...eligibility, userId }),
     },
     include: {
       genres: { include: { genre: true } },
       tags: { where: { tag: { status: "APPROVED" } }, include: { tag: true } },
       friendRatings: { include: { friend: true } },
+      credits: { include: { contributor: true } },
+      ...userMediaInclude(userId),
     },
-    orderBy: [{ computedPersonalScore: "desc" }, { pairwiseScore: "desc" }],
   });
 
-  const affinity = await getAffinityMaps();
+  const items = rawItems
+    .map(mergeUserMedia)
+    .sort(
+      (a, b) =>
+        (b.computedPersonalScore ?? -Infinity) -
+          (a.computedPersonalScore ?? -Infinity) ||
+        b.pairwiseScore - a.pairwiseScore,
+    );
+
+  const affinity = await getAffinityMaps(userId);
 
   const recommendations = items
     .map((item) => {
@@ -52,12 +69,14 @@ export async function getRecommendations(
         (total, entry) => total + (affinity.tags.get(entry.tag.name) ?? 0),
         0,
       );
+      const contributorAffinity = item.credits.reduce(
+        (total, entry) =>
+          total + (affinity.contributors.get(entry.contributor.id) ?? 0),
+        0,
+      );
       const friendAffinity = averageFriendBoost(item.friendRatings);
-      const statusSignal = recommendationStatusSignal(item.status);
-      const upcomingSignal =
-        item.releaseDate && item.releaseDate.getTime() >= Date.now() ? 100 : 0;
       const hasExplicitRating = item.personalRating != null;
-      const personalScoreTrust = recommendationPersonalScoreTrust(
+      const personalScoreTrust = personalScoreTrustForStatus(
         item.status,
         hasExplicitRating,
       );
@@ -70,8 +89,7 @@ export async function getRecommendations(
         genreAffinity,
         tagAffinity,
         friendAffinity,
-        status: statusSignal,
-        upcoming: upcomingSignal,
+        contributorAffinity,
         consensusScore: item.computedConsensusScore,
       });
 
@@ -85,15 +103,16 @@ export async function getRecommendations(
         score: match.score,
         confidence,
         reasons: match.reasons as RecommendationReason[],
+        explanations: match.explanations,
       };
     })
     .sort((a, b) => {
       const scoreDelta = b.score - a.score;
       if (scoreDelta !== 0) return scoreDelta;
-      return (
-        recommendationStatusSignal(b.media.status) -
-        recommendationStatusSignal(a.media.status)
-      );
+      // Deterministic tiebreaker: confidence, then title.
+      const confidenceDelta = (b.confidence ?? 0) - (a.confidence ?? 0);
+      if (confidenceDelta !== 0) return confidenceDelta;
+      return a.media.title.localeCompare(b.media.title);
     });
 
   return typeof limit === "number"
@@ -101,23 +120,24 @@ export async function getRecommendations(
     : recommendations;
 }
 
+/**
+ * @deprecated Use `recommendationEligibilityWhere` from
+ * `@/lib/scoring/eligibility`. Retained for callers that still need just the
+ * release-date filter.
+ */
 export function getRecommendationReleaseDateWhere(
   now = new Date(),
 ): Prisma.MediaItemWhereInput {
-  const tomorrow = startOfToday(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-
-  return {
-    OR: [{ releaseDate: null }, { releaseDate: { lt: tomorrow } }],
-  };
+  return recommendationEligibilityWhere({ now });
 }
 
-async function getAffinityMaps() {
-  const completed = await prisma.mediaItem.findMany({
+async function getAffinityMaps(userId: string) {
+  const completed = await prisma.userMedia.findMany({
     where: {
+      userId,
       isArchived: false,
-      mediaType: visibleMediaTypeFilter(),
       status: "COMPLETED",
+      media: { mediaType: visibleMediaTypeFilter() },
       OR: [
         { computedPersonalScore: { gte: 8 } },
         { personalRating: { gte: 8 } },
@@ -125,38 +145,53 @@ async function getAffinityMaps() {
       ],
     },
     include: {
-      genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
+      media: {
+        include: {
+          genres: { include: { genre: true } },
+          tags: { include: { tag: true } },
+          credits: { include: { contributor: true } },
+        },
+      },
     },
   });
 
   const genres = new Map<string, number>();
   const tags = new Map<string, number>();
+  const contributors = new Map<string, number>();
 
-  for (const item of completed) {
+  const TAG_RATIO = TAG_WEIGHT / GENRE_WEIGHT;
+  const CONTRIBUTOR_RATIO = 0.6; // contributors weighted between genres and tags
+
+  for (const row of completed) {
     const itemBoost = Math.max(
       10,
       Math.min(
         35,
-        ((item.computedPersonalScore ?? item.personalRating ?? 5) - 5) * 10,
+        ((row.computedPersonalScore ?? row.personalRating ?? 5) - 5) * 10,
       ),
     );
-    for (const entry of item.genres) {
+    for (const entry of row.media.genres) {
       genres.set(
         entry.genre.name,
         (genres.get(entry.genre.name) ?? 0) + itemBoost,
       );
     }
-    for (const entry of item.tags) {
+    for (const entry of row.media.tags) {
       tags.set(
         entry.tag.name,
-        (tags.get(entry.tag.name) ?? 0) +
-          itemBoost * (TAG_WEIGHT / GENRE_WEIGHT),
+        (tags.get(entry.tag.name) ?? 0) + itemBoost * TAG_RATIO,
+      );
+    }
+    for (const entry of row.media.credits) {
+      contributors.set(
+        entry.contributor.id,
+        (contributors.get(entry.contributor.id) ?? 0) +
+          itemBoost * CONTRIBUTOR_RATIO,
       );
     }
   }
 
-  return { genres, tags };
+  return { genres, tags, contributors };
 }
 
 function averageFriendBoost(

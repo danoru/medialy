@@ -48,7 +48,6 @@ describe("dashboard upcoming query", () => {
     const today = new Date("2026-05-13T00:00:00");
 
     expect(getDashboardUpcomingWhere(today)).toEqual({
-      isArchived: false,
       mediaType: { in: ["MOVIE", "TV_SHOW", "VIDEO_GAME"] },
       releaseDate: { gte: today },
     });

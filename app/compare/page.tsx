@@ -24,7 +24,9 @@ import {
   comparisonKey,
   getComparisonPair,
 } from "@/lib/compare";
+import { requireUserId } from "@/lib/user";
 import { formatMediaType, formatStatus } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import { StatePanel } from "@/components/shared/StatePanel";
@@ -54,7 +56,9 @@ export default async function ComparePage({
   const historyContext = coerceComparisonContextParam(
     stringParam(params.historyContext),
   );
+  const userId = await requireUserId("/compare");
   const historyWhere: Prisma.PairwiseComparisonWhereInput = {
+    userId,
     winner: { mediaType: visibleMediaTypeFilter() },
     ...(historyItemId
       ? { OR: [{ winnerId: historyItemId }, { loserId: historyItemId }] }
@@ -62,7 +66,7 @@ export default async function ComparePage({
     ...(historyContext ? { context: historyContext } : {}),
   };
   const taxonomyMediaWhere: Prisma.MediaItemWhereInput = {
-    ...comparisonEligibleWhere(),
+    ...comparisonEligibleWhere(userId),
     ...(selectedType ? { mediaType: selectedType } : {}),
     ...(selectedGenre
       ? { genres: { some: { genre: { name: selectedGenre } } } }
@@ -86,7 +90,7 @@ export default async function ComparePage({
       }),
       prisma.mediaItem.groupBy({
         by: ["mediaType"],
-        where: comparisonEligibleWhere(),
+        where: comparisonEligibleWhere(userId),
         _count: true,
       }),
       prisma.genre.findMany({
@@ -95,13 +99,13 @@ export default async function ComparePage({
               media: {
                 some: {
                   media: {
-                    ...comparisonEligibleWhere(),
+                    ...comparisonEligibleWhere(userId),
                     mediaType: selectedType,
                   },
                 },
               },
             }
-          : { media: { some: { media: comparisonEligibleWhere() } } },
+          : { media: { some: { media: comparisonEligibleWhere(userId) } } },
         orderBy: { name: "asc" },
       }),
       prisma.tag.findMany({
@@ -114,7 +118,7 @@ export default async function ComparePage({
       focusId ? prisma.mediaItem.findUnique({ where: { id: focusId } }) : null,
       prisma.mediaItem.findMany({
         where: {
-          ...comparisonEligibleWhere(),
+          ...comparisonEligibleWhere(userId),
           OR: [
             { comparisonsWon: { some: {} } },
             { comparisonsLost: { some: {} } },
@@ -153,7 +157,7 @@ export default async function ComparePage({
               <Typography color="text.secondary" variant="overline">
                 Pair rules
               </Typography>
-              <Typography sx={{ fontWeight: 850, lineHeight: 1.2 }}>
+              <Typography sx={{ fontWeight: 600, lineHeight: 1.2 }}>
                 Match similar titles by type, genre, and tags.
               </Typography>
             </Box>
@@ -244,13 +248,7 @@ export default async function ComparePage({
 
       {first && second ? (
         <Stack spacing={2}>
-          <Card
-            variant="outlined"
-            sx={{
-              background:
-                "linear-gradient(135deg, rgba(139, 92, 246, 0.16), rgba(6, 9, 18, 0.92) 42%, rgba(34, 211, 238, 0.08))",
-            }}
-          >
+          <Card variant="outlined" sx={{ bgcolor: "surface.1" }}>
             <CardContent sx={{ p: { xs: 2, md: 2.4 } }}>
               <Stack
                 direction={{ xs: "column", md: "row" }}
@@ -264,10 +262,11 @@ export default async function ComparePage({
                   <Box
                     sx={{
                       alignItems: "center",
-                      bgcolor: alpha("#8B5CF6", 0.14),
-                      border: `1px solid ${alpha("#A78BFA", 0.3)}`,
+                      bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
+                      border: (theme) =>
+                        `1px solid ${theme.palette.border.subtle}`,
                       borderRadius: 2,
-                      color: "primary.light",
+                      color: "primary.main",
                       display: "flex",
                       height: 44,
                       justifyContent: "center",
@@ -336,20 +335,7 @@ export default async function ComparePage({
                   <form action={saveComparison} style={{ height: "100%" }}>
                     <Card
                       variant="outlined"
-                      sx={{
-                        height: "100%",
-                        position: "relative",
-                        "&::before": {
-                          background:
-                            index === 0
-                              ? "linear-gradient(180deg, rgba(139, 92, 246, 0.34), transparent)"
-                              : "linear-gradient(180deg, rgba(34, 211, 238, 0.18), transparent)",
-                          content: '""',
-                          height: 3,
-                          inset: "0 0 auto",
-                          position: "absolute",
-                        },
-                      }}
+                      sx={{ height: "100%", position: "relative" }}
                     >
                       <CardContent sx={{ p: { xs: 2, md: 2.25 } }}>
                         <Stack spacing={2}>
@@ -402,7 +388,7 @@ export default async function ComparePage({
                                   <Typography
                                     sx={{
                                       color: "primary.main",
-                                      fontWeight: 850,
+                                      fontWeight: 650,
                                       overflowWrap: "anywhere",
                                     }}
                                     variant="h5"
@@ -416,7 +402,7 @@ export default async function ComparePage({
                                   variant="body2"
                                 >
                                   {formatMediaType(item.mediaType)} -{" "}
-                                  {formatStatus(item.status)} -{" "}
+                                  {statusLabel(item.status, item.mediaType)} -{" "}
                                   {item.comparisonCount} comparisons
                                 </Typography>
                               </Box>
@@ -437,7 +423,10 @@ export default async function ComparePage({
                                   sx={{ flex: "0 0 auto" }}
                                 />
                                 <Chip
-                                  label={formatStatus(item.status)}
+                                  label={statusLabel(
+                                    item.status,
+                                    item.mediaType,
+                                  )}
                                   sx={{ flex: "0 0 auto" }}
                                   variant="outlined"
                                 />
@@ -446,14 +435,22 @@ export default async function ComparePage({
                                     key={`${entry.kind}:${entry.name}`}
                                     label={entry.name}
                                     sx={{
-                                      bgcolor: entry.shared
-                                        ? alpha("#22D3EE", 0.12)
-                                        : "transparent",
-                                      borderColor: entry.shared
-                                        ? alpha("#67E8F9", 0.44)
-                                        : alpha("#FFFFFF", 0.16),
+                                      bgcolor: (theme) =>
+                                        entry.shared
+                                          ? alpha(
+                                              theme.palette.primary.main,
+                                              0.12,
+                                            )
+                                          : "transparent",
+                                      borderColor: (theme) =>
+                                        entry.shared
+                                          ? alpha(
+                                              theme.palette.primary.main,
+                                              0.4,
+                                            )
+                                          : theme.palette.border.subtle,
                                       color: entry.shared
-                                        ? "primary.light"
+                                        ? "primary.main"
                                         : "text.secondary",
                                       flex: "0 0 auto",
                                       maxWidth: 160,
@@ -550,7 +547,7 @@ export default async function ComparePage({
             sx={{ justifyContent: "space-between", mb: 2 }}
           >
             <Box>
-              <Typography sx={{ fontWeight: 850 }} variant="h6">
+              <Typography sx={{ fontWeight: 650 }} variant="h6">
                 Recent Comparisons
               </Typography>
               <Typography color="text.secondary" variant="body2">
@@ -618,8 +615,8 @@ export default async function ComparePage({
 
           <Box
             sx={{
-              border: `1px solid ${alpha("#FFFFFF", 0.07)}`,
-              borderRadius: "8px",
+              border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+              borderRadius: 2,
               overflow: "hidden",
             }}
           >
@@ -628,8 +625,9 @@ export default async function ComparePage({
                 key={entry.id}
                 sx={{
                   alignItems: "center",
-                  bgcolor: alpha("#FFFFFF", 0.018),
-                  borderBottom: `1px solid ${alpha("#FFFFFF", 0.07)}`,
+                  bgcolor: "background.paper",
+                  borderBottom: (theme) =>
+                    `1px solid ${theme.palette.border.subtle}`,
                   columnGap: 2,
                   display: "grid",
                   gridTemplateColumns: {
@@ -643,7 +641,7 @@ export default async function ComparePage({
                     borderBottom: 0,
                   },
                   "&:hover": {
-                    bgcolor: alpha("#8B5CF6", 0.045),
+                    bgcolor: "surface.2",
                   },
                 }}
               >
@@ -652,7 +650,7 @@ export default async function ComparePage({
                     sx={{
                       color: "text.secondary",
                       flex: "0 0 auto",
-                      fontSize: 18,
+                      fontSize: "1.125rem",
                       mt: 0.25,
                     }}
                   />
@@ -703,7 +701,11 @@ export default async function ComparePage({
                   sx={{ alignItems: "center", minWidth: 0 }}
                 >
                   <EmojiEventsOutlinedIcon
-                    sx={{ color: "#FBBF24", flex: "0 0 auto", fontSize: 17 }}
+                    sx={{
+                      color: "warning.main",
+                      flex: "0 0 auto",
+                      fontSize: "1.0625rem",
+                    }}
                   />
                   <Typography color="text.secondary" variant="body2">
                     Winner:
@@ -766,16 +768,17 @@ function MediaTitleLink({
   tone?: "default" | "winner";
 }) {
   return (
-    <Link
+    <Typography
+      component={Link}
       href={href}
-      style={{
-        color: tone === "winner" ? "#A78BFA" : "#60A5FA",
-        fontWeight: tone === "winner" ? 850 : 750,
+      sx={{
+        color: "primary.main",
+        fontWeight: tone === "winner" ? 650 : 600,
         textDecoration: "none",
       }}
     >
       {children}
-    </Link>
+    </Typography>
   );
 }
 
@@ -788,29 +791,23 @@ function PosterThumb({ item }: { item: CompareItem }) {
         alignSelf: "flex-start",
         aspectRatio: "2 / 3",
         backgroundImage: item.posterUrl
-          ? `linear-gradient(180deg, transparent 56%, ${alpha("#050812", 0.62)}), url(${item.posterUrl})`
+          ? `linear-gradient(180deg, transparent 58%, rgba(8,8,11,0.55)), url(${item.posterUrl})`
           : posterFallback(item.mediaType),
         backgroundPosition: "center",
         backgroundSize: "cover",
-        border: `1px solid ${alpha("#FFFFFF", 0.1)}`,
-        borderRadius: "8px",
-        boxShadow: `0 18px 54px ${alpha("#000000", 0.42)}`,
+        border: (theme) => `1px solid ${theme.palette.border.subtle}`,
+        borderRadius: 2,
+        boxShadow: (theme) => theme.shadows[6],
         display: "block",
         flex: "0 0 auto",
         minHeight: { xs: 168, sm: 198 },
         overflow: "hidden",
         position: "relative",
         textDecoration: "none",
+        transition: "transform 180ms ease, box-shadow 180ms ease",
         width: { xs: 112, sm: 132 },
-        "&::after": {
-          background: `linear-gradient(180deg, ${alpha("#FFFFFF", 0.12)}, transparent 34%)`,
-          content: '""',
-          inset: 0,
-          pointerEvents: "none",
-          position: "absolute",
-        },
         "&:hover": {
-          boxShadow: `0 24px 72px ${alpha("#000000", 0.58)}, 0 0 36px ${alpha("#8B5CF6", 0.22)}`,
+          boxShadow: (theme) => theme.shadows[8],
           transform: "translateY(-2px)",
         },
       }}
@@ -819,10 +816,14 @@ function PosterThumb({ item }: { item: CompareItem }) {
 }
 
 function posterFallback(mediaType: MediaType) {
-  return `linear-gradient(145deg, ${alpha("#8B5CF6", 0.22)}, ${alpha(
-    "#22D3EE",
-    mediaType === "VIDEO_GAME" ? 0.18 : 0.1,
-  )} 46%, ${alpha("#050812", 0.98)})`;
+  const accent =
+    mediaType === "VIDEO_GAME"
+      ? "#D97706"
+      : mediaType === "TV_SHOW"
+        ? "#0EA5A4"
+        : "#6366F1";
+
+  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
 }
 
 function stringParam(value: string | string[] | undefined) {

@@ -6,9 +6,15 @@ import {
   type ReleaseCandidate,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { mediaMutationDataWithUniqueTitle, upsertTaxonomy } from "@/lib/media";
+import {
+  mediaMutationDataWithUniqueTitle,
+  upsertTaxonomy,
+  userMediaMutationData,
+} from "@/lib/media";
 import { normalizeComparableTitle } from "@/lib/text-normalization";
 import { splitGenresAndTags, normalizeTagName } from "@/lib/taxonomy";
+import { requireUserId } from "@/lib/user";
+import { upsertUserMedia } from "@/lib/db/user-media";
 
 export type CandidateReason = {
   label: string;
@@ -214,6 +220,7 @@ export async function importReleaseCandidate(id: string) {
     genres,
     tags,
   };
+  const userId = await requireUserId();
   const media = await prisma.$transaction(async (tx) => {
     const mediaData = await mediaMutationDataWithUniqueTitle(
       tx,
@@ -221,12 +228,19 @@ export async function importReleaseCandidate(id: string) {
       existing?.id,
     );
 
-    return existing
-      ? tx.mediaItem.update({
+    const upserted = existing
+      ? await tx.mediaItem.update({
           where: { id: existing.id },
           data: mediaData,
         })
-      : tx.mediaItem.create({ data: mediaData });
+      : await tx.mediaItem.create({ data: mediaData });
+    await upsertUserMedia(
+      userId,
+      upserted.id,
+      userMediaMutationData(mediaInput),
+      tx,
+    );
+    return upserted;
   });
 
   await upsertTaxonomy(media.id, genres, tags);
@@ -313,11 +327,13 @@ async function findExistingMediaMatch(
 }
 
 async function getLocalAffinity(mediaType: MediaType) {
-  const completed = await prisma.mediaItem.findMany({
+  const userId = await requireUserId();
+  const completed = await prisma.userMedia.findMany({
     where: {
-      mediaType,
+      userId,
       isArchived: false,
       status: MediaStatus.COMPLETED,
+      media: { mediaType },
       OR: [
         { computedPersonalScore: { gte: 8 } },
         { personalRating: { gte: 8 } },
@@ -325,28 +341,35 @@ async function getLocalAffinity(mediaType: MediaType) {
       ],
     },
     include: {
-      genres: { include: { genre: true } },
-      tags: { where: { tag: { status: "APPROVED" } }, include: { tag: true } },
+      media: {
+        include: {
+          genres: { include: { genre: true } },
+          tags: {
+            where: { tag: { status: "APPROVED" } },
+            include: { tag: true },
+          },
+        },
+      },
     },
   });
 
   const genres = new Map<string, number>();
   const tags = new Map<string, number>();
 
-  for (const item of completed) {
+  for (const row of completed) {
     const boost = Math.max(
       3,
       Math.min(
         8,
-        ((item.computedPersonalScore ?? item.pairwiseScore / 100) - 5) * 2,
+        ((row.computedPersonalScore ?? row.pairwiseScore / 100) - 5) * 2,
       ),
     );
-    for (const entry of item.genres)
+    for (const entry of row.media.genres)
       genres.set(
         entry.genre.name.toLowerCase(),
         (genres.get(entry.genre.name.toLowerCase()) ?? 0) + boost,
       );
-    for (const entry of item.tags)
+    for (const entry of row.media.tags)
       tags.set(
         entry.tag.name.toLowerCase(),
         (tags.get(entry.tag.name.toLowerCase()) ?? 0) + boost * 0.3,

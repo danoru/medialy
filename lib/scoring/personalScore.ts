@@ -1,9 +1,9 @@
+import { PERSONAL_SCORE } from "@/lib/scoring/config";
 import {
   calculatePairwiseConfidence,
   clamp,
   normalizedPairwiseRating,
 } from "@/lib/scoring/pairwise";
-import { PERSONAL_SCORE_RELATIONAL_WEIGHT } from "@/lib/scoring/weights";
 
 export function calculatePersonalScore({
   explicitRating,
@@ -20,19 +20,23 @@ export function calculatePersonalScore({
   if (explicitRating == null) {
     return {
       score: roundScore(pairwiseRating),
-      confidence: roundConfidence(pairwiseConfidence * 0.6),
+      confidence: roundConfidence(
+        pairwiseConfidence * PERSONAL_SCORE.pairwiseOnlyConfidenceDamping,
+      ),
     };
   }
 
   const relationalWeight =
-    PERSONAL_SCORE_RELATIONAL_WEIGHT * pairwiseConfidence;
+    PERSONAL_SCORE.relationalWeight * pairwiseConfidence;
   const explicitWeight = 1 - relationalWeight;
   const score =
     explicitRating * explicitWeight + pairwiseRating * relationalWeight;
 
   return {
     score: roundScore(clamp(score, 0, 10)),
-    confidence: roundConfidence(Math.max(0.55, pairwiseConfidence)),
+    confidence: roundConfidence(
+      Math.max(PERSONAL_SCORE.explicitRatingConfidenceFloor, pairwiseConfidence),
+    ),
   };
 }
 

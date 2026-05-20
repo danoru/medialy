@@ -9,13 +9,14 @@ import { toMediaItemDTO } from "@/lib/media";
 import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
 import { getRecommendations } from "@/lib/recommendations";
 import type { MediaItemDTO } from "@/lib/types";
+import { getCurrentUser } from "@/lib/user";
 import { startOfToday } from "@/lib/upcoming";
+import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 
 export function getDashboardUpcomingWhere(
   today = startOfToday(),
 ): Prisma.MediaItemWhereInput {
   return {
-    isArchived: false,
     mediaType: visibleMediaTypeFilter(),
     releaseDate: { gte: today },
   };
@@ -89,6 +90,33 @@ export function getDashboardTonightPicksByMediaType(
 
 export async function getDashboardData() {
   const today = startOfToday();
+  const user = await getCurrentUser();
+  // Anonymous viewers see a sensible default dashboard built from public
+  // signals. We use a sentinel id that never matches any UserMedia row so
+  // the per-user joins all collapse to defaults.
+  const userId = user?.id ?? "__anonymous__";
+
+  // Item is "active" for this user if either there's no UserMedia row yet
+  // (defaults to UNTRACKED + not archived) or the row exists and isn't archived.
+  const activeForUser: Prisma.MediaItemWhereInput = {
+    OR: [
+      { userMedia: { none: { userId } } },
+      { userMedia: { some: { userId, isArchived: false } } },
+    ],
+  };
+  const userMediaStatus = (
+    statuses: Prisma.EnumMediaStatusFilter["in"],
+  ) => ({
+    userMedia: { some: { userId, isArchived: false, status: { in: statuses } } },
+  });
+  const withUserAndTaxonomy = {
+    genres: { include: { genre: true } },
+    tags: { include: { tag: true } },
+    ...userMediaInclude(userId),
+  } as const;
+  const mergeAll = <T extends { userMedia: Parameters<typeof mergeUserMedia>[0]["userMedia"] }>(
+    rows: T[],
+  ) => rows.map(mergeUserMedia);
 
   const [
     totalItems,
@@ -109,91 +137,63 @@ export async function getDashboardData() {
     overallTopItems,
   ] = await Promise.all([
     prisma.mediaItem.count({
-      where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
+      where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
     }),
     prisma.mediaItem.count({
       where: {
-        isArchived: false,
         mediaType: visibleMediaTypeFilter(),
-        status: { in: ["WATCHLIST", "BACKLOG"] },
+        ...userMediaStatus(["WATCHLIST", "BACKLOG"]),
       },
     }),
     prisma.pairwiseComparison.count({
-      where: { winner: { mediaType: visibleMediaTypeFilter() } },
+      where: { userId, winner: { mediaType: visibleMediaTypeFilter() } },
     }),
     prisma.mediaItem.findMany({
       where: {
-        isArchived: false,
         mediaType: visibleMediaTypeFilter(),
-        status: "COMPLETED",
+        ...userMediaStatus(["COMPLETED"]),
       },
-      include: {
-        genres: { include: { genre: true } },
-        tags: { include: { tag: true } },
-      },
-      orderBy: [{ computedPersonalScore: "desc" }, { pairwiseScore: "desc" }],
-      take: 10,
+      include: withUserAndTaxonomy,
+      take: 50,
     }),
     getRecommendations(),
     getDataHealthReport(),
     getGenreInsightsByMediaType(),
     prisma.mediaItem.groupBy({
       by: ["mediaType"],
-      where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
+      where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
       _count: { _all: true },
       orderBy: { mediaType: "asc" },
     }),
     prisma.mediaItem.findMany({
       where: getDashboardUpcomingWhere(today),
-      include: {
-        genres: { include: { genre: true } },
-        tags: { include: { tag: true } },
-      },
+      include: withUserAndTaxonomy,
       orderBy: dashboardUpcomingOrderBy,
       take: 5,
     }),
     prisma.mediaItem.findMany({
       where: {
-        isArchived: false,
         mediaType: visibleMediaTypeFilter(),
-        status: { in: ["WATCHLIST", "BACKLOG"] },
+        ...userMediaStatus(["WATCHLIST", "BACKLOG"]),
       },
-      include: {
-        genres: { include: { genre: true } },
-        tags: { include: { tag: true } },
-      },
-      orderBy: [{ computedPersonalScore: "desc" }, { pairwiseScore: "desc" }],
-      take: 5,
+      include: withUserAndTaxonomy,
+      take: 50,
     }),
     prisma.mediaItem.findMany({
-      where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
-      include: {
-        genres: { include: { genre: true } },
-        tags: { include: { tag: true } },
-      },
+      where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
+      include: withUserAndTaxonomy,
       orderBy: [{ updatedAt: "desc" }],
       take: 5,
     }),
     getFriendCompatibility(),
-    prisma.friend.count(),
+    prisma.friend.count({ where: { userId } }),
     Promise.all(
       VISIBLE_MEDIA_TYPES.map(async (mediaType) => ({
         mediaType,
         items: await prisma.mediaItem.findMany({
-          where: {
-            isArchived: false,
-            mediaType,
-            status: "COMPLETED",
-          },
-          include: {
-            genres: { include: { genre: true } },
-            tags: { include: { tag: true } },
-          },
-          orderBy: [
-            { computedPersonalScore: "desc" },
-            { pairwiseScore: "desc" },
-          ],
-          take: 10,
+          where: { mediaType, ...userMediaStatus(["COMPLETED"]) },
+          include: withUserAndTaxonomy,
+          take: 50,
         }),
       })),
     ),
@@ -201,35 +201,60 @@ export async function getDashboardData() {
       VISIBLE_MEDIA_TYPES.map(async (mediaType) => ({
         mediaType,
         items: await prisma.mediaItem.findMany({
-          where: {
-            ...getDashboardUpcomingWhere(today),
-            mediaType,
-          },
-          include: {
-            genres: { include: { genre: true } },
-            tags: { include: { tag: true } },
-          },
+          where: { ...getDashboardUpcomingWhere(today), mediaType },
+          include: withUserAndTaxonomy,
           orderBy: dashboardUpcomingOrderBy,
           take: 5,
         }),
       })),
     ),
     prisma.mediaItem.findMany({
-      where: { isArchived: false, mediaType: visibleMediaTypeFilter() },
-      include: {
-        genres: { include: { genre: true } },
-        tags: { include: { tag: true } },
-      },
+      where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
+      include: withUserAndTaxonomy,
     }),
   ]);
 
+  // Sort the rows we couldn't sort in SQL (because the score columns live on
+  // the joined UserMedia row) by their merged values.
+  const sortByPersonalThenPairwise = <
+    T extends { computedPersonalScore: number | null; pairwiseScore: number },
+  >(
+    rows: T[],
+  ) =>
+    [...rows].sort(
+      (a, b) =>
+        (b.computedPersonalScore ?? -Infinity) -
+          (a.computedPersonalScore ?? -Infinity) ||
+        b.pairwiseScore - a.pairwiseScore,
+    );
+
+  const mergedTopItems = sortByPersonalThenPairwise(mergeAll(topItems)).slice(
+    0,
+    10,
+  );
+  const mergedWatchlistItems = sortByPersonalThenPairwise(
+    mergeAll(watchlistItems),
+  ).slice(0, 5);
+  const mergedRecentItems = mergeAll(recentItems);
+  const mergedUpcomingItems = mergeAll(upcomingItems);
+  const mergedOverallTopItems = mergeAll(overallTopItems);
+  const mergedPersonalTopByType = personalTopItemsByMediaType.map((entry) => ({
+    mediaType: entry.mediaType,
+    items: sortByPersonalThenPairwise(mergeAll(entry.items)).slice(0, 10),
+  }));
+  const mergedUpcomingByType = upcomingItemsByMediaType.map((entry) => ({
+    mediaType: entry.mediaType,
+    items: mergeAll(entry.items),
+  }));
+
   const topItemsByMediaType = getDashboardOverallTopItemsByMediaType(
-    overallTopItems.map(toMediaItemDTO),
+    mergedOverallTopItems.map(toMediaItemDTO),
   );
   const tonightPicksByMediaType =
     getDashboardTonightPicksByMediaType(recommendations);
 
   return {
+    userName: user?.displayName ?? null,
     totalItems,
     watchlistCount,
     comparisonCount,
@@ -238,9 +263,9 @@ export async function getDashboardData() {
       healthReport.missingDates.length +
       healthReport.missingPosters.length,
     duplicateCount: healthReport.duplicateCandidates.length,
-    topItems: topItems.map(toMediaItemDTO),
+    topItems: mergedTopItems.map(toMediaItemDTO),
     topItemsByMediaType,
-    personalTopItemsByMediaType: personalTopItemsByMediaType.map((entry) => ({
+    personalTopItemsByMediaType: mergedPersonalTopByType.map((entry) => ({
       mediaType: entry.mediaType,
       items: entry.items.map(toMediaItemDTO),
     })),
@@ -251,13 +276,13 @@ export async function getDashboardData() {
       mediaType: entry.mediaType,
       count: entry._count._all,
     })),
-    upcomingItems: upcomingItems.map(toMediaItemDTO),
-    upcomingItemsByMediaType: upcomingItemsByMediaType.map((entry) => ({
+    upcomingItems: mergedUpcomingItems.map(toMediaItemDTO),
+    upcomingItemsByMediaType: mergedUpcomingByType.map((entry) => ({
       mediaType: entry.mediaType,
       items: entry.items.map(toMediaItemDTO),
     })),
-    watchlistItems: watchlistItems.map(toMediaItemDTO),
-    recentItems: recentItems.map(toMediaItemDTO),
+    watchlistItems: mergedWatchlistItems.map(toMediaItemDTO),
+    recentItems: mergedRecentItems.map(toMediaItemDTO),
     friendCompatibility: friendCompatibility.slice(0, 5),
     friendCount,
     health: {

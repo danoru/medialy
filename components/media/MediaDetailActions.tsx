@@ -9,10 +9,10 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { MediaStatus } from "@prisma/client";
+import { MediaStatus, type MediaType } from "@prisma/client";
 import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { formatStatus } from "@/lib/format";
+import { availableStatuses, statusLabel } from "@/lib/status-labels";
 
 type FormAction = (formData: FormData) => void | Promise<void>;
 type ToggleAction = () => void | Promise<void>;
@@ -20,11 +20,13 @@ type ToggleAction = () => void | Promise<void>;
 export function MediaDetailActions({
   favoriteAction,
   isFavorite,
+  mediaType,
   status,
   statusAction,
 }: {
   favoriteAction: ToggleAction;
   isFavorite: boolean;
+  mediaType: MediaType;
   status: MediaStatus;
   statusAction: FormAction;
 }) {
@@ -64,9 +66,9 @@ export function MediaDetailActions({
             sx={selectSx}
             value={selectedStatus}
           >
-            {Object.values(MediaStatus).map((value) => (
+            {availableStatuses(mediaType).map((value) => (
               <MenuItem key={value} value={value}>
-                {formatStatus(value)}
+                {statusLabel(value, mediaType)}
               </MenuItem>
             ))}
           </TextField>

@@ -8,28 +8,24 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+/// The shared, cross-user record for a piece of media (movie, game, etc.).
+/// All per-user state — status, personal rating, pairwise score, favorite,
+/// archived — lives on `UserMedia`. The remaining `computedConsensusScore`
+/// is intentionally cross-user: it aggregates everyone's signal.
 model MediaItem {
-  id                      String      @id @default(cuid())
-  title                   String
-  originalTitle           String?
-  mediaType               MediaType
-  status                  MediaStatus @default(UNTRACKED)
-  description             String?
-  releaseDate             DateTime?
-  posterUrl               String?
-  externalUrl             String?
-  metadataJson            String?
-  personalRating          Float?
-  computedPersonalScore   Float?
-  personalScoreConfidence Float       @default(0)
-  computedConsensusScore  Float?
-  consensusConfidence     Float       @default(0)
-  pairwiseScore           Float       @default(1000)
-  comparisonCount         Int         @default(0)
-  isFavorite              Boolean     @default(false)
-  isArchived              Boolean     @default(false)
-  createdAt               DateTime    @default(now())
-  updatedAt               DateTime    @updatedAt
+  id                     String    @id @default(cuid())
+  title                  String
+  originalTitle          String?
+  mediaType              MediaType
+  description            String?
+  releaseDate            DateTime?
+  posterUrl              String?
+  externalUrl            String?
+  metadataJson           String?
+  computedConsensusScore Float?
+  consensusConfidence    Float     @default(0)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   genres          MediaGenre[]
   tags            MediaTag[]
@@ -40,13 +36,40 @@ model MediaItem {
   friendRatings   FriendRating[]
   notes           Note[]
   externalRatings ExternalRating[]
+  userMedia       UserMedia[]
 
   @@unique([title, mediaType])
   @@index([mediaType])
-  @@index([status])
-  @@index([pairwiseScore])
-  @@index([computedPersonalScore])
   @@index([computedConsensusScore])
+}
+
+/// Per-user state for a `MediaItem`. One row per `(userId, mediaId)` — created
+/// lazily the first time a user interacts with the item (rate / status / etc.).
+/// Items the user has never touched simply have no row here.
+model UserMedia {
+  id                      String      @id @default(cuid())
+  userId                  String
+  mediaId                 String
+  status                  MediaStatus @default(UNTRACKED)
+  personalRating          Float?
+  computedPersonalScore   Float?
+  personalScoreConfidence Float       @default(0)
+  pairwiseScore           Float       @default(1000)
+  comparisonCount         Int         @default(0)
+  isFavorite              Boolean     @default(false)
+  isArchived              Boolean     @default(false)
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  media MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, mediaId])
+  @@index([userId])
+  @@index([mediaId])
+  @@index([userId, status])
+  @@index([userId, pairwiseScore])
+  @@index([userId, computedPersonalScore])
 }
 
 model ExternalRating {
@@ -178,30 +201,44 @@ model MediaCredit {
 }
 
 model PairwiseComparison {
-  id        String             @id @default(cuid())
-  winnerId  String
-  loserId   String
-  winner    MediaItem          @relation("Winner", fields: [winnerId], references: [id])
-  loser     MediaItem          @relation("Loser", fields: [loserId], references: [id])
-  context   ComparisonContext?
-  weight    Float              @default(1)
-  notes     String?
-  createdAt DateTime           @default(now())
+  id                    String             @id @default(cuid())
+  userId                String
+  winnerId              String
+  loserId               String
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  winner                MediaItem          @relation("Winner", fields: [winnerId], references: [id])
+  loser                 MediaItem          @relation("Loser", fields: [loserId], references: [id])
+  context               ComparisonContext?
+  weight                Float              @default(1)
+  notes                 String?
+  winnerScoreBefore     Float?
+  winnerScoreAfter      Float?
+  loserScoreBefore      Float?
+  loserScoreAfter       Float?
+  winnerDelta           Float?
+  loserDelta            Float?
+  expectedWinnerWinProb Float?
+  createdAt             DateTime           @default(now())
 
+  @@index([userId])
   @@index([winnerId])
   @@index([loserId])
+  @@index([createdAt])
 }
 
 model CustomList {
   id          String     @id @default(cuid())
+  userId      String
   name        String
   kind        ListKind
   description String?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   items       ListItem[]
 
-  @@unique([name])
+  @@unique([userId, name])
+  @@index([userId])
 }
 
 model ListItem {
@@ -217,36 +254,116 @@ model ListItem {
   @@unique([listId, mediaId])
 }
 
+/// The owning account. Auth is handled by Auth.js (NextAuth v5) with the Prisma
+/// adapter: `email`, `emailVerified`, `name`, and `image` follow the adapter's
+/// expected shape, while `displayName` and `avatarColor` are Medialy-specific
+/// presentation. Use `getCurrentUser()` from `lib/user.ts` as the single source
+/// of truth for "who is acting".
+model User {
+  id            String    @id @default(cuid())
+  displayName   String
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  avatarColor   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  friends       Friend[]
+  friendRatings FriendRating[]
+  userMedia     UserMedia[]
+  comparisons   PairwiseComparison[]
+  notes         Note[]
+  customLists   CustomList[]
+}
+
+/// Auth.js Prisma adapter — third-party identity (Google OAuth) linked to a User.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+/// Auth.js Prisma adapter — database-backed session.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Auth.js Prisma adapter — email verification tokens (unused with Google-only,
+/// but the adapter expects this table to exist).
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 model Friend {
   id        String         @id @default(cuid())
+  userId    String
   name      String
   notes     String?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   ratings   FriendRating[]
+
+  @@index([userId])
 }
 
 model FriendRating {
   id        String       @id @default(cuid())
+  userId    String
   friendId  String
   mediaId   String
   rating    Float?
   status    MediaStatus?
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   friend    Friend       @relation(fields: [friendId], references: [id], onDelete: Cascade)
   media     MediaItem    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
   @@unique([friendId, mediaId])
+  @@index([userId])
 }
 
 model Note {
   id        String    @id @default(cuid())
+  userId    String
   mediaId   String
   body      String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   media     MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([mediaId])
 }
 
 model ImportJob {
@@ -307,6 +424,19 @@ enum ExternalReleaseSource {
 
 enum ExternalRatingSource {
   METACRITIC
+  ROTTEN_TOMATOES_CRITICS
+  ROTTEN_TOMATOES_AUDIENCE
+  IMDB
+  OPENCRITIC
+  LETTERBOXD
+  TMDB
+  GOODREADS
+  STORYGRAPH
+  BGG
+  STEAM
+  ANILIST
+  MYANIMELIST
+  RAWG_USER
 }
 
 enum ReleaseCandidateStatus {

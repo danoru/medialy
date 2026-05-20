@@ -7,6 +7,7 @@ import {
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
   upsertMediaRelations,
+  userMediaMutationData,
 } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
@@ -15,6 +16,8 @@ import {
   mediaFormInputFromFormData,
   parseOptionalRating,
 } from "@/lib/validation";
+import { upsertUserMedia } from "@/lib/db/user-media";
+import { requireUserId } from "@/lib/user";
 
 export type MediaFormActionState = {
   message: string;
@@ -33,19 +36,24 @@ export async function createMediaItem(
   formData: FormData,
 ) {
   try {
+    const userId = await requireUserId();
     const input = mediaFormInputFromFormData(formData);
     const media = await prisma.$transaction(async (tx) => {
       const existing = await findExistingMediaItem(tx, input);
       if (existing) return null;
 
       const data = await mediaMutationDataWithUniqueTitle(tx, input);
-      return tx.mediaItem.create({ data });
+      const created = await tx.mediaItem.create({ data });
+      await tx.userMedia.create({
+        data: { userId, mediaId: created.id, ...userMediaMutationData(input) },
+      });
+      return created;
     });
 
     if (!media) return duplicateMediaState();
 
     await upsertMediaRelations(media.id, input);
-    await recomputeMediaScores(media.id);
+    await recomputeMediaScores(media.id, userId);
     revalidatePath("/media");
     await queueToast(`${media.title} added.`);
     redirect(`/media/${media.id}`);
@@ -61,6 +69,7 @@ export async function updateMediaItem(
   formData: FormData,
 ) {
   try {
+    const userId = await requireUserId();
     const input = mediaFormInputFromFormData(formData);
     const updated = await prisma.$transaction(async (tx) => {
       const existing = await findExistingMediaItem(tx, input, id);
@@ -71,13 +80,14 @@ export async function updateMediaItem(
         where: { id },
         data,
       });
+      await upsertUserMedia(userId, id, userMediaMutationData(input), tx);
       return true;
     });
 
     if (!updated) return duplicateMediaState();
 
     await upsertMediaRelations(id, input);
-    await recomputeMediaScores(id);
+    await recomputeMediaScores(id, userId);
     revalidatePath("/media");
     revalidatePath(`/media/${id}`);
     await queueToast("Media item saved.");
@@ -95,6 +105,7 @@ export async function updateMediaRatings(formData: FormData) {
     .map((value) => String(value))
     .filter(Boolean);
 
+  const userId = await requireUserId();
   let updatedCount = 0;
 
   for (const id of ids) {
@@ -103,11 +114,8 @@ export async function updateMediaRatings(formData: FormData) {
 
     if (personalRating === currentRating) continue;
 
-    await prisma.mediaItem.update({
-      where: { id },
-      data: { personalRating },
-    });
-    await recomputeMediaScores(id);
+    await upsertUserMedia(userId, id, { personalRating });
+    await recomputeMediaScores(id, userId);
     updatedCount += 1;
   }
 
@@ -126,11 +134,9 @@ export async function updateMediaRatings(formData: FormData) {
 
 export async function updateMediaRating(id: string, formData: FormData) {
   const personalRating = parseOptionalRating(formData.get("personalRating"));
-  await prisma.mediaItem.update({
-    where: { id },
-    data: { personalRating },
-  });
-  await recomputeMediaScores(id);
+  const userId = await requireUserId();
+  await upsertUserMedia(userId, id, { personalRating });
+  await recomputeMediaScores(id, userId);
   revalidatePath("/");
   revalidatePath("/dashboard");
   revalidatePath("/media");
@@ -149,10 +155,8 @@ export async function updateMediaStatus(id: string, formData: FormData) {
     return;
   }
 
-  await prisma.mediaItem.update({
-    where: { id },
-    data: { status },
-  });
+  const userId = await requireUserId();
+  await upsertUserMedia(userId, id, { status });
   revalidatePath("/media");
   revalidatePath(`/media/${id}`);
   revalidatePath("/recommendations");
@@ -161,17 +165,13 @@ export async function updateMediaStatus(id: string, formData: FormData) {
 }
 
 export async function toggleFavoriteMediaItem(id: string) {
-  const item = await prisma.mediaItem.findUnique({
-    where: { id },
+  const userId = await requireUserId();
+  const item = await prisma.userMedia.findUnique({
+    where: { userId_mediaId: { userId, mediaId: id } },
     select: { isFavorite: true },
   });
-  if (!item) return;
-
-  const isFavorite = !item.isFavorite;
-  await prisma.mediaItem.update({
-    where: { id },
-    data: { isFavorite },
-  });
+  const isFavorite = !(item?.isFavorite ?? false);
+  await upsertUserMedia(userId, id, { isFavorite });
   revalidatePath("/media");
   revalidatePath(`/media/${id}`);
   revalidatePath("/recommendations");
@@ -179,14 +179,16 @@ export async function toggleFavoriteMediaItem(id: string) {
 }
 
 export async function archiveMediaItem(id: string) {
-  await prisma.mediaItem.update({ where: { id }, data: { isArchived: true } });
+  const userId = await requireUserId();
+  await upsertUserMedia(userId, id, { isArchived: true });
   revalidatePath("/media");
   await queueToast("Media item archived.");
   redirect("/media");
 }
 
 export async function unarchiveMediaItem(id: string) {
-  await prisma.mediaItem.update({ where: { id }, data: { isArchived: false } });
+  const userId = await requireUserId();
+  await upsertUserMedia(userId, id, { isArchived: false });
   revalidatePath("/media");
   await queueToast("Media item unarchived.");
   redirect(`/media/${id}`);
@@ -200,9 +202,10 @@ export async function deleteMediaItem(id: string) {
 }
 
 export async function addNote(id: string, formData: FormData) {
+  const userId = await requireUserId();
   const body = String(formData.get("body") ?? "").trim();
   if (body) {
-    await prisma.note.create({ data: { mediaId: id, body } });
+    await prisma.note.create({ data: { userId, mediaId: id, body } });
   }
   revalidatePath(`/media/${id}`);
 }
