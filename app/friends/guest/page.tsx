@@ -108,13 +108,11 @@ export default async function GuestRecommendPage({
               <Button type="submit" variant="contained">
                 Get recommendation
               </Button>
-              <Button
-                component={Link}
-                href="/friends/guest"
-                variant="text"
-              >
-                Reset
-              </Button>
+              <Link href="/friends/guest" style={{ textDecoration: "none" }}>
+                <Button component="span" variant="text">
+                  Reset
+                </Button>
+              </Link>
             </Stack>
           </Box>
         </CinematicCard>
@@ -160,13 +158,14 @@ export default async function GuestRecommendPage({
                       spacing={1}
                       sx={{ alignItems: "center", justifyContent: "space-between", mt: 1 }}
                     >
-                      <Typography
-                        component={Link}
+                      <Link
                         href={`/media/${rec.id}`}
-                        sx={{ color: "inherit", fontWeight: 600, textDecoration: "none" }}
+                        style={{ color: "inherit", textDecoration: "none" }}
                       >
-                        {rec.title}
-                      </Typography>
+                        <Typography component="span" sx={{ fontWeight: 600 }}>
+                          {rec.title}
+                        </Typography>
+                      </Link>
                       <Chip
                         color={rec.score >= 70 ? "success" : "default"}
                         label={`${rec.score}`}

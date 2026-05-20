@@ -30,13 +30,14 @@ export function DiscoverUserCard({
             image={user.image}
           />
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography
-              component={Link}
+            <Link
               href={`/u/${user.id}`}
-              sx={{ color: "inherit", fontWeight: 600, textDecoration: "none" }}
+              style={{ color: "inherit", textDecoration: "none" }}
             >
-              {user.displayName}
-            </Typography>
+              <Typography component="span" sx={{ fontWeight: 600 }}>
+                {user.displayName}
+              </Typography>
+            </Link>
             <Chip
               label="View profile"
               size="small"

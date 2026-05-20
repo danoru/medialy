@@ -45,18 +45,14 @@ export function FollowCard({
           />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-              <Typography
-                component={Link}
+              <Link
                 href={`/u/${user.id}`}
-                sx={{
-                  color: "inherit",
-                  fontWeight: 700,
-                  textDecoration: "none",
-                }}
-                variant="h6"
+                style={{ color: "inherit", textDecoration: "none" }}
               >
-                {user.displayName}
-              </Typography>
+                <Typography component="span" sx={{ fontWeight: 700 }} variant="h6">
+                  {user.displayName}
+                </Typography>
+              </Link>
               <Chip
                 color={
                   overlap.compatibilityScore >= 70
@@ -114,20 +110,24 @@ export function FollowCard({
             </Typography>
             <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
               {overlap.watchNextTogether.map((entry) => (
-                <Button
-                  component={Link}
+                <Link
                   href={`/media/${entry.mediaId}`}
                   key={entry.mediaId}
-                  size="small"
-                  sx={{ textTransform: "none" }}
-                  variant="outlined"
+                  style={{ textDecoration: "none" }}
                 >
-                  {entry.title}
-                  {entry.reason === "they-love-it-you-havent-seen" &&
-                  entry.theirRating != null
-                    ? ` · they rated ${entry.theirRating}/10`
-                    : " · shared watchlist"}
-                </Button>
+                  <Button
+                    component="span"
+                    size="small"
+                    sx={{ textTransform: "none" }}
+                    variant="outlined"
+                  >
+                    {entry.title}
+                    {entry.reason === "they-love-it-you-havent-seen" &&
+                    entry.theirRating != null
+                      ? ` · they rated ${entry.theirRating}/10`
+                      : " · shared watchlist"}
+                  </Button>
+                </Link>
               ))}
             </Stack>
           </Box>

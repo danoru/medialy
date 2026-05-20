@@ -59,13 +59,11 @@ export default async function FriendsPage() {
             See what people you follow are watching, playing, and rating.
           </Typography>
         </Box>
-        <Button
-          component={Link}
-          href="/friends/guest"
-          variant="outlined"
-        >
-          Recommend something to a guest →
-        </Button>
+        {/* <Link href="/friends/guest" style={{ textDecoration: "none" }}>
+          <Button component="span" variant="outlined">
+            Recommend something to a guest →
+          </Button>
+        </Link> */}
       </Stack>
 
       <ActivityFeed items={activity} />
