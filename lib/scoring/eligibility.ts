@@ -21,7 +21,8 @@ export type EligibilityReason =
   | "dropped"
   | "archived"
   | "not_yet_released"
-  | "medium_hidden";
+  | "medium_hidden"
+  | "already_rated";
 
 export type EligibilityResult =
   | { eligible: true }
@@ -32,19 +33,22 @@ export type EligibilityInput = {
   isArchived: boolean;
   releaseDate?: Date | string | null;
   mediaType: string;
+  personalRating?: number | null;
 };
 
 export type EligibilityOptions = {
   /**
    * Per-user preferences. Default behavior matches today's recommendation
    * pool: exclude finished/dropped items, exclude future releases, exclude
-   * archived. Future per-user models override these.
+   * archived, exclude items the user has already rated. Future per-user
+   * models override these.
    */
   includeCompleted?: boolean;
   includeInProgress?: boolean;
   includeDropped?: boolean;
   includeUpcoming?: boolean;
   includeArchived?: boolean;
+  includeRated?: boolean;
   hiddenMediaTypes?: string[];
   now?: Date;
 };
@@ -84,6 +88,13 @@ export function isEligibleForRecommendation(
   }
   if (item.status === "DROPPED" && !options.includeDropped) {
     return { eligible: false, reason: "dropped" };
+  }
+
+  if (
+    item.personalRating != null &&
+    !options.includeRated
+  ) {
+    return { eligible: false, reason: "already_rated" };
   }
 
   if (item.releaseDate && !options.includeUpcoming) {
@@ -141,6 +152,7 @@ export function recommendationEligibilityWhere(
     ...(excludedStatuses.length > 0
       ? { status: { notIn: excludedStatuses } }
       : {}),
+    ...(options.includeRated ? {} : { personalRating: null }),
   };
 
   const userScopedFilter: Prisma.MediaItemWhereInput = {
@@ -199,5 +211,7 @@ export function eligibilityReasonLabel(reason: EligibilityReason): string {
       return "Not yet released";
     case "medium_hidden":
       return "Medium hidden by your preferences";
+    case "already_rated":
+      return "You've already rated this";
   }
 }

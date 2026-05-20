@@ -6,9 +6,9 @@ import type { MediaStatus, MediaType } from "@prisma/client";
  * `MediaStatus` is the data shape — `UNTRACKED`/`COMPLETED`/`IN_PROGRESS`/…
  * — but the display label depends on what kind of media we're talking about.
  * "Completed" reads as "Watched" for a movie, "Played" for a game, "Read" for
- * a book. Likewise `IN_PROGRESS` and `PAUSED` don't really apply to a movie
- * (a single sitting), so we don't surface them in dropdowns for `MOVIE` /
- * `MUSICAL`.
+ * a book. The set of statuses surfaced in dropdowns is also per-type
+ * (`availableStatuses`): movies skip in-progress/paused/backlog, TV skips
+ * backlog, games keep all seven.
  *
  * Keep this module React/Next-free: it's pure label logic and is imported by
  * both server and client components.
@@ -34,14 +34,8 @@ const IN_PROGRESS_LABELS: LabelMap = {
   MUSIC: "Listening",
 };
 
-const BACKLOG_LABELS: LabelMap = {
-  MOVIE: "To watch",
-  TV_SHOW: "To watch",
-  MUSICAL: "To watch",
-  VIDEO_GAME: "To play",
-  BOARD_GAME: "To play",
-  BOOK: "To read",
-  MUSIC: "To listen",
+const WATCHLIST_LABELS: LabelMap = {
+  VIDEO_GAME: "Playlist",
 };
 
 // Universal fallbacks used when mediaType is unknown / not provided, and as
@@ -70,16 +64,12 @@ export function statusLabel(
       return COMPLETED_LABELS[mediaType] ?? GENERIC_LABELS.COMPLETED;
     case "IN_PROGRESS":
       return IN_PROGRESS_LABELS[mediaType] ?? GENERIC_LABELS.IN_PROGRESS;
-    case "BACKLOG":
-      return BACKLOG_LABELS[mediaType] ?? GENERIC_LABELS.BACKLOG;
+    case "WATCHLIST":
+      return WATCHLIST_LABELS[mediaType] ?? GENERIC_LABELS.WATCHLIST;
     default:
       return GENERIC_LABELS[status];
   }
 }
-
-// Single-sitting media types: `IN_PROGRESS` and `PAUSED` don't make sense in
-// the UI even though the enum still permits them in the database.
-const SINGLE_SITTING_TYPES = new Set<MediaType>(["MOVIE", "MUSICAL"]);
 
 const ALL_STATUSES: MediaStatus[] = [
   "UNTRACKED",
@@ -92,15 +82,34 @@ const ALL_STATUSES: MediaStatus[] = [
 ];
 
 /**
- * Statuses to expose in a dropdown / filter for a given media type. Drops
- * `IN_PROGRESS` and `PAUSED` for media you consume in one go.
+ * Per-type allow-list of statuses surfaced in dropdowns. `BACKLOG` is reserved
+ * for things you typically *own* but haven't started — meaningful for games,
+ * not for streamed/borrowed media. `IN_PROGRESS` / `PAUSED` are dropped from
+ * single-sitting types. Types not yet tuned (books, board games, music,
+ * musicals) fall through to the full list.
  */
+const STATUSES_BY_TYPE: Partial<Record<MediaType, MediaStatus[]>> = {
+  MOVIE: ["UNTRACKED", "WATCHLIST", "COMPLETED", "DROPPED"],
+  TV_SHOW: [
+    "UNTRACKED",
+    "WATCHLIST",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "PAUSED",
+    "DROPPED",
+  ],
+  VIDEO_GAME: [
+    "UNTRACKED",
+    "WATCHLIST",
+    "BACKLOG",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "PAUSED",
+    "DROPPED",
+  ],
+};
+
 export function availableStatuses(mediaType?: MediaType | null): MediaStatus[] {
   if (!mediaType) return ALL_STATUSES;
-  if (SINGLE_SITTING_TYPES.has(mediaType)) {
-    return ALL_STATUSES.filter(
-      (s) => s !== "IN_PROGRESS" && s !== "PAUSED",
-    );
-  }
-  return ALL_STATUSES;
+  return STATUSES_BY_TYPE[mediaType] ?? ALL_STATUSES;
 }

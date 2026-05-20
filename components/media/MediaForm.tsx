@@ -13,7 +13,7 @@ import {
   TextField,
 } from "@mui/material";
 import { useActionState, useMemo, useState } from "react";
-import { MediaStatus, type MediaType, type TagStatus } from "@prisma/client";
+import { type MediaType, type TagStatus } from "@prisma/client";
 import type { MediaItemDTO } from "@/lib/types";
 import {
   CREDIT_ROLES_BY_MEDIA_TYPE,
@@ -22,7 +22,7 @@ import {
   creditsForRole,
 } from "@/lib/credits";
 import { formatMediaType } from "@/lib/format";
-import { statusLabel } from "@/lib/status-labels";
+import { availableStatuses, statusLabel } from "@/lib/status-labels";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import {
   getGenresForMediaType,
@@ -163,7 +163,7 @@ export function MediaForm({
               name="status"
               select
             >
-              {Object.values(MediaStatus).map((status) => (
+              {availableStatuses(item?.mediaType).map((status) => (
                 <MenuItem key={status} value={status}>
                   {statusLabel(status, item?.mediaType)}
                 </MenuItem>

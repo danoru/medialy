@@ -29,6 +29,10 @@ import {
   visibleMediaTypeFilter,
 } from "@/lib/media-types";
 import { updateMediaRatings } from "@/app/media/actions";
+import {
+  BulkStatusReviewModal,
+  type BulkStatusReviewItem,
+} from "@/components/media/BulkStatusReviewModal";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
@@ -153,8 +157,22 @@ export default async function MediaPage({
     page: String(page),
   });
 
+  const reviewItems = await findReviewItems(
+    stringParam(params.reviewStatus) ?? "",
+  );
+  const reviewReturnTo = buildMediaHref(
+    { ...params, reviewStatus: undefined },
+    {},
+  );
+
   return (
     <Stack spacing={3}>
+      {reviewItems.length > 0 ? (
+        <BulkStatusReviewModal
+          items={reviewItems}
+          returnTo={reviewReturnTo}
+        />
+      ) : null}
       <Card variant="outlined">
         <CardContent>
           <Tabs
@@ -357,6 +375,36 @@ const PER_USER_SORTS = new Set([
   "computedPersonalScore",
   "personalRating",
 ]);
+
+async function findReviewItems(
+  raw: string,
+): Promise<BulkStatusReviewItem[]> {
+  if (!raw) return [];
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+  const ids = raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (ids.length === 0) return [];
+
+  const rows = await prisma.userMedia.findMany({
+    where: {
+      userId,
+      mediaId: { in: ids },
+      status: "UNTRACKED",
+    },
+    select: {
+      mediaId: true,
+      media: { select: { title: true, mediaType: true } },
+    },
+  });
+  return rows.map((row) => ({
+    id: row.mediaId,
+    title: row.media.title,
+    mediaType: row.media.mediaType,
+  }));
+}
 
 async function findMediaPageItems({
   direction,

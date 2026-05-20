@@ -64,6 +64,20 @@ describe("eligibility", () => {
     ).toBe(true);
   });
 
+  it("excludes items the user has already rated", () => {
+    const result = isEligibleForRecommendation({ ...base, personalRating: 8 });
+    expect(result).toEqual({ eligible: false, reason: "already_rated" });
+  });
+
+  it("includes rated items when opted in", () => {
+    expect(
+      isEligibleForRecommendation(
+        { ...base, personalRating: 8 },
+        { includeRated: true },
+      ).eligible,
+    ).toBe(true);
+  });
+
   it("respects hidden media types", () => {
     expect(
       isEligibleForRecommendation(base, { hiddenMediaTypes: ["MOVIE"] })

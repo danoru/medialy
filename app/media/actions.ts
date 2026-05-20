@@ -149,6 +149,7 @@ export async function updateMediaRatings(formData: FormData) {
 
   const userId = await requireUserId();
   let updatedCount = 0;
+  const newlyRatedIds: string[] = [];
 
   for (const id of ids) {
     const personalRating = parseOptionalRating(formData.get(`rating:${id}`));
@@ -159,7 +160,25 @@ export async function updateMediaRatings(formData: FormData) {
     await upsertUserMedia(userId, id, { personalRating });
     await recomputeMediaScores(id, userId);
     updatedCount += 1;
+    if (personalRating != null && currentRating == null) {
+      newlyRatedIds.push(id);
+    }
   }
+
+  // Find newly-rated rows that are still UNTRACKED so the page can prompt the
+  // user to set a status. Items where the rating just moved (e.g. 7 → 8) or
+  // got cleared are ignored — this is for the first-rating case only.
+  const untrackedNewlyRated =
+    newlyRatedIds.length > 0
+      ? await prisma.userMedia.findMany({
+          where: {
+            userId,
+            mediaId: { in: newlyRatedIds },
+            status: "UNTRACKED",
+          },
+          select: { mediaId: true },
+        })
+      : [];
 
   revalidatePath("/");
   revalidatePath("/dashboard");
@@ -171,7 +190,45 @@ export async function updateMediaRatings(formData: FormData) {
       ? "No rating changes to save."
       : `Saved ${updatedCount} rating${updatedCount === 1 ? "" : "s"}.`,
   );
-  redirect(returnTo.startsWith("/media") ? returnTo : "/media");
+
+  let destination = returnTo.startsWith("/media") ? returnTo : "/media";
+  if (untrackedNewlyRated.length > 0) {
+    const reviewIds = untrackedNewlyRated.map((row) => row.mediaId).join(",");
+    const separator = destination.includes("?") ? "&" : "?";
+    destination = `${destination}${separator}reviewStatus=${encodeURIComponent(reviewIds)}`;
+  }
+  redirect(destination);
+}
+
+export async function updateMediaStatuses(formData: FormData) {
+  const userId = await requireUserId();
+  const ids = formData
+    .getAll("mediaId")
+    .map((value) => String(value))
+    .filter(Boolean);
+
+  let updatedCount = 0;
+  for (const id of ids) {
+    const value = String(formData.get(`status:${id}`) ?? "");
+    if (!value || value === "UNTRACKED") continue;
+    if (!isMediaStatus(value)) continue;
+    await upsertUserMedia(userId, id, { status: value });
+    updatedCount += 1;
+  }
+
+  revalidatePath("/");
+  revalidatePath("/dashboard");
+  revalidatePath("/media");
+  revalidatePath("/recommendations");
+  revalidatePath("/discover");
+  await queueToast(
+    updatedCount === 0
+      ? "No status changes."
+      : `Updated ${updatedCount} status${updatedCount === 1 ? "" : "es"}.`,
+  );
+
+  const returnTo = String(formData.get("returnTo") ?? "/media");
+  redirect(returnTo.startsWith("/media") ? returnTo.split("?")[0] : "/media");
 }
 
 export async function updateMediaRating(id: string, formData: FormData) {

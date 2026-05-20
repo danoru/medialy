@@ -508,7 +508,10 @@ export function MediaDetailView({
                     <Typography sx={kickerSx}>Your rating</Typography>
                     <MediaRatingControl
                       action={updateMediaRating.bind(null, item.id)}
+                      mediaType={item.mediaType}
                       personalRating={item.personalRating}
+                      status={item.status}
+                      statusAction={updateMediaStatus.bind(null, item.id)}
                     />
 
                     <Divider sx={panelDividerSx} />
