@@ -5,8 +5,10 @@ import { prisma } from "@/lib/prisma";
 import {
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
+  replaceManualExternalRatings,
   upsertMediaRelations,
 } from "@/lib/media";
+import type { ExternalRatingSource } from "@prisma/client";
 import {
   recomputeConsensusScore,
   recomputeMediaScores,
@@ -34,6 +36,11 @@ function snapshotToFormInput(snapshot: EditSuggestionSnapshot): MediaFormInput {
       role: credit.role as NonNullable<MediaFormInput["credits"]>[number]["role"],
       kind: credit.kind as NonNullable<MediaFormInput["credits"]>[number]["kind"],
       names: credit.names,
+    })),
+    externalRatings: snapshot.externalRatings.map((rating) => ({
+      source: rating.source as ExternalRatingSource,
+      score: rating.score,
+      scale: rating.scale,
     })),
   };
 }
@@ -75,6 +82,7 @@ export async function approveMediaEditSuggestion(id: string) {
     }
 
     await upsertMediaRelations(mediaId, input);
+    await replaceManualExternalRatings(mediaId, input);
     await recomputeConsensusScore(mediaId);
   } else {
     // Addition: create the MediaItem; attach UserMedia to the proposing user
@@ -99,6 +107,7 @@ export async function approveMediaEditSuggestion(id: string) {
     }
 
     await upsertMediaRelations(created.id, input);
+    await replaceManualExternalRatings(created.id, input);
     await recomputeMediaScores(created.id, suggestion.userId);
   }
 

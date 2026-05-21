@@ -6,6 +6,7 @@ import {
   type CreditInput,
 } from "@/lib/credits";
 import type { CsvMediaRow, MediaFormInput } from "@/lib/types";
+import { parseManualExternalRatings } from "@/lib/external-ratings";
 import { normalizeSearchText } from "@/lib/text-normalization";
 import {
   MAX_GENRES_PER_ITEM,
@@ -107,6 +108,7 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
     genres: parseCanonicalGenres(formData.getAll("genres"), mediaType),
     tags: parseSelectedTags(formData.get("tags")),
     credits: parseCreditsFromFormData(formData, mediaType),
+    externalRatings: parseManualExternalRatings(formData, mediaType),
   };
 }
 

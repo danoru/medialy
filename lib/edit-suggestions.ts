@@ -1,3 +1,5 @@
+import type { ExternalRatingSource } from "@prisma/client";
+import { manualRatingDef } from "@/lib/external-ratings";
 import type { MediaFormInput } from "@/lib/types";
 import { prisma } from "@/lib/prisma";
 
@@ -20,6 +22,7 @@ export type EditSuggestionSnapshot = {
   genres: string[];
   tags: string[];
   credits: Array<{ role: string; kind: string; names: string[] }>;
+  externalRatings: Array<{ source: string; score: number; scale: number }>;
 };
 
 export function inputToSnapshot(input: MediaFormInput): EditSuggestionSnapshot {
@@ -40,6 +43,13 @@ export function inputToSnapshot(input: MediaFormInput): EditSuggestionSnapshot {
         names: [...credit.names],
       }))
       .sort((a, b) => a.role.localeCompare(b.role)),
+    externalRatings: (input.externalRatings ?? [])
+      .map((rating) => ({
+        source: rating.source,
+        score: rating.score,
+        scale: rating.scale,
+      }))
+      .sort((a, b) => a.source.localeCompare(b.source)),
   };
 }
 
@@ -52,6 +62,10 @@ export async function snapshotMediaItem(
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
       credits: { include: { contributor: true }, orderBy: { order: "asc" } },
+      externalRatings: {
+        select: { source: true, score: true, scale: true },
+        orderBy: { source: "asc" },
+      },
     },
   });
   if (!item) return null;
@@ -83,6 +97,14 @@ export async function snapshotMediaItem(
     credits: Array.from(creditsByRole.values()).sort((a, b) =>
       a.role.localeCompare(b.role),
     ),
+    externalRatings: item.externalRatings
+      .filter((rating) => manualRatingDef(rating.source) != null)
+      .map((rating) => ({
+        source: rating.source,
+        score: rating.score,
+        scale: rating.scale,
+      }))
+      .sort((a, b) => a.source.localeCompare(b.source)),
   };
 }
 
@@ -104,6 +126,7 @@ const FIELD_LABELS: Record<string, string> = {
   genres: "Genres",
   tags: "Tags",
   credits: "Credits",
+  externalRatings: "External scores",
 };
 
 export function diffSnapshots(
@@ -138,6 +161,14 @@ function formatField(key: string, value: unknown): string {
       )
       .join(" · ");
   }
+  if (key === "externalRatings" && Array.isArray(value)) {
+    return value
+      .map(
+        (rating: { source: string; score: number; scale: number }) =>
+          `${manualRatingDef(rating.source as ExternalRatingSource)?.label ?? rating.source}: ${rating.score}/${rating.scale}`,
+      )
+      .join(" · ");
+  }
   if (Array.isArray(value)) {
     return value.join(", ");
   }
@@ -163,5 +194,6 @@ function emptySnapshot(): EditSuggestionSnapshot {
     genres: [],
     tags: [],
     credits: [],
+    externalRatings: [],
   };
 }

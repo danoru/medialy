@@ -2,11 +2,24 @@ import type {
   ComparisonContext,
   ContributorKind,
   CreditRole,
+  ExternalRatingSource,
   ImportSourceType,
   MediaStatus,
   MediaType,
   TagStatus,
 } from "@prisma/client";
+
+export type ExternalRatingDTO = {
+  source: ExternalRatingSource;
+  score: number;
+  scale: number;
+};
+
+export type ExternalRatingInput = {
+  source: ExternalRatingSource;
+  score: number;
+  scale: number;
+};
 
 export type MediaItemDTO = {
   id: string;
@@ -38,6 +51,7 @@ export type MediaItemDTO = {
     name: string;
     order: number;
   }>;
+  externalRatings?: ExternalRatingDTO[];
 };
 
 export type MediaFormInput = {
@@ -58,6 +72,7 @@ export type MediaFormInput = {
     kind: ContributorKind;
     names: string[];
   }>;
+  externalRatings?: ExternalRatingInput[];
 };
 
 export type PairwiseComparisonInput = {

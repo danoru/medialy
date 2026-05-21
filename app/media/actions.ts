@@ -6,6 +6,7 @@ import { MediaStatus, Prisma } from "@prisma/client";
 import {
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
+  replaceManualExternalRatings,
   upsertMediaRelations,
   userMediaMutationData,
 } from "@/lib/media";
@@ -76,6 +77,7 @@ export async function createMediaItem(
     if (!media) return duplicateMediaState();
 
     await upsertMediaRelations(media.id, input);
+    await replaceManualExternalRatings(media.id, input);
     await recomputeMediaScores(media.id, user.id);
     revalidatePath("/media");
     await queueToast(`${media.title} added.`);
@@ -129,6 +131,7 @@ export async function updateMediaItem(
     if (!updated) return duplicateMediaState();
 
     await upsertMediaRelations(id, input);
+    await replaceManualExternalRatings(id, input);
     await recomputeMediaScores(id, user.id);
     revalidatePath("/media");
     revalidatePath(`/media/${id}`);

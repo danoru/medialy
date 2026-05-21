@@ -21,6 +21,10 @@ import {
   creditLabel,
   creditsForRole,
 } from "@/lib/credits";
+import {
+  manualRatingsForMediaType,
+  type ManualExternalRatingDef,
+} from "@/lib/external-ratings";
 import { formatMediaType } from "@/lib/format";
 import { availableStatuses, statusLabel } from "@/lib/status-labels";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
@@ -89,6 +93,17 @@ export function MediaForm({
     () => new Map(tagOptions.map((tag) => [tag.name, tag.status])),
     [tagOptions],
   );
+  const manualRatingDefs = useMemo(
+    () => manualRatingsForMediaType(mediaType),
+    [mediaType],
+  );
+  const initialRatingValues = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const rating of item?.externalRatings ?? []) {
+      map.set(rating.source, String(rating.score));
+    }
+    return map;
+  }, [item?.externalRatings]);
 
   const snackbarOpen =
     actionState.submittedAt > 0 &&
@@ -257,6 +272,21 @@ export function MediaForm({
               value={tags}
             />
           </Grid>
+          {manualRatingDefs.map((def: ManualExternalRatingDef) => (
+            <Grid key={def.source} size={{ xs: 12, md: 6 }}>
+              <TextField
+                defaultValue={initialRatingValues.get(def.source) ?? ""}
+                fullWidth
+                helperText={`Score on a 0–${def.scale} scale. Leave blank to remove.`}
+                label={def.label}
+                name={def.field}
+                slotProps={{
+                  htmlInput: { min: 0, max: def.scale, step: 1 },
+                }}
+                type="number"
+              />
+            </Grid>
+          ))}
           <Grid size={{ xs: 12 }}>
             <TextField
               defaultValue={item?.externalUrl ?? ""}

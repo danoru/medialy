@@ -5,6 +5,7 @@ import type {
   PrismaClient,
 } from "@prisma/client";
 import { replaceMediaCredits, type CreditDTO } from "@/lib/credits";
+import { manualRatingsForMediaType } from "@/lib/external-ratings";
 import { prisma } from "@/lib/prisma";
 import {
   DEFAULT_USER_MEDIA,
@@ -39,6 +40,11 @@ type MediaWithTaxonomy = MediaItem & {
     role: CreditDTO["role"];
     order: number;
     contributor: { name: string; kind: CreditDTO["kind"] };
+  }>;
+  externalRatings?: Array<{
+    source: import("@prisma/client").ExternalRatingSource;
+    score: number;
+    scale: number;
   }>;
 };
 
@@ -75,6 +81,11 @@ export function toMediaItemDTO(
         (first, second) =>
           first.role.localeCompare(second.role) || first.order - second.order,
       ),
+    externalRatings: item.externalRatings?.map((rating) => ({
+      source: rating.source,
+      score: rating.score,
+      scale: rating.scale,
+    })),
   };
 }
 
@@ -82,7 +93,14 @@ export async function getMediaItemDTO(id: string) {
   const userId = await getCurrentUserId();
   const item = await prisma.mediaItem.findUnique({
     where: { id },
-    include: { ...includeTaxonomy, ...userMediaInclude(userId) },
+    include: {
+      ...includeTaxonomy,
+      ...userMediaInclude(userId),
+      externalRatings: {
+        select: { source: true, score: true, scale: true },
+        orderBy: { source: "asc" },
+      },
+    },
   });
 
   return item ? toMediaItemDTO(mergeUserMedia(item)) : null;
@@ -204,6 +222,48 @@ export async function upsertMediaRelations(
 ) {
   await upsertTaxonomy(mediaId, input.genres, input.tags, input.mediaType);
   await replaceMediaCredits(prisma, mediaId, input.credits ?? []);
+}
+
+/**
+ * Replace the manual external ratings (Metacritic, Rotten Tomatoes) for an
+ * item. Any manual source applicable to the item's media type that's absent
+ * from `input.externalRatings` is deleted; present ones are upserted. Other
+ * sources (e.g. IMDB, TMDB) that aren't user-editable are left untouched.
+ */
+export async function replaceManualExternalRatings(
+  mediaId: string,
+  input: Pick<MediaFormInput, "mediaType" | "externalRatings">,
+) {
+  const applicable = manualRatingsForMediaType(input.mediaType);
+  if (applicable.length === 0) return;
+
+  const provided = new Map(
+    (input.externalRatings ?? []).map((rating) => [rating.source, rating]),
+  );
+
+  for (const def of applicable) {
+    const next = provided.get(def.source);
+    if (next) {
+      await prisma.externalRating.upsert({
+        where: { mediaId_source: { mediaId, source: def.source } },
+        create: {
+          mediaId,
+          source: def.source,
+          score: next.score,
+          scale: next.scale,
+        },
+        update: {
+          score: next.score,
+          scale: next.scale,
+          fetchedAt: new Date(),
+        },
+      });
+    } else {
+      await prisma.externalRating.deleteMany({
+        where: { mediaId, source: def.source },
+      });
+    }
+  }
 }
 
 export function mediaMutationData(input: MediaFormInput) {
