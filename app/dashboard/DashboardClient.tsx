@@ -35,7 +35,6 @@ import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import type { MediaItemDTO } from "@/lib/types";
 import { formatUpcomingRelativeLabel } from "@/lib/upcoming";
-import { formatScore } from "@/lib/score-display";
 import { releaseYearLabel } from "@/lib/date-labels";
 import {
   mediaAccent,
@@ -182,6 +181,14 @@ export function DashboardClient({
         ?.genres ?? [],
     [data.genreInsights, genreMediaType],
   );
+
+  const watchlistMatchByMediaId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const rec of data.recommendations) {
+      map.set(rec.media.id, rec.score);
+    }
+    return map;
+  }, [data.recommendations]);
 
   const tonightPicksByType = useMemo(() => {
     const picks = new Map<MediaType, DashboardRecommendation>();
@@ -527,15 +534,22 @@ export function DashboardClient({
             title="Watchlist signals"
           >
             <Stack spacing={1} sx={{ flex: 1, mt: 0.5 }}>
-              {data.watchlistItems.slice(0, 5).map((item) => (
-                <MediaSignalRow
-                  href={`/media/${item.id}`}
-                  item={item}
-                  key={item.id}
-                  score={item.computedPersonalScore ?? item.pairwiseScore / 100}
-                  compact
-                />
-              ))}
+              {data.watchlistItems.slice(0, 5).map((item) => {
+                // Prefer the Medialy Match score (0–100, "how strongly we
+                // predict you'll like this"). Fall back to consensus when an
+                // item is missing from the rec pool (e.g., release date filter).
+                const match = watchlistMatchByMediaId.get(item.id);
+                return (
+                  <MediaSignalRow
+                    href={`/media/${item.id}`}
+                    item={item}
+                    key={item.id}
+                    score={match ?? null}
+                    fallbackConsensus={item.computedConsensusScore}
+                    compact
+                  />
+                );
+              })}
             </Stack>
           </DashboardSection>
         </Box>
@@ -1223,13 +1237,30 @@ function MediaSignalRow({
   href,
   item,
   score,
+  fallbackConsensus,
 }: {
   compact?: boolean;
   href: string;
   item: MediaItemDTO;
-  score: number;
+  /** 0–100 Medialy Match score. `null` when the item isn't in the rec pool. */
+  score: number | null;
+  /** 0–10 critic consensus to show when no match score is available. */
+  fallbackConsensus?: number | null;
 }) {
-  const normalized = Math.min(100, Math.max(0, Math.round(score * 10)));
+  // Two presentations: match score shows "82%" with a bar at 82/100; consensus
+  // fallback shows "8.2" with the bar at 82. Either way the bar uses 0–100.
+  const usingMatch = score != null;
+  const displayValue = usingMatch
+    ? `${Math.round(score)}%`
+    : typeof fallbackConsensus === "number"
+      ? fallbackConsensus.toFixed(1)
+      : "—";
+  const normalized = usingMatch
+    ? Math.min(100, Math.max(0, Math.round(score)))
+    : typeof fallbackConsensus === "number"
+      ? Math.min(100, Math.max(0, Math.round(fallbackConsensus * 10)))
+      : 0;
+  const scoreLabel = usingMatch ? "Match" : "Critics";
 
   return (
     <Link
@@ -1309,10 +1340,10 @@ function MediaSignalRow({
               }}
             >
               <Typography color="text.secondary" sx={{ fontSize: "0.625rem" }}>
-                Score
+                {scoreLabel}
               </Typography>
               <Typography sx={{ fontSize: "0.625rem", fontWeight: 600 }}>
-                {formatScore(score)}
+                {displayValue}
               </Typography>
             </Stack>
             <LinearProgress value={normalized} variant="determinate" />
