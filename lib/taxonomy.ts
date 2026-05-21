@@ -3,7 +3,6 @@ import type { MediaType } from "@prisma/client";
 export const SCREEN_MEDIA_GENRES = [
   "Action",
   "Adventure",
-  "Animation",
   "Comedy",
   "Crime",
   "Documentary",
@@ -77,7 +76,7 @@ type DiscoverSubgenreMap = Partial<
 export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
   MOVIE: {
     Action: ["Disaster", "Martial Arts"],
-    Adventure: [],
+    Adventure: ["Quest", "Urban Adventure"],
     Animation: [
       "Anime",
       "Computer Animation",
@@ -87,6 +86,7 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
     ],
     Comedy: [
       "Absurdist Comedy",
+      "Buddy Comedy",
       "Dark Comedy",
       "Romantic Comedy",
       "Parody",
@@ -97,9 +97,17 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
     ],
     Crime: ["Caper", "Detective", "Gangster", "Police"],
     Documentary: ["Docudrama"],
-    Drama: ["Docudrama", "Historical", "Period Drama", "Tragedy"],
+    Drama: [
+      "Docudrama",
+      "Legal Drama",
+      "Historical Drama",
+      "Period Drama",
+      "Tragedy",
+    ],
     Family: [],
     Fantasy: [
+      "Dark Fantasy",
+      "Fairy Tail",
       "High Fantasy",
       "Superhero",
       "Sword & Sorcery",
@@ -116,7 +124,7 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
     ],
     Musical: ["Jukebox Musical"],
     Mystery: ["Whodunit"],
-    Romance: ["Romantic Comedy"],
+    Romance: ["Romantic Comedy", "Tragic Romance"],
     "Science Fiction": [
       "Alternate History",
       "Cyberpunk",
@@ -132,7 +140,7 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
   },
   TV_SHOW: {
     Action: ["Disaster", "Martial Arts"],
-    Adventure: [],
+    Adventure: ["Quest", "Urban Adventure"],
     Animation: [
       "Anime",
       "Computer Animation",
@@ -142,18 +150,29 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
     ],
     Comedy: [
       "Absurdist Comedy",
+      "Buddy Comedy",
       "Dark Comedy",
       "Romantic Comedy",
       "Parody",
       "Quirky Comedy",
       "Satire",
+      "Situational Comedy",
       "Slapstick",
+      "Workplace Comedy",
     ],
     Crime: ["Caper", "Detective", "Gangster", "Police", "True Crime"],
     Documentary: ["Biography"],
-    Drama: ["Docudrama", "Historical", "Period Drama"],
+    Drama: [
+      "Docudrama",
+      "Legal Drama",
+      "Historical Drama",
+      "Period Drama",
+      "Workplace Drama",
+    ],
     Family: [],
     Fantasy: [
+      "Dark Fantasy",
+      "Fairy Tail",
       "High Fantasy",
       "Superhero",
       "Sword & Sorcery",
@@ -171,7 +190,7 @@ export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
     Musical: ["Jukebox Musical"],
     Mystery: [],
     Reality: ["Reality Competition"],
-    Romance: ["Romantic Comedy"],
+    Romance: ["Romantic Comedy", "Tragic Romance"],
     "Science Fiction": [
       "Alternate History",
       "Cyberpunk",
@@ -236,7 +255,6 @@ const genreAliases = new Map<string, string>([
   ["scifi", "Science Fiction"],
   ["romcom", "Romance"],
   ["rom com", "Romance"],
-  ["animated", "Animation"],
   ["kids", "Family"],
   ["children", "Family"],
   ["childrens", "Family"],
@@ -247,6 +265,7 @@ const genreAliases = new Map<string, string>([
 ]);
 
 const tagAliases = new Map<string, string>([
+  ["animated", "Animation"],
   ["body-horror", "Body Horror"],
   ["cyber punk", "Cyberpunk"],
   ["cyber-punk", "Cyberpunk"],
@@ -451,6 +470,40 @@ export function normalizeCanonicalTagsForMediaType(
   return tags;
 }
 
+const explicitCanonicalTags: CanonicalTagDefinition[] = [
+  {
+    name: "Animation",
+    normalizedName: normalizeTagKey("Animation"),
+    category: "FORMAT",
+    discoverable: true,
+    mediaTypes: ["MOVIE", "TV_SHOW"],
+  },
+  {
+    name: "Indie",
+    normalizedName: normalizeTagKey("Indie"),
+    category: "FORMAT",
+    discoverable: true,
+    mediaTypes: ["MOVIE", "TV_SHOW", "VIDEO_GAME"],
+  },
+];
+
+const promotedDiscoverTagsByMediaType: Partial<Record<MediaType, string[]>> = {
+  MOVIE: ["Animation", "Indie"],
+  TV_SHOW: ["Animation", "Indie"],
+  VIDEO_GAME: ["Indie"],
+};
+
+export function getPromotedDiscoverTagsForMediaType(mediaType: MediaType) {
+  return [...(promotedDiscoverTagsByMediaType[mediaType] ?? [])];
+}
+
+export function isPromotedDiscoverTag(mediaType: MediaType, tagName: string) {
+  const key = normalizeTagKey(tagName);
+  return getPromotedDiscoverTagsForMediaType(mediaType).some(
+    (name) => normalizeTagKey(name) === key,
+  );
+}
+
 export function getCanonicalTagDefinitions(): CanonicalTagDefinition[] {
   const namesByKey = new Map<string, string>();
 
@@ -466,8 +519,18 @@ export function getCanonicalTagDefinitions(): CanonicalTagDefinition[] {
     namesByKey.set(normalizeTagKey(country.name), country.name);
   }
 
+  const explicitByKey = new Map(
+    explicitCanonicalTags.map((tag) => [tag.normalizedName, tag]),
+  );
+  for (const tag of explicitCanonicalTags) {
+    namesByKey.set(tag.normalizedName, tag.name);
+  }
+
   return [...namesByKey.entries()]
     .map(([normalizedName, name]) => {
+      const explicit = explicitByKey.get(normalizedName);
+      if (explicit) return explicit;
+
       const country = countryTagsByKey.get(normalizedName);
 
       if (country) {

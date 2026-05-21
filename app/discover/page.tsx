@@ -18,7 +18,10 @@ import { prisma } from "@/lib/prisma";
 import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
 import { bayesianShrunkMean } from "@/lib/scoring/affinity";
 import { TOP_RANKING } from "@/lib/scoring/config";
-import { isDiscoverSubgenreForGenre } from "@/lib/taxonomy";
+import {
+  getPromotedDiscoverTagsForMediaType,
+  isDiscoverSubgenreForGenre,
+} from "@/lib/taxonomy";
 import { getCurrentUserId } from "@/lib/user";
 import { DEFAULT_USER_MEDIA, userMediaInclude } from "@/lib/db/user-media";
 import type { UserMedia } from "@prisma/client";
@@ -908,6 +911,26 @@ function getGenreWorlds(
       const current = worlds.get(entry.genre.name) ?? [];
       current.push(item);
       worlds.set(entry.genre.name, current);
+    }
+  }
+
+  const promoted = getPromotedDiscoverTagsForMediaType(mediaType);
+  if (promoted.length > 0) {
+    const promotedKeys = new Map(
+      promoted.map((name) => [name.toLowerCase(), name]),
+    );
+    for (const item of items) {
+      const seenThisItem = new Set<string>();
+      for (const entry of item.tags) {
+        if (entry.tag.status !== "APPROVED") continue;
+        const canonical = promotedKeys.get(entry.tag.name.toLowerCase());
+        if (!canonical) continue;
+        if (seenThisItem.has(canonical)) continue;
+        seenThisItem.add(canonical);
+        const current = worlds.get(canonical) ?? [];
+        current.push(item);
+        worlds.set(canonical, current);
+      }
     }
   }
 
