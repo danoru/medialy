@@ -3,7 +3,6 @@ import { Inter, Space_Grotesk } from "next/font/google";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import { CssBaseline } from "@mui/material";
 import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
-import { cookies } from "next/headers";
 import { AppShell } from "@/components/app-shell/AppShell";
 import { Providers } from "@/components/Providers";
 import { getCurrentUser, userInitial } from "@/lib/user";
@@ -33,9 +32,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getCurrentUser();
-  const cookieStore = await cookies();
-  const themeCookie = cookieStore.get("medialy_theme")?.value;
-  const initialThemeMode: ThemeMode = themeCookie === "light" ? "light" : "dark";
+  // Light mode is disabled until every panel honors theme tokens — see commit
+  // d338cd1 for the first partial pass. Until then, pin everything to dark
+  // so hardcoded dark backgrounds don't collide with light-mode text colors.
+  const initialThemeMode: ThemeMode = "dark";
 
   return (
     <html
@@ -48,7 +48,6 @@ export default async function RootLayout({
         <InitColorSchemeScript
           attribute="data-mui-color-scheme"
           defaultMode={initialThemeMode}
-          modeStorageKey="medialy_theme"
         />
         <AppRouterCacheProvider>
           <Providers initialThemeMode={initialThemeMode}>
