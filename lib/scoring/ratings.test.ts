@@ -8,6 +8,8 @@ import { calculateRatingCompatibility } from "./compatibility";
 import { calculateMedialyMatch } from "./medialyMatch";
 import { calculatePersonalScore } from "./personalScore";
 import { calculateTaxonomySimilarity } from "./taxonomySimilarity";
+import { bayesianShrunkMean, saturate, shrunkContribution } from "./affinity";
+import { AFFINITY_TUNING } from "./config";
 import type { ScoredMediaItem } from "./types";
 
 function media(overrides: Partial<ScoredMediaItem> = {}): ScoredMediaItem {
@@ -166,8 +168,6 @@ describe("rating compatibility", () => {
 describe("medialy match (taste-only)", () => {
   it("returns a bounded percentage with one explanation per signal", () => {
     const match = calculateMedialyMatch({
-      personalScore: 9,
-      personalScoreTrust: 1,
       genreAffinity: 80,
       tagAffinity: 50,
       friendAffinity: 70,
@@ -177,48 +177,36 @@ describe("medialy match (taste-only)", () => {
 
     expect(match.score).toBeGreaterThan(0);
     expect(match.score).toBeLessThanOrEqual(100);
-    expect(match.explanations).toHaveLength(6);
+    expect(match.explanations).toHaveLength(5);
     expect(match.explanations.every((e) => e.weight > 0 && e.weight <= 1)).toBe(
       true,
     );
   });
 
-  it("dampens personal score for unfinished recommendation candidates", () => {
-    const completedTrust = calculateMedialyMatch({
-      personalScore: 9,
-      personalScoreTrust: 1,
-      genreAffinity: 0,
-      tagAffinity: 0,
-      friendAffinity: 0,
-      consensusScore: null,
+  it("can reach 100% when every taste signal is maxed out", () => {
+    const match = calculateMedialyMatch({
+      genreAffinity: 100,
+      tagAffinity: 100,
+      friendAffinity: 100,
+      contributorAffinity: 100,
+      consensusScore: 10,
     });
-    const queueTrust = calculateMedialyMatch({
-      personalScore: 9,
-      personalScoreTrust: 0.25,
-      genreAffinity: 0,
-      tagAffinity: 0,
-      friendAffinity: 0,
-      consensusScore: null,
-    });
-
-    expect(queueTrust.score).toBeLessThan(completedTrust.score);
+    expect(match.score).toBe(100);
   });
 
   it("uses consensus and friend signals to lift unknown items", () => {
     const weakUnknown = calculateMedialyMatch({
-      personalScore: null,
-      personalScoreTrust: 0,
       genreAffinity: 0,
       tagAffinity: 0,
       friendAffinity: 0,
+      contributorAffinity: 0,
       consensusScore: null,
     });
     const supportedUnknown = calculateMedialyMatch({
-      personalScore: null,
-      personalScoreTrust: 0,
       genreAffinity: 0,
       tagAffinity: 0,
       friendAffinity: 80,
+      contributorAffinity: 0,
       consensusScore: 9,
     });
 
@@ -227,20 +215,125 @@ describe("medialy match (taste-only)", () => {
 
   it("each explanation includes weight, raw value, and contribution", () => {
     const match = calculateMedialyMatch({
-      personalScore: 8,
-      personalScoreTrust: 1,
       genreAffinity: 50,
       tagAffinity: 0,
       friendAffinity: 0,
+      contributorAffinity: 0,
       consensusScore: null,
     });
 
-    const personal = match.explanations.find(
-      (e) => e.signal === "personalScore",
-    );
-    expect(personal).toBeDefined();
-    expect(personal!.rawValue).toBe(80);
-    expect(personal!.contribution).toBe(Math.round(80 * personal!.weight));
+    const genre = match.explanations.find((e) => e.signal === "genreAffinity");
+    expect(genre).toBeDefined();
+    expect(genre!.rawValue).toBe(50);
+    expect(genre!.contribution).toBe(Math.round(50 * genre!.weight));
+  });
+});
+
+describe("affinity shrinkage + saturation", () => {
+  const globalMean = 7.5;
+
+  it("returns zero for never-rated features", () => {
+    expect(shrunkContribution(undefined, globalMean)).toBe(0);
+    expect(shrunkContribution({ sum: 0, count: 0 }, globalMean)).toBe(0);
+  });
+
+  it("floors disliked features at zero (no active demotion)", () => {
+    const horror = shrunkContribution({ sum: 32, count: 8 }, globalMean); // mean 4
+    expect(horror).toBe(0);
+  });
+
+  it("rewards small-sample-but-loved over large-sample-mediocre", () => {
+    // 2 cyberpunk items both rated 9.5 vs 30 action items averaging just above
+    // globalMean. Shrinkage pulls cyberpunk down, but action barely lifts above
+    // the pivot, so the loved niche feature still wins.
+    const cyberpunk = shrunkContribution({ sum: 19, count: 2 }, globalMean);
+    const action = shrunkContribution({ sum: 7.6 * 30, count: 30 }, globalMean);
+    expect(cyberpunk).toBeGreaterThan(action);
+  });
+
+  it("but shrinkage prevents a single 10/10 from dominating", () => {
+    // A single 10/10 should NOT outscore a 30-item bucket averaging 8.3.
+    const lucky = shrunkContribution({ sum: 10, count: 1 }, globalMean);
+    const drama = shrunkContribution({ sum: 8.3 * 30, count: 30 }, globalMean);
+    expect(drama).toBeGreaterThan(lucky);
+  });
+
+  it("shrinks small samples more aggressively than large ones", () => {
+    // Same mean (9), different sample sizes — shrinkage compresses the small one.
+    const tiny = shrunkContribution({ sum: 18, count: 2 }, globalMean);
+    const huge = shrunkContribution({ sum: 9 * 50, count: 50 }, globalMean);
+    expect(huge).toBeGreaterThan(tiny);
+  });
+
+  it("respects the shrinkageK / neutralPivot / scale config", () => {
+    // With shrinkageK=5 and globalMean=7.5, a single rating of 10 shrinks to
+    // (10 + 5*7.5) / (1 + 5) = 47.5/6 ≈ 7.917. (7.917 − 6.5) * 30 ≈ 42.5.
+    const single = shrunkContribution({ sum: 10, count: 1 }, globalMean);
+    const expected =
+      ((10 + AFFINITY_TUNING.shrinkageK * globalMean) /
+        (1 + AFFINITY_TUNING.shrinkageK) -
+        AFFINITY_TUNING.neutralPivot) *
+      AFFINITY_TUNING.scale;
+    expect(single).toBeCloseTo(expected, 5);
+  });
+});
+
+describe("affinity saturation", () => {
+  it("returns zero for non-positive input", () => {
+    expect(saturate(0, 60)).toBe(0);
+    expect(saturate(-50, 60)).toBe(0);
+  });
+
+  it("approaches 100 asymptotically without ever reaching it", () => {
+    expect(saturate(10_000, 60)).toBeGreaterThan(99);
+    expect(saturate(10_000, 60)).toBeLessThan(100);
+  });
+
+  it("maps raw=k to exactly 50 (the half-saturation point)", () => {
+    expect(saturate(60, 60)).toBe(50);
+    expect(saturate(30, 30)).toBe(50);
+  });
+
+  it("compounding: two-feature match beats one-feature match", () => {
+    // Single popular genre: lots of mass into one bucket.
+    const onePopular = saturate(180, 60);
+    // Two niche genres summed: less per-genre, but compounding.
+    const twoNiche = saturate(60 + 60, 60);
+    // One genre raw=180 still wins (it's a stronger absolute match).
+    expect(onePopular).toBeGreaterThan(twoNiche);
+    // But two strong genres outscore one strong genre of equal individual weight.
+    expect(saturate(60 + 60, 60)).toBeGreaterThan(saturate(60, 60));
+  });
+});
+
+describe("bayesian shrunk mean", () => {
+  const prior = 7.5;
+
+  it("returns the prior when evidence is zero", () => {
+    expect(bayesianShrunkMean(10, 0, prior, 3)).toBe(prior);
+  });
+
+  it("pulls a 1-vote 10/10 sharply toward the prior", () => {
+    // (1*10 + 3*7.5)/(1+3) = 32.5/4 = 8.125
+    expect(bayesianShrunkMean(10, 1, prior, 3)).toBeCloseTo(8.125, 5);
+  });
+
+  it("barely moves a high-evidence observation", () => {
+    const shrunk = bayesianShrunkMean(9, 100, prior, 3);
+    expect(shrunk).toBeGreaterThan(8.95);
+    expect(shrunk).toBeLessThan(9);
+  });
+
+  it("ranks broad-evidence items above thin-evidence outliers", () => {
+    // 1 user rating 10 vs 5 users averaging 9 with prior 7.5, k=3.
+    const thin = bayesianShrunkMean(10, 1, prior, 3); // ~8.13
+    const broad = bayesianShrunkMean(9, 5, prior, 3); // (45+22.5)/8 = 8.44
+    expect(broad).toBeGreaterThan(thin);
+  });
+
+  it("symmetric: pulls low observations up toward the prior too", () => {
+    // 1 vote of 2 → (2 + 22.5)/4 = 6.125, well above the raw 2.
+    expect(bayesianShrunkMean(2, 1, prior, 3)).toBeCloseTo(6.125, 5);
   });
 });
 

@@ -168,24 +168,74 @@ export const CONSENSUS = {
 // -----------------------------------------------------------------------------
 
 /**
- * Match weights MUST sum to ~1.0 to keep the output bounded to 0–100. Status
- * and upcoming are NOT here — they're eligibility filters, see `eligibility.ts`.
+ * Match weights MUST sum to ~1.0 to keep the output bounded to 0–100.
+ *
+ * Personal score is intentionally omitted: recommendations only surface items
+ * the viewer has not consumed (see `eligibility.ts`), so personal score adds
+ * no signal — taste is represented through affinity overlap instead.
+ *
+ * Buckets target a 50 / 30 / 20 split:
+ *  - Affinity (genre + tag + contributor): 50% — your demonstrated taste
+ *  - Friends: 30% — ratings from followers, weighted by taste compatibility
+ *  - Consensus: 20% — external critics, the least personal signal
  *
  * Each entry: what does the signal measure, and how do you tune it?
- *  - personalScore: how much you've already shown you like it (rating + pairwise)
  *  - genreAffinity: overlap with genres of your 8+ rated completed items
- *  - tagAffinity:   overlap with tags of your 8+ rated completed items
- *  - friendAffinity: ratings + watch status of users you follow
- *  - contributorAffinity: shared director/creator/dev with your highly-rated items
- *  - consensus:     external critic agreement, smallest weight since it's least personal
+ *  - tagAffinity:   overlap with tags of your 8+ rated completed items (includes country)
+ *  - contributorAffinity: shared director/creator/dev/publisher with your highly-rated items
+ *  - friendAffinity: ratings + watch status of users you follow, scaled by per-follower compatibility
+ *  - consensus:     external critic agreement
  */
 export const MEDIALY_MATCH_WEIGHTS = {
-  personalScore: 0.28,
-  genreAffinity: 0.24,
-  tagAffinity: 0.14,
-  friendAffinity: 0.18,
-  contributorAffinity: 0.06,
-  consensus: 0.1,
+  genreAffinity: 0.2,
+  tagAffinity: 0.15,
+  contributorAffinity: 0.15,
+  friendAffinity: 0.3,
+  consensus: 0.2,
+} as const;
+
+/**
+ * Affinity-map tuning. Two compounding techniques fight saturation:
+ *
+ *  - Bayesian shrinkage on per-feature mean rating. A genre's affinity is the
+ *    average rating of items in it, pulled toward the global mean by `shrinkageK`
+ *    pseudo-observations. Common-but-mediocre genres earn less than niche-but-loved
+ *    ones; never-rated features default to neutral. Floored at zero — disliked
+ *    genres simply don't contribute (no active demotion). Revisit if needed.
+ *
+ *  - BM25-style soft saturation on the candidate-side sum. Replaces a hard
+ *    clamp(0,100). A candidate matching two niche genres can compound past what
+ *    one popular genre can reach alone; nothing ever pegs at exactly 100.
+ */
+/**
+ * Cross-user / cross-surface ranking tunables. Used wherever we rank items by
+ * a quality score that blends multiple-evidence inputs (Overall Top 10,
+ * Insights standouts, Discover). Each `shrinkageK` is the "minimum evidence
+ * count to trust the observed mean at face value" — items with less evidence
+ * get pulled toward the global prior in proportion to how thin their sample is.
+ *
+ * Values are intentionally small. IMDB's m=25000 is for a giant population;
+ * we have tens to hundreds of users and a handful of critic sources per item.
+ */
+export const TOP_RANKING = {
+  shrinkageK: {
+    user: 3,
+    source: 2,
+    personal: 3,
+  },
+  /** Used only when the global pool is empty (fresh install). */
+  fallbackPrior: 7.0,
+} as const;
+
+export const AFFINITY_TUNING = {
+  shrinkageK: 5,
+  neutralPivot: 6.5,
+  scale: 30,
+  saturationK: {
+    genre: 60,
+    tag: 30,
+    contributor: 25,
+  },
 } as const;
 
 // -----------------------------------------------------------------------------

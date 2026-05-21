@@ -8,31 +8,31 @@ import type { MedialyMatchReason } from "@/lib/scoring/types";
  * dropped, future-dated) is handled separately by `eligibility.ts` — it's a
  * binary gate on the candidate pool, not a score weight.
  *
+ * Personal score is deliberately absent: by the time an item reaches this
+ * function it's a recommendation candidate the viewer hasn't consumed, so
+ * "how much you've already shown you like it" is meaningless. Demonstrated
+ * taste flows in through the affinity signals (genre / tag / contributor).
+ *
  * Every signal is normalized to 0–100 before weighting. Final score is also
  * 0–100. Weights live in `lib/scoring/config.ts` and are designed to sum to 1.
  */
 
 export type MedialyMatchSignals = {
-  /** 0–10. Personal rating (or pairwise fallback). */
-  personalScore: number | null;
-  /**
-   * 0–1 trust modifier on personalScore. Reflects engagement (rated COMPLETED
-   * vs. expected on WATCHLIST). See `personalScoreTrustForStatus`.
-   */
-  personalScoreTrust?: number;
   /** 0–100. Overlap with genres of your highly-rated completed items. */
   genreAffinity: number;
-  /** 0–100. Overlap with tags of your highly-rated completed items. */
+  /** 0–100. Overlap with tags (including country) of your highly-rated items. */
   tagAffinity: number;
-  /** 0–100. Ratings + watch status aggregated across users you follow. */
+  /** 0–100. Shared director/creator/dev/publisher with items you love. */
+  contributorAffinity: number;
+  /** 0–100. Ratings from followers, weighted by per-follower taste compatibility. */
   friendAffinity: number;
-  /**
-   * 0–100. Shared director/creator/dev with your highly-rated items. New
-   * signal; pass 0 if you haven't computed contributor affinity yet.
-   */
-  contributorAffinity?: number;
-  /** 0–10. External critic consensus. Smallest weight — least personalized. */
+  /** 0–10. External critic consensus. */
   consensusScore: number | null;
+  /**
+   * Optional per-call detail overrides surfaced in the explanations. Useful
+   * for naming the specific director or country that drove a match.
+   */
+  details?: Partial<Record<keyof typeof MEDIALY_MATCH_WEIGHTS, string>>;
 };
 
 export type MedialyMatchExplanation = {
@@ -55,24 +55,16 @@ export function calculateMedialyMatch(
 ): MedialyMatchOutput {
   const explanations: MedialyMatchExplanation[] = [];
 
-  const personalRaw =
-    normalizedTenPoint(signals.personalScore) *
-    clamp(signals.personalScoreTrust ?? 1, 0, 1);
-  explanations.push(
-    pushExplanation("personalScore", "Personal score", personalRaw, {
-      detail:
-        signals.personalScore == null
-          ? "No personal rating yet"
-          : `Your score: ${signals.personalScore}/10 × trust ${(signals.personalScoreTrust ?? 1).toFixed(2)}`,
-    }),
-  );
-
   explanations.push(
     pushExplanation(
       "genreAffinity",
       "Genre affinity",
       clamp(signals.genreAffinity, 0, 100),
-      { detail: "Overlap with genres of your highly-rated completed items" },
+      {
+        detail:
+          signals.details?.genreAffinity ??
+          "Overlap with genres of your highly-rated completed items",
+      },
     ),
   );
 
@@ -81,7 +73,23 @@ export function calculateMedialyMatch(
       "tagAffinity",
       "Tag affinity",
       clamp(signals.tagAffinity, 0, 100),
-      { detail: "Overlap with tags from your favorites" },
+      {
+        detail:
+          signals.details?.tagAffinity ?? "Overlap with tags from your favorites",
+      },
+    ),
+  );
+
+  explanations.push(
+    pushExplanation(
+      "contributorAffinity",
+      "Contributor affinity",
+      clamp(signals.contributorAffinity, 0, 100),
+      {
+        detail:
+          signals.details?.contributorAffinity ??
+          "Shared director, creator, developer, or publisher with items you love",
+      },
     ),
   );
 
@@ -90,18 +98,10 @@ export function calculateMedialyMatch(
       "friendAffinity",
       "Friend signal",
       clamp(signals.friendAffinity, 0, 100),
-      { detail: "Aggregated ratings from people you follow" },
-    ),
-  );
-
-  explanations.push(
-    pushExplanation(
-      "contributorAffinity",
-      "Contributor affinity",
-      clamp(signals.contributorAffinity ?? 0, 0, 100),
       {
         detail:
-          "Shared director, creator, developer, or publisher with items you love",
+          signals.details?.friendAffinity ??
+          "Aggregated ratings from people you follow, weighted by taste compatibility",
       },
     ),
   );

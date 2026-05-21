@@ -8,6 +8,7 @@ import type {
   MediaType,
   TagStatus,
 } from "@prisma/client";
+import type { MedialyMatchExplanation } from "@/lib/scoring/medialyMatch";
 
 export type ExternalRatingDTO = {
   source: ExternalRatingSource;
@@ -93,6 +94,7 @@ export type Recommendation = {
   score: number;
   confidence: number;
   reasons: RecommendationReason[];
+  explanations?: MedialyMatchExplanation[];
 };
 
 export type GenreInsight = {
