@@ -50,7 +50,7 @@ export async function createMediaItem(
           afterJson: JSON.stringify(inputToSnapshot(input)),
         },
       });
-      revalidatePath("/upcoming");
+      revalidatePath("/admin/edits");
       revalidatePath("/admin");
       await queueToast(
         "Thanks! Your addition was sent for admin review.",
@@ -107,7 +107,7 @@ export async function updateMediaItem(
           afterJson: JSON.stringify(inputToSnapshot(input)),
         },
       });
-      revalidatePath("/upcoming");
+      revalidatePath("/admin/edits");
       revalidatePath("/admin");
       await queueToast(
         "Thanks! Your edit was sent for admin review.",

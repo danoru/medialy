@@ -3,12 +3,6 @@ export type UpcomingDatedItem = {
   releaseDate: Date | string | null;
 };
 
-export type UpcomingGroups<T extends UpcomingDatedItem> = {
-  next30Days: T[];
-  later: T[];
-  needsReview: T[];
-};
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export function startOfToday(now = new Date()) {
@@ -62,35 +56,3 @@ export function sortUpcomingItems<T extends UpcomingDatedItem>(items: T[]) {
   });
 }
 
-export function groupUpcomingItems<T extends UpcomingDatedItem>(
-  items: T[],
-  now = new Date(),
-): UpcomingGroups<T> {
-  const groups: UpcomingGroups<T> = {
-    next30Days: [],
-    later: [],
-    needsReview: [],
-  };
-
-  for (const item of items) {
-    if (!item.releaseDate) {
-      continue;
-    }
-
-    const dayDelta = daysFromToday(item.releaseDate, now);
-
-    if (dayDelta < 0) {
-      groups.needsReview.push(item);
-    } else if (dayDelta <= 30) {
-      groups.next30Days.push(item);
-    } else {
-      groups.later.push(item);
-    }
-  }
-
-  return {
-    next30Days: sortUpcomingItems(groups.next30Days),
-    later: sortUpcomingItems(groups.later),
-    needsReview: sortUpcomingItems(groups.needsReview),
-  };
-}

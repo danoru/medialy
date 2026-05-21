@@ -46,13 +46,13 @@ function snapshotToFormInput(snapshot: EditSuggestionSnapshot): MediaFormInput {
 }
 
 function revalidateAfterReview() {
-  revalidatePath("/upcoming");
+  revalidatePath("/admin/edits");
   revalidatePath("/admin");
   revalidatePath("/media");
 }
 
 export async function approveMediaEditSuggestion(id: string) {
-  const admin = await requireAdmin("/upcoming");
+  const admin = await requireAdmin("/admin/edits");
   const suggestion = await prisma.mediaEditSuggestion.findUnique({
     where: { id },
   });
@@ -123,7 +123,7 @@ export async function approveMediaEditSuggestion(id: string) {
 }
 
 export async function rejectMediaEditSuggestion(id: string) {
-  const admin = await requireAdmin("/upcoming");
+  const admin = await requireAdmin("/admin/edits");
   await prisma.mediaEditSuggestion.updateMany({
     where: { id, status: "PENDING" },
     data: {

@@ -44,8 +44,8 @@ export default async function AdminPage() {
         </Typography>
       </Stack>
       <AdminCard
-        description="Review user-proposed edits and additions before they apply to shared media data. Lives on /upcoming."
-        href="/upcoming"
+        description="Review user-proposed edits and additions before they apply to shared media data."
+        href="/admin/edits"
         icon={<EditNoteIcon color="primary" />}
         pendingCount={pendingSuggestionCount}
         title="Suggested Edits"

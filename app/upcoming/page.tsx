@@ -6,7 +6,6 @@ import {
   CardContent,
   Chip,
   Divider,
-  Grid,
   Stack,
   Tab,
   Tabs,
@@ -14,11 +13,6 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import type { MediaStatus, MediaType } from "@prisma/client";
-import { clearReleaseDate } from "@/app/upcoming/actions";
-import {
-  approveMediaEditSuggestion,
-  rejectMediaEditSuggestion,
-} from "@/app/upcoming/suggestions/actions";
 import { prisma } from "@/lib/prisma";
 import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
@@ -28,18 +22,16 @@ import {
 } from "@/lib/media-types";
 import {
   formatUpcomingRelativeLabel,
-  groupUpcomingItems,
+  sortUpcomingItems,
   startOfToday,
 } from "@/lib/upcoming";
 import { StatePanel } from "@/components/shared/StatePanel";
-import { ActionToastButton } from "@/components/shared/Toasts";
 import { getCurrentUser } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import {
-  diffSnapshots,
-  type EditSuggestionSnapshot,
-  type SuggestionDiffField,
-} from "@/lib/edit-suggestions";
+  UpcomingCalendar,
+  type CalendarRelease,
+} from "@/components/upcoming/UpcomingCalendar";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Upcoming" };
@@ -60,7 +52,6 @@ export default async function UpcomingPage({
   const today = startOfToday(now);
   const user = await getCurrentUser();
   const userId = user?.id ?? null;
-  const isAdmin = Boolean(user?.isAdmin);
   const isSignedIn = Boolean(userId);
   const archivedFilter =
     userId == null
@@ -71,6 +62,7 @@ export default async function UpcomingPage({
             { userMedia: { some: { userId, isArchived: false } } },
           ],
         };
+
   const rawItems = await prisma.mediaItem.findMany({
     where: {
       mediaType: selectedType,
@@ -85,26 +77,21 @@ export default async function UpcomingPage({
     orderBy: [{ releaseDate: "asc" }, { title: "asc" }],
   });
 
-  const items = rawItems.map(mergeUserMedia);
-  const groups = groupUpcomingItems(items, now);
-  const futureCount = groups.next30Days.length + groups.later.length;
+  const items = sortUpcomingItems(
+    rawItems
+      .map(mergeUserMedia)
+      .filter((item) => item.releaseDate != null),
+  );
 
-  const pendingSuggestions = isAdmin
-    ? await prisma.mediaEditSuggestion.findMany({
-        where: {
-          status: "PENDING",
-          OR: [
-            { media: { mediaType: selectedType } },
-            { mediaId: null },
-          ],
-        },
-        include: {
-          media: { select: { id: true, title: true, mediaType: true } },
-          user: { select: { displayName: true, email: true } },
-        },
-        orderBy: { createdAt: "desc" },
-      })
-    : [];
+  const calendarReleases: CalendarRelease[] = items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    date: isoDate(item.releaseDate!),
+  }));
+
+  const initialMonth = items[0]?.releaseDate
+    ? monthKey(items[0].releaseDate)
+    : monthKey(now);
 
   return (
     <Stack spacing={2.5}>
@@ -131,360 +118,48 @@ export default async function UpcomingPage({
         </CardContent>
       </Card>
 
-      <Grid container spacing={1.5}>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <SummaryCard label="Future releases" value={futureCount} />
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <SummaryCard label="Needs review" value={groups.needsReview.length} />
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <SummaryCard label="Total dated items" value={items.length} />
-        </Grid>
-      </Grid>
-
-      {isAdmin ? (
-        <SuggestionQueue
-          mediaType={selectedType}
-          suggestions={pendingSuggestions}
-        />
-      ) : null}
-
-      <ReleaseSection
-        empty={<EmptyState />}
-        isSignedIn={isSignedIn}
-        items={groups.next30Days}
-        now={now}
-        title="Next 30 Days"
-      />
-
-      <ReleaseSection
-        isSignedIn={isSignedIn}
-        items={groups.later}
-        now={now}
-        title="Later"
-      />
-
-      <ReleaseSection
-        description="These dates have passed. Set the release date, clear the stale date, or open edit for status changes."
-        isSignedIn={isSignedIn}
-        items={groups.needsReview}
-        now={now}
-        showReviewActions
-        title="Needs Review"
-      />
-    </Stack>
-  );
-}
-
-type SuggestionRowData = {
-  id: string;
-  mediaId: string | null;
-  beforeJson: string | null;
-  afterJson: string;
-  createdAt: Date;
-  note: string | null;
-  media: { id: string; title: string; mediaType: MediaType } | null;
-  user: { displayName: string; email: string | null };
-};
-
-function SuggestionQueue({
-  mediaType,
-  suggestions,
-}: {
-  mediaType: MediaType;
-  suggestions: SuggestionRowData[];
-}) {
-  return (
-    <Card variant="outlined">
-      <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-        <Stack direction={{ xs: "column", sm: "row" }} sx={{ mb: 1.5 }}>
-          <Box sx={{ flex: 1 }}>
-            <Typography sx={{ fontWeight: 650 }} variant="h6">
-              Pending edit suggestions
-            </Typography>
-            <Typography color="text.secondary" variant="body2">
-              Edits and additions proposed by signed-in users. Review the diff
-              before applying — admin-only.
-            </Typography>
-          </Box>
-          <Chip
-            label={suggestions.length}
-            size="small"
-            sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
+      <Card variant="outlined">
+        <CardContent>
+          <UpcomingCalendar
+            initialMonth={initialMonth}
+            releases={calendarReleases}
           />
-        </Stack>
-        {suggestions.length > 0 ? (
-          <Stack spacing={1.25}>
-            {suggestions.map((suggestion) => (
-              <SuggestionRow key={suggestion.id} suggestion={suggestion} />
-            ))}
-          </Stack>
-        ) : (
-          <StatePanel
-            description={`No pending ${formatMediaType(mediaType).toLowerCase()} edit suggestions right now.`}
-            minHeight={140}
-            title="Nothing to review"
-          />
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+        </CardContent>
+      </Card>
 
-function SuggestionRow({ suggestion }: { suggestion: SuggestionRowData }) {
-  const before = suggestion.beforeJson
-    ? (JSON.parse(suggestion.beforeJson) as EditSuggestionSnapshot)
-    : null;
-  const after = JSON.parse(suggestion.afterJson) as EditSuggestionSnapshot;
-  const diff = diffSnapshots(before, after);
-  const title = suggestion.media?.title ?? after.title;
-  const isAddition = !suggestion.mediaId;
-  const author =
-    suggestion.user.displayName || suggestion.user.email || "Unknown user";
-
-  return (
-    <Stack
-      spacing={1}
-      sx={{
-        borderBottom: "1px solid",
-        borderColor: "divider",
-        pb: 1.25,
-      }}
-    >
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={1}
-        sx={{ alignItems: { sm: "center" }, flexWrap: "wrap" }}
-      >
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          {suggestion.media ? (
-            <Link
-              href={`/media/${suggestion.media.id}`}
-              style={{ textDecoration: "none" }}
-            >
-              <Typography sx={{ color: "primary.main", fontWeight: 650 }}>
-                {title}
-              </Typography>
-            </Link>
-          ) : (
-            <Typography sx={{ fontWeight: 650 }}>{title}</Typography>
-          )}
-          <Stack direction="row" spacing={0.6} sx={{ flexWrap: "wrap", mt: 0.5 }}>
-            <Chip
-              color={isAddition ? "secondary" : "default"}
-              label={isAddition ? "New item" : "Edit"}
-              size="small"
-            />
-            <Chip
-              label={formatMediaType(after.mediaType as MediaType)}
-              size="small"
-              variant="outlined"
-            />
-            <Chip
-              label={`Suggested by ${author}`}
-              size="small"
-              variant="outlined"
-            />
-            <Chip
-              label={suggestion.createdAt.toLocaleDateString()}
-              size="small"
-              variant="outlined"
-            />
-          </Stack>
-        </Box>
-        <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap" }}>
-          <form action={approveMediaEditSuggestion.bind(null, suggestion.id)}>
-            <ActionToastButton
-              color="success"
-              size="small"
-              successMessage="Suggestion applied."
-              variant="contained"
-            >
-              Approve
-            </ActionToastButton>
-          </form>
-          <form action={rejectMediaEditSuggestion.bind(null, suggestion.id)}>
-            <ActionToastButton
-              color="warning"
-              size="small"
-              successMessage="Suggestion rejected."
-              variant="outlined"
-            >
-              Reject
-            </ActionToastButton>
-          </form>
-        </Stack>
-      </Stack>
-      <SuggestionDiff diff={diff} isAddition={isAddition} />
-    </Stack>
-  );
-}
-
-function SuggestionDiff({
-  diff,
-  isAddition,
-}: {
-  diff: SuggestionDiffField[];
-  isAddition: boolean;
-}) {
-  if (diff.length === 0) {
-    return (
-      <Typography color="text.secondary" variant="body2">
-        No field changes detected.
-      </Typography>
-    );
-  }
-  return (
-    <Stack spacing={0.5}>
-      {diff.map((field) => (
-        <Stack
-          direction={{ xs: "column", md: "row" }}
-          key={field.field}
-          spacing={1}
-          sx={{ alignItems: { md: "flex-start" } }}
-        >
-          <Typography
-            sx={{ fontWeight: 600, minWidth: { md: 140 } }}
-            variant="body2"
-          >
-            {field.label}
-          </Typography>
+      <Card variant="outlined">
+        <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
           <Stack
-            direction={{ xs: "column", md: "row" }}
-            spacing={1}
-            sx={{ flex: 1, minWidth: 0 }}
+            direction={{ xs: "column", sm: "row" }}
+            sx={{ alignItems: { sm: "center" }, mb: 1.5 }}
           >
-            {!isAddition ? (
-              <Box
-                sx={{
-                  borderLeft: "3px solid",
-                  borderColor: "error.main",
-                  borderRadius: 0.5,
-                  flex: 1,
-                  px: 1,
-                  py: 0.5,
-                }}
-              >
-                <Typography
-                  color="text.secondary"
-                  sx={{ fontSize: 11, fontWeight: 600 }}
-                >
-                  Before
-                </Typography>
-                <Typography sx={{ whiteSpace: "pre-wrap" }} variant="body2">
-                  {field.before || "—"}
-                </Typography>
-              </Box>
-            ) : null}
-            <Box
-              sx={{
-                borderLeft: "3px solid",
-                borderColor: "success.main",
-                borderRadius: 0.5,
-                flex: 1,
-                px: 1,
-                py: 0.5,
-              }}
-            >
-              <Typography
-                color="text.secondary"
-                sx={{ fontSize: 11, fontWeight: 600 }}
-              >
-                {isAddition ? "Proposed" : "After"}
-              </Typography>
-              <Typography sx={{ whiteSpace: "pre-wrap" }} variant="body2">
-                {field.after || "—"}
-              </Typography>
-            </Box>
-          </Stack>
-        </Stack>
-      ))}
-    </Stack>
-  );
-}
-
-type ReleaseSectionItem = Awaited<
-  ReturnType<typeof prisma.mediaItem.findMany>
->[number] & {
-  genres: Array<{ genre: { name: string } }>;
-  status: import("@prisma/client").MediaStatus;
-};
-
-function ReleaseSection({
-  description,
-  empty = null,
-  isSignedIn,
-  items,
-  now,
-  showReviewActions = false,
-  title,
-}: {
-  description?: string;
-  empty?: React.ReactNode;
-  isSignedIn: boolean;
-  items: ReleaseSectionItem[];
-  now: Date;
-  showReviewActions?: boolean;
-  title: string;
-}) {
-  return (
-    <Card variant="outlined">
-      <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-        <Stack direction={{ xs: "column", sm: "row" }} sx={{ mb: 1.5 }}>
-          <Box sx={{ flex: 1 }}>
-            <Typography sx={{ fontWeight: 650 }} variant="h6">
-              {title}
+            <Typography sx={{ flex: 1, fontWeight: 650 }} variant="h6">
+              Releases
             </Typography>
-            {description ? (
-              <Typography color="text.secondary" variant="body2">
-                {description}
-              </Typography>
-            ) : null}
-          </Box>
-          <Chip
-            label={items.length}
-            size="small"
-            sx={{ alignSelf: { xs: "flex-start", sm: "center" } }}
-          />
-        </Stack>
-        {items.length > 0 ? (
-          <Stack spacing={1.25}>
-            {items.map((item) => (
-              <ReleaseRow
-                genres={item.genres.map((entry) => entry.genre.name)}
-                id={item.id}
-                isSignedIn={isSignedIn}
-                key={item.id}
-                mediaType={item.mediaType}
-                now={now}
-                showReviewActions={showReviewActions}
-                status={item.status}
-                title={item.title}
-                releaseDate={item.releaseDate}
-              />
-            ))}
+            <Chip label={items.length} size="small" />
           </Stack>
-        ) : (
-          empty
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function SummaryCard({ label, value }: { label: string; value: number }) {
-  return (
-    <Card variant="outlined">
-      <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-        <Typography color="text.secondary" variant="eyebrow">
-          {label}
-        </Typography>
-        <Typography sx={{ fontWeight: 650 }} variant="h5">
-          {value.toLocaleString()}
-        </Typography>
-      </CardContent>
-    </Card>
+          {items.length > 0 ? (
+            <Stack spacing={1.25}>
+              {items.map((item) => (
+                <ReleaseRow
+                  genres={item.genres.map((entry) => entry.genre.name)}
+                  id={item.id}
+                  isSignedIn={isSignedIn}
+                  key={item.id}
+                  mediaType={item.mediaType}
+                  now={now}
+                  releaseDate={item.releaseDate!}
+                  status={item.status}
+                  title={item.title}
+                />
+              ))}
+            </Stack>
+          ) : (
+            <EmptyState />
+          )}
+        </CardContent>
+      </Card>
+    </Stack>
   );
 }
 
@@ -494,7 +169,6 @@ function ReleaseRow({
   isSignedIn,
   mediaType,
   now,
-  showReviewActions = false,
   status,
   title,
   releaseDate,
@@ -504,20 +178,21 @@ function ReleaseRow({
   isSignedIn: boolean;
   mediaType: MediaType;
   now: Date;
-  showReviewActions?: boolean;
   status: MediaStatus;
   title: string;
-  releaseDate: Date | null;
+  releaseDate: Date;
 }) {
   return (
     <Stack
       direction={{ xs: "column", sm: "row" }}
+      id={`date-${isoDate(releaseDate)}`}
       spacing={1.5}
       sx={{
         alignItems: { sm: "center" },
         borderBottom: "1px solid",
         borderColor: "divider",
         pb: 1.25,
+        scrollMarginTop: 96,
       }}
     >
       <Stack
@@ -546,7 +221,7 @@ function ReleaseRow({
         </Box>
       </Stack>
       <Stack
-        direction={{ xs: "row", sm: "row" }}
+        direction="row"
         spacing={1}
         sx={{
           alignItems: "center",
@@ -559,17 +234,15 @@ function ReleaseRow({
             sx={{ whiteSpace: "nowrap" }}
             variant="body2"
           >
-            {releaseDate ? releaseDate.toLocaleDateString() : "-"}
+            {releaseDate.toLocaleDateString()}
           </Typography>
-          {releaseDate ? (
-            <Typography
-              color="text.secondary"
-              sx={{ whiteSpace: "nowrap" }}
-              variant="caption"
-            >
-              {formatUpcomingRelativeLabel(releaseDate, now)}
-            </Typography>
-          ) : null}
+          <Typography
+            color="text.secondary"
+            sx={{ whiteSpace: "nowrap" }}
+            variant="caption"
+          >
+            {formatUpcomingRelativeLabel(releaseDate, now)}
+          </Typography>
         </Box>
         <Stack
           direction="row"
@@ -583,18 +256,6 @@ function ReleaseRow({
               Edit
             </Button>
           ) : null}
-          {showReviewActions && isSignedIn ? (
-            <form action={clearReleaseDate.bind(null, id)}>
-              <ActionToastButton
-                color="warning"
-                size="small"
-                successMessage="Release date cleared."
-                variant="outlined"
-              >
-                Clear date
-              </ActionToastButton>
-            </form>
-          ) : null}
         </Stack>
       </Stack>
     </Stack>
@@ -607,9 +268,22 @@ function EmptyState() {
       action={{ href: "/media/new", label: "Add one" }}
       description="Future-dated media will appear here once release dates are added."
       icon={<CalendarMonthIcon />}
-      title="No releases in the next 30 days"
+      title="No upcoming releases"
     />
   );
+}
+
+function isoDate(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function monthKey(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function stringParam(value: string | string[] | undefined) {
