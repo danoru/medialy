@@ -231,7 +231,8 @@ export function AppShell({
               height: 36,
               minWidth: 0,
               px: 1.25,
-              transition: "border-color 160ms ease, background-color 160ms ease",
+              transition:
+                "border-color 160ms ease, background-color 160ms ease",
               "&:focus-within": {
                 borderColor: "border.strong",
                 bgcolor: "surface.2",
@@ -266,7 +267,10 @@ export function AppShell({
                 whiteSpace: "nowrap",
               }}
             >
-              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>
+              <Box
+                component="span"
+                sx={{ display: { xs: "none", sm: "inline" } }}
+              >
                 Add media
               </Box>
             </Button>
@@ -387,9 +391,7 @@ export function AppShell({
                 aria-label="Sign in"
                 type="submit"
                 startIcon={
-                  <LoginIcon
-                    sx={{ fontSize: 18, mr: { xs: -0.5, sm: 0 } }}
-                  />
+                  <LoginIcon sx={{ fontSize: 18, mr: { xs: -0.5, sm: 0 } }} />
                 }
                 sx={{
                   color: "text.primary",
@@ -531,6 +533,23 @@ export function AppShell({
               );
             })}
           </List>
+          {/* <Divider /> */}
+          {/* <Box sx={{ px: 2, py: 1.25 }}>
+            <Typography
+              component="a"
+              href="https://icons8.com"
+              rel="noopener noreferrer"
+              target="_blank"
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                textDecoration: "none",
+                "&:hover": { color: "text.primary" },
+              }}
+            >
+              Icons by Icons8
+            </Typography>
+          </Box> */}
         </Box>
       </Drawer>
 
@@ -646,6 +665,22 @@ export function AppShell({
               </form>
             )}
           </List>
+          {/* <Divider sx={{ my: 1 }} />
+          <Box sx={{ px: 2, py: 1, textAlign: "center" }}>
+            <Typography
+              component="a"
+              href="https://icons8.com"
+              rel="noopener noreferrer"
+              target="_blank"
+              variant="caption"
+              sx={{
+                color: "text.secondary",
+                textDecoration: "none",
+              }}
+            >
+              Icons by Icons8
+            </Typography>
+          </Box> */}
         </Box>
       </Drawer>
 
