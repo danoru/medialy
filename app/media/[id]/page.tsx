@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
+import { calculateCommunityAverage } from "@/lib/scoring/communityAverage";
+import { calculateConsensusScore } from "@/lib/scoring/consensus";
 import {
   MediaDetailView,
   type MediaDetailViewItem,
@@ -69,7 +71,34 @@ export default async function MediaDetailPage({
     where: { id },
   });
   if (!rawItem) notFound();
-  const item = mergeUserMedia(rawItem) as unknown as MediaDetailViewItem;
+
+  // Community average: mean of other Medialy users' computedPersonalScore.
+  // Distinct from Consensus (external sources only). Always excludes the
+  // viewing user so they don't see their own score reflected back.
+  const otherUserMedia = await prisma.userMedia.findMany({
+    where: {
+      mediaId: rawItem.id,
+      ...(userId ? { NOT: { userId } } : {}),
+    },
+    select: { computedPersonalScore: true },
+  });
+  const community = calculateCommunityAverage(otherUserMedia);
+
+  // Recompute consensus on the fly to expose agreement % for the tooltip.
+  // The persisted `computedConsensusScore` is what we display; this call is
+  // only for the breakdown fields (agreementConfidence, usedSourceCount).
+  const consensus = calculateConsensusScore(rawItem.externalRatings, {
+    mediaType: rawItem.mediaType,
+  });
+
+  const merged = mergeUserMedia(rawItem);
+  const item = {
+    ...merged,
+    communityScore: community.score,
+    communityRaterCount: community.raterCount,
+    consensusAgreement: consensus.agreementConfidence,
+    consensusUsedSourceCount: consensus.usedSourceCount,
+  } as unknown as MediaDetailViewItem;
 
   return <MediaDetailView item={item} userId={userId} />;
 }

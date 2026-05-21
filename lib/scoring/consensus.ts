@@ -44,6 +44,9 @@ export type ConsensusBreakdownEntry = {
 export type ConsensusResult = {
   score: number | null;
   confidence: number;
+  agreementConfidence: number;
+  sourceConfidence: number;
+  usedSourceCount: number;
   breakdown: ConsensusBreakdownEntry[];
 };
 
@@ -79,6 +82,9 @@ export function calculateConsensusScore(
     return {
       score: null,
       confidence: 0,
+      agreementConfidence: 0,
+      sourceConfidence: 0,
+      usedSourceCount: 0,
       breakdown: normalized.map((entry) => ({
         source: entry.rating.source,
         normalized: entry.value ?? 0,
@@ -115,6 +121,9 @@ export function calculateConsensusScore(
     return {
       score: null,
       confidence: 0,
+      agreementConfidence: 0,
+      sourceConfidence: 0,
+      usedSourceCount: 0,
       breakdown: weighted.map(toBreakdownEntry),
     };
   }
@@ -160,6 +169,9 @@ export function calculateConsensusScore(
   return {
     score: round(score),
     confidence: round(sourceConfidence * agreementConfidence),
+    agreementConfidence: round(agreementConfidence),
+    sourceConfidence: round(sourceConfidence),
+    usedSourceCount: eligible.length,
     breakdown,
   };
 }

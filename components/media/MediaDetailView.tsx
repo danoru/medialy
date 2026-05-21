@@ -8,6 +8,7 @@ import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import type { CreditRole, MediaStatus, MediaType } from "@prisma/client";
+import Image from "next/image";
 import type { ReactElement, ReactNode } from "react";
 import {
   Box,
@@ -82,6 +83,10 @@ export type MediaDetailViewItem = UserMediaFields & {
   tags: Array<{ tag: { name: string } }>;
   computedConsensusScore: number | null;
   consensusConfidence: number;
+  consensusAgreement: number;
+  consensusUsedSourceCount: number;
+  communityScore: number | null;
+  communityRaterCount: number;
 };
 
 export function MediaDetailView({
@@ -195,7 +200,10 @@ export function MediaDetailView({
                   <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
                     Poster missing
                   </Typography>
-                  <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                  <Typography
+                    color="text.secondary"
+                    sx={{ fontSize: "0.75rem" }}
+                  >
                     Add artwork to improve this page.
                   </Typography>
                 </Stack>
@@ -223,15 +231,6 @@ export function MediaDetailView({
                     </Typography>
                   ) : null}
                 </Box>
-                <Button
-                  href={`/media/${item.id}/edit`}
-                  size="small"
-                  startIcon={<EditRoundedIcon />}
-                  sx={{ flexShrink: 0 }}
-                  variant="text"
-                >
-                  Edit Details
-                </Button>
               </Stack>
 
               <Stack
@@ -415,7 +414,9 @@ export function MediaDetailView({
                       >
                         Pairwise trajectory
                       </Typography>
-                      <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+                      <Typography
+                        sx={{ fontSize: "0.8125rem", fontWeight: 600 }}
+                      >
                         {Math.round(eloTimeline[0])} →{" "}
                         {Math.round(eloTimeline[eloTimeline.length - 1])}
                       </Typography>
@@ -505,14 +506,18 @@ export function MediaDetailView({
               <Stack spacing={1.25}>
                 {userId ? (
                   <>
-                    <Typography sx={kickerSx}>Your rating</Typography>
-                    <MediaRatingControl
-                      action={updateMediaRating.bind(null, item.id)}
-                      mediaType={item.mediaType}
-                      personalRating={item.personalRating}
-                      status={item.status}
-                      statusAction={updateMediaStatus.bind(null, item.id)}
-                    />
+                    <Stack spacing={0.75}>
+                      <Typography sx={{ ...kickerSx, textAlign: "center" }}>
+                        Your rating
+                      </Typography>
+                      <MediaRatingControl
+                        action={updateMediaRating.bind(null, item.id)}
+                        mediaType={item.mediaType}
+                        personalRating={item.personalRating}
+                        status={item.status}
+                        statusAction={updateMediaStatus.bind(null, item.id)}
+                      />
+                    </Stack>
 
                     <Divider sx={panelDividerSx} />
                   </>
@@ -521,37 +526,56 @@ export function MediaDetailView({
                 <Box sx={scoreGridSx}>
                   <ScoreLine
                     color={detailTokens.accent.purple}
-                    info={`Based on ${item.comparisonCount} ${item.comparisonCount === 1 ? "comparison" : "comparisons"}.`}
-                    label="Pairwise"
-                    value={formatNumber(Math.round(item.pairwiseScore))}
+                    info={refinedTooltip(
+                      item.personalRating,
+                      item.computedPersonalScore,
+                      item.comparisonCount,
+                    )}
+                    label="Refined"
+                    value={formatOptionalScore(item.computedPersonalScore)}
                   />
                   <ScoreLine
-                    color={detailTokens.accent.green}
-                    info={
-                      item.computedConsensusScore == null
-                        ? "Not enough external rating data yet."
-                        : `${Math.round(item.consensusConfidence * 100)}% confidence.`
-                    }
-                    label="Consensus"
-                    value={formatOptionalScore(item.computedConsensusScore)}
+                    color={detailTokens.accent.cyan}
+                    info={communityTooltip(
+                      item.communityScore,
+                      item.communityRaterCount,
+                    )}
+                    label="Community"
+                    value={formatOptionalScore(item.communityScore)}
                   />
                 </Box>
 
-                {item.externalRatings.length > 0 ? (
+                {item.externalRatings.length > 0 ||
+                item.computedConsensusScore != null ? (
                   <>
                     <Divider sx={panelDividerSx} />
-                    <Typography sx={kickerSx}>External Ratings</Typography>
-                    <Box sx={externalRatingsSx}>
-                      {item.externalRatings.map((rating) => (
-                        <ExternalRatingTile
-                          key={rating.id}
-                          label={formatRatingSource(rating.source)}
-                          scale={rating.scale}
-                          score={rating.score}
-                          source={rating.source}
-                        />
-                      ))}
-                    </Box>
+                    <ScoreLine
+                      centered
+                      color={detailTokens.accent.green}
+                      info={consensusTooltip(
+                        item.computedConsensusScore,
+                        item.consensusUsedSourceCount,
+                        item.consensusAgreement,
+                      )}
+                      label="Consensus"
+                      value={formatOptionalScore(item.computedConsensusScore)}
+                    />
+                    {item.externalRatings.length > 0 ? (
+                      <Divider sx={panelDividerSx} />
+                    ) : null}
+                    {item.externalRatings.length > 0 ? (
+                      <Box sx={externalRatingsRowSx}>
+                        {item.externalRatings.map((rating) => (
+                          <ExternalRatingTile
+                            key={rating.id}
+                            label={formatRatingSource(rating.source)}
+                            scale={rating.scale}
+                            score={rating.score}
+                            source={rating.source}
+                          />
+                        ))}
+                      </Box>
+                    ) : null}
                   </>
                 ) : null}
               </Stack>
@@ -649,12 +673,14 @@ function StatusChip({
 }
 
 function ScoreLine({
+  centered = false,
   color,
   info,
   label,
   meta,
   value,
 }: {
+  centered?: boolean;
   color?: string;
   info?: string;
   label: string;
@@ -662,7 +688,10 @@ function ScoreLine({
   value: ReactNode;
 }) {
   return (
-    <Stack spacing={0.75}>
+    <Stack
+      spacing={0.75}
+      sx={centered ? { alignItems: "center", textAlign: "center" } : undefined}
+    >
       <Stack direction="row" sx={{ alignItems: "center", gap: 0.45 }}>
         <Typography sx={metricLabelSx}>{label}</Typography>
         {info ? (
@@ -694,10 +723,15 @@ function ExternalRatingTile({
   score: number;
   source: string;
 }) {
+  const logoSrc = externalLogoSrc(source);
   return (
     <Box sx={externalRatingTileSx}>
       <Box sx={externalLogoSx(source)}>
-        {source === "METACRITIC" ? "M" : label.charAt(0)}
+        {logoSrc ? (
+          <Image alt="" height={22} src={logoSrc} width={22} unoptimized />
+        ) : (
+          label.charAt(0)
+        )}
       </Box>
       <Typography sx={externalSourceLabelSx}>{label}</Typography>
       <Typography sx={externalScoreSx}>
@@ -705,6 +739,17 @@ function ExternalRatingTile({
       </Typography>
     </Box>
   );
+}
+
+function externalLogoSrc(source: string): string | null {
+  if (source === "METACRITIC") return "/images/metacritic.png";
+  if (
+    source === "ROTTEN_TOMATOES_CRITICS" ||
+    source === "ROTTEN_TOMATOES_AUDIENCE"
+  ) {
+    return "/images/tomato.png";
+  }
+  return null;
 }
 
 function SectionBlock({
@@ -773,6 +818,41 @@ function formatNumber(value: number) {
 
 function formatOptionalScore(value: number | null) {
   return value == null ? "-" : formatNumber(value);
+}
+
+function refinedTooltip(
+  personalRating: number | null,
+  computedPersonalScore: number | null,
+  comparisonCount: number,
+) {
+  if (computedPersonalScore == null) {
+    return "Rate this item or run pairwise comparisons to refine a score.";
+  }
+  const comparisonsLabel = `${comparisonCount} ${comparisonCount === 1 ? "comparison" : "comparisons"}`;
+  if (personalRating == null) {
+    return `Derived from ${comparisonsLabel} (no manual rating yet).`;
+  }
+  return `Your ${formatNumber(personalRating)}/10, refined by ${comparisonsLabel}.`;
+}
+
+function communityTooltip(score: number | null, raterCount: number) {
+  if (score == null || raterCount === 0) {
+    return "Not yet rated by other Medialy users.";
+  }
+  const raterLabel = `${raterCount} other ${raterCount === 1 ? "Medialy user" : "Medialy users"}`;
+  return `Average of ${raterLabel}.`;
+}
+
+function consensusTooltip(
+  score: number | null,
+  sourceCount: number,
+  agreement: number,
+) {
+  if (score == null || sourceCount === 0) {
+    return "Not enough external rating data yet.";
+  }
+  const sourcesLabel = `${sourceCount} external ${sourceCount === 1 ? "rating" : "ratings"}`;
+  return `Based on ${sourcesLabel}; ${Math.round(agreement * 100)}% source agreement.`;
 }
 
 function formatRatingSource(source: string) {
@@ -864,10 +944,7 @@ function comparisonResultSx(result: string): SxProps<Theme> {
   const won = result === "Beat";
   return {
     bgcolor: (theme) =>
-      alpha(
-        won ? theme.palette.success.main : theme.palette.error.main,
-        0.12,
-      ),
+      alpha(won ? theme.palette.success.main : theme.palette.error.main, 0.12),
     borderRadius: 999,
     color: won ? "success.main" : "error.main",
     fontSize: "0.75rem",
@@ -932,26 +1009,20 @@ const emptyStateSx: SxProps<Theme> = {
   textAlign: "center",
 };
 
-const externalRatingsSx: SxProps<Theme> = {
+const externalRatingsRowSx: SxProps<Theme> = {
   display: "grid",
   gap: 1,
-  gridTemplateColumns: {
-    xs: "1fr",
-    sm: "repeat(2, minmax(0, 1fr))",
-    lg: "1fr",
-  },
+  gridTemplateColumns: "repeat(auto-fit, minmax(0, 1fr))",
 };
 
 function externalLogoSx(source: string): SxProps<Theme> {
-  const isMetacritic = source === "METACRITIC";
+  const hasImage = externalLogoSrc(source) != null;
   return {
     alignItems: "center",
     bgcolor: (theme) =>
-      isMetacritic
-        ? theme.palette.warning.main
-        : alpha(theme.palette.primary.main, 0.16),
+      hasImage ? "transparent" : alpha(theme.palette.primary.main, 0.16),
     borderRadius: 1.5,
-    color: isMetacritic ? "#111827" : "primary.main",
+    color: "primary.main",
     display: "flex",
     fontSize: "0.9375rem",
     fontWeight: 700,
