@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Inter, Space_Grotesk } from "next/font/google";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import { CssBaseline } from "@mui/material";
-import InitColorSchemeScript from "@mui/material/InitColorSchemeScript";
 import { AppShell } from "@/components/app-shell/AppShell";
 import { Providers } from "@/components/Providers";
 import { getCurrentUser, userInitial } from "@/lib/user";
@@ -45,10 +44,6 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className={`${inter.variable} ${spaceGrotesk.variable}`}>
-        <InitColorSchemeScript
-          attribute="data-mui-color-scheme"
-          defaultMode={initialThemeMode}
-        />
         <AppRouterCacheProvider>
           <Providers initialThemeMode={initialThemeMode}>
             <CssBaseline />

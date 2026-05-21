@@ -523,18 +523,19 @@ const sharedTypography = {
   },
 };
 
-// Single theme with both color schemes baked in. Switching `data-mui-color-scheme`
-// on <html> flips every `var(--mui-palette-*)` value, so no React re-render is
-// required to swap themes and component overrides receive the active palette
-// through `theme.palette.*` (which resolves to the right CSS var per scheme).
+// Light mode is currently disabled — see commit 47189f6. Only the dark
+// colorScheme is registered, so even if the `data-mui-color-scheme` attribute
+// gets flipped to "light" by a stale localStorage value, there's no light
+// palette to render. The `initialMode` parameter is preserved for the future
+// re-enable but is ignored today.
 export function createMedialyTheme(initialMode: ThemeMode = "dark") {
+  void initialMode;
   return createTheme({
     cssVariables: {
       colorSchemeSelector: "data-mui-color-scheme",
     },
-    defaultColorScheme: initialMode,
+    defaultColorScheme: "dark",
     colorSchemes: {
-      light: { palette: paletteForMode("light") },
       dark: { palette: paletteForMode("dark") },
     },
 
