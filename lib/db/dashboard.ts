@@ -12,6 +12,8 @@ import type { MediaItemDTO } from "@/lib/types";
 import { getCurrentUser } from "@/lib/user";
 import { startOfToday } from "@/lib/upcoming";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
+import { bayesianShrunkMean } from "@/lib/scoring/affinity";
+import { TOP_RANKING } from "@/lib/scoring/config";
 
 export function getDashboardUpcomingWhere(
   today = startOfToday(),
@@ -43,40 +45,103 @@ export function getDashboardTopRecommendationsByMediaType(
 }
 
 /**
+ * Per-item evidence and the global priors needed to shrink it. Computed once
+ * per dashboard fetch in `getDashboardData` and threaded into the Top 10 picker.
+ */
+export type CommunityRatingEvidence = {
+  /** Avg of personalRating across non-archived users who rated this item. */
+  average: number;
+  /** How many users contributed. Drives shrinkage strength. */
+  voters: number;
+};
+
+export type ConsensusEvidence = {
+  /** How many distinct external sources backed `computedConsensusScore`. */
+  sources: number;
+};
+
+export type OverallTopRankingContext = {
+  communityByMediaId: Map<string, CommunityRatingEvidence>;
+  consensusByMediaId: Map<string, ConsensusEvidence>;
+  globalCommunityMean: number;
+  globalConsensusMean: number;
+};
+
+/**
  * The Overall Top 10 is intentionally objective: same ranking for every
  * viewer, signed-in or not. It blends external consensus with the average
  * `personalRating` across ALL users — no viewer-specific score, no archive
  * state, no affinity. Per-user signals belong on Tonight's Pick / Up Next.
+ *
+ * Both sub-scores are Bayesian-shrunk toward their global priors. An item
+ * with one 10/10 rating and no critic sources gets pulled toward the mean;
+ * an item with broad coverage holds its value. See `TOP_RANKING.shrinkageK`.
  */
 export function dashboardQualityScore(
   consensusScore: number | null | undefined,
-  communityAverageRating: number | null | undefined,
-) {
-  const parts = [consensusScore, communityAverageRating].filter(
-    (score): score is number => typeof score === "number",
-  );
+  community: CommunityRatingEvidence | null | undefined,
+  consensus: ConsensusEvidence | null | undefined,
+  globalCommunityMean: number,
+  globalConsensusMean: number,
+): { score: number; evidence: number } | null {
+  const parts: number[] = [];
+  let totalEvidence = 0;
+
+  if (community && community.voters > 0) {
+    parts.push(
+      bayesianShrunkMean(
+        community.average,
+        community.voters,
+        globalCommunityMean,
+        TOP_RANKING.shrinkageK.user,
+      ),
+    );
+    totalEvidence += community.voters;
+  }
+  if (typeof consensusScore === "number") {
+    // Defensive default: if the consensus score exists, *some* source produced
+    // it. Treat unknown counts as 1 so we don't silently substitute the prior.
+    const sources = Math.max(consensus?.sources ?? 0, 1);
+    parts.push(
+      bayesianShrunkMean(
+        consensusScore,
+        sources,
+        globalConsensusMean,
+        TOP_RANKING.shrinkageK.source,
+      ),
+    );
+    totalEvidence += sources;
+  }
   if (parts.length === 0) return null;
-  return parts.reduce((total, score) => total + score, 0) / parts.length;
+  const score = parts.reduce((total, value) => total + value, 0) / parts.length;
+  return { score, evidence: totalEvidence };
 }
 
 export function getDashboardOverallTopItemsByMediaType(
   items: MediaItemDTO[],
-  communityAverageByMediaId: Map<string, number>,
+  context: OverallTopRankingContext,
 ) {
   return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
     mediaType,
     items: items
       .filter((item) => item.mediaType === mediaType)
       .flatMap((media) => {
-        const score = dashboardQualityScore(
+        const ranked = dashboardQualityScore(
           media.computedConsensusScore,
-          communityAverageByMediaId.get(media.id) ?? null,
+          context.communityByMediaId.get(media.id),
+          context.consensusByMediaId.get(media.id),
+          context.globalCommunityMean,
+          context.globalConsensusMean,
         );
-        return score == null ? [] : [{ media, score }];
+        return ranked == null ? [] : [{ media, ...ranked }];
       })
       .sort((first, second) => {
         const scoreDelta = second.score - first.score;
         if (scoreDelta !== 0) return scoreDelta;
+        // Items with more total evidence win ties — broader sample is more
+        // trustworthy at the same blended score.
+        const evidenceDelta = second.evidence - first.evidence;
+        if (evidenceDelta !== 0) return evidenceDelta;
         return first.media.title.localeCompare(second.media.title);
       })
       .slice(0, 10),
@@ -142,6 +207,9 @@ export async function getDashboardData() {
     upcomingItemsByMediaType,
     overallTopItems,
     overallCommunityRatings,
+    overallConsensusSourceCounts,
+    globalCommunityAggregate,
+    globalConsensusAggregate,
   ] = await Promise.all([
     prisma.mediaItem.count({
       where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
@@ -227,15 +295,42 @@ export async function getDashboardData() {
       by: ["mediaId"],
       where: { isArchived: false, personalRating: { not: null } },
       _avg: { personalRating: true },
+      _count: { personalRating: true },
+    }),
+    prisma.externalRating.groupBy({
+      by: ["mediaId"],
+      _count: { _all: true },
+    }),
+    // Globals used as Bayesian priors. Cheap (single AVG queries) and the
+    // values change slowly enough that we don't bother caching.
+    prisma.userMedia.aggregate({
+      where: { isArchived: false, personalRating: { not: null } },
+      _avg: { personalRating: true },
+    }),
+    prisma.mediaItem.aggregate({
+      where: { computedConsensusScore: { not: null } },
+      _avg: { computedConsensusScore: true },
     }),
   ]);
 
-  const communityAverageByMediaId = new Map<string, number>();
+  const communityByMediaId = new Map<string, CommunityRatingEvidence>();
   for (const row of overallCommunityRatings) {
     if (row._avg.personalRating != null) {
-      communityAverageByMediaId.set(row.mediaId, row._avg.personalRating);
+      communityByMediaId.set(row.mediaId, {
+        average: row._avg.personalRating,
+        voters: row._count.personalRating,
+      });
     }
   }
+  const consensusByMediaId = new Map<string, ConsensusEvidence>();
+  for (const row of overallConsensusSourceCounts) {
+    consensusByMediaId.set(row.mediaId, { sources: row._count._all });
+  }
+  const globalCommunityMean =
+    globalCommunityAggregate._avg.personalRating ?? TOP_RANKING.fallbackPrior;
+  const globalConsensusMean =
+    globalConsensusAggregate._avg.computedConsensusScore ??
+    TOP_RANKING.fallbackPrior;
 
   // Sort the rows we couldn't sort in SQL (because the score columns live on
   // the joined UserMedia row) by their merged values.
@@ -272,7 +367,12 @@ export async function getDashboardData() {
 
   const topItemsByMediaType = getDashboardOverallTopItemsByMediaType(
     mergedOverallTopItems.map(toMediaItemDTO),
-    communityAverageByMediaId,
+    {
+      communityByMediaId,
+      consensusByMediaId,
+      globalCommunityMean,
+      globalConsensusMean,
+    },
   );
   const tonightPicksByMediaType =
     getDashboardTonightPicksByMediaType(recommendations);

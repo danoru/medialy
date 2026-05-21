@@ -16,6 +16,8 @@ import { PosterImage } from "@/components/media/PosterCard";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
+import { bayesianShrunkMean } from "@/lib/scoring/affinity";
+import { TOP_RANKING } from "@/lib/scoring/config";
 import { isDiscoverSubgenreForGenre } from "@/lib/taxonomy";
 import { getCurrentUserId } from "@/lib/user";
 import { DEFAULT_USER_MEDIA, userMediaInclude } from "@/lib/db/user-media";
@@ -159,7 +161,8 @@ export default async function TopListsPage({
         b.pairwiseScore - a.pairwiseScore,
     );
 
-  const genreWorlds = getGenreWorlds(discoverItems, selectedType);
+  const discoverPrior = computeDiscoverPrior(discoverItems);
+  const genreWorlds = getGenreWorlds(discoverItems, selectedType, discoverPrior);
   const selectedWorld =
     genreWorlds.find((world) => world.name === requestedGenre) ??
     genreWorlds[0] ??
@@ -168,7 +171,7 @@ export default async function TopListsPage({
     selectedWorld?.tags.find((tag) => tag.name === requestedSubgenre) ?? null;
   const activeItems = selectedSubgenre?.items ?? selectedWorld?.items ?? [];
   const essentials = activeItems.slice(0, 14);
-  const startHere = getStartHere(activeItems);
+  const startHere = getStartHere(activeItems, discoverPrior);
   const hiddenGems = getHiddenGems(activeItems);
   const relationshipChains = getRelationshipChains(activeItems);
   const collections = getCollections(selectedWorld, genreWorlds, selectedType);
@@ -896,6 +899,7 @@ function subgenreChipSx(active: boolean): SxProps<Theme> {
 function getGenreWorlds(
   items: DiscoveryItem[],
   mediaType: MediaType,
+  prior: number,
 ): GenreWorld[] {
   const worlds = new Map<string, DiscoveryItem[]>();
 
@@ -909,17 +913,21 @@ function getGenreWorlds(
 
   return [...worlds.entries()]
     .map(([name, worldItems]) => {
-      const sortedItems = sortByScore(worldItems);
+      const sortedItems = sortByScore(worldItems, prior);
+      // World averageScore drives world ordering — use the shrunk rank score
+      // so a world full of thin 10s doesn't outrank a world of broad 8s.
       const averageScore =
-        sortedItems.reduce((sum, item) => sum + discoverScore(item), 0) /
-        sortedItems.length;
+        sortedItems.reduce(
+          (sum, item) => sum + discoverRankScore(item, prior),
+          0,
+        ) / sortedItems.length;
 
       return {
         name,
         count: sortedItems.length,
         averageScore,
         items: sortedItems,
-        tags: getSubgenres(sortedItems, mediaType, name),
+        tags: getSubgenres(sortedItems, mediaType, name, prior),
       };
     })
     .sort(
@@ -932,6 +940,7 @@ function getSubgenres(
   items: DiscoveryItem[],
   mediaType: MediaType,
   genre: string,
+  prior: number,
 ) {
   const tags = new Map<string, DiscoveryItem[]>();
 
@@ -954,7 +963,7 @@ function getSubgenres(
     .map(([name, tagItems]) => ({
       name,
       count: tagItems.length,
-      items: sortByScore(tagItems),
+      items: sortByScore(tagItems, prior),
     }))
     .sort((first, second) => second.count - first.count)
     .slice(0, 18);
@@ -974,12 +983,12 @@ function tagAllowsMediaType(
   }
 }
 
-function getStartHere(items: DiscoveryItem[]) {
-  return sortByScore(items)
+function getStartHere(items: DiscoveryItem[], prior: number) {
+  return sortByScore(items, prior)
     .sort(
       (first, second) =>
         second.comparisonCount - first.comparisonCount ||
-        discoverScore(second) - discoverScore(first),
+        discoverRankScore(second, prior) - discoverRankScore(first, prior),
     )
     .slice(0, 4);
 }
@@ -1044,9 +1053,10 @@ function getCollections(
   ];
 }
 
-function sortByScore(items: DiscoveryItem[]) {
+function sortByScore(items: DiscoveryItem[], prior: number) {
   return [...items].sort(
-    (first, second) => discoverScore(second) - discoverScore(first),
+    (first, second) =>
+      discoverRankScore(second, prior) - discoverRankScore(first, prior),
   );
 }
 
@@ -1054,14 +1064,57 @@ type ScorableItem = {
   computedPersonalScore: number | null;
   personalRating: number | null;
   pairwiseScore: number;
+  comparisonCount?: number;
   status: import("@prisma/client").MediaStatus;
 };
 
+/**
+ * Raw observed score used for display ("8.5"). Same fallback chain as before.
+ * Use `discoverRankScore` for ranking — that one applies Bayesian shrinkage
+ * so a single 10-rated item doesn't outrank items with broader evidence.
+ */
 function discoverScore(item: ScorableItem) {
   if (item.computedPersonalScore != null) return item.computedPersonalScore;
   if (item.personalRating != null) return item.personalRating;
   if (item.status === "COMPLETED") return item.pairwiseScore / 100;
   return 0;
+}
+
+/**
+ * Ranking-only variant. Shrinks the discover score toward `prior` in
+ * proportion to evidence (pairwise comparisons + explicit-rating presence).
+ * Items with zero evidence collapse to the prior and lose ground to anything
+ * that has any data.
+ */
+function discoverRankScore(item: ScorableItem, prior: number) {
+  const observed = discoverScore(item);
+  if (observed === 0) return 0;
+  const evidence =
+    (item.comparisonCount ?? 0) + (item.personalRating != null ? 3 : 0);
+  return bayesianShrunkMean(
+    observed,
+    evidence,
+    prior,
+    TOP_RANKING.shrinkageK.personal,
+  );
+}
+
+/**
+ * Mean of the observed scores across the candidate pool — used as the prior
+ * for `discoverRankScore`. Items with no signal contribute 0 and would skew
+ * the mean low, so we average across items that have any score.
+ */
+function computeDiscoverPrior(items: ScorableItem[]): number {
+  let sum = 0;
+  let count = 0;
+  for (const item of items) {
+    const value = discoverScore(item);
+    if (value > 0) {
+      sum += value;
+      count += 1;
+    }
+  }
+  return count > 0 ? sum / count : TOP_RANKING.fallbackPrior;
 }
 
 function formatScore(item: ScorableItem) {

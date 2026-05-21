@@ -13,6 +13,8 @@ import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { getFollowingIds, getUserProfiles } from "@/lib/social/follows";
 import { getUserOverlap } from "@/lib/social/overlap";
+import { bayesianShrunkMean } from "@/lib/scoring/affinity";
+import { TOP_RANKING } from "@/lib/scoring/config";
 
 const SCORE_BANDS = [
   { label: "9 - 10", min: 9, max: 10 },
@@ -101,10 +103,22 @@ export async function getGenreInsightsByMediaType(
   const recentCutoff = new Date();
   recentCutoff.setDate(recentCutoff.getDate() - 90);
 
+  // Fetch source counts for consensus shrinkage. Cheap aggregate; we only need
+  // the items we're about to rank.
+  const sourceCountRows = await prisma.externalRating.groupBy({
+    by: ["mediaId"],
+    where: { mediaId: { in: items.map((item) => item.id) } },
+    _count: { _all: true },
+  });
+  const sourceCountByMediaId = new Map(
+    sourceCountRows.map((row) => [row.mediaId, row._count._all]),
+  );
+
   return VISIBLE_MEDIA_TYPES.map((mediaType) => {
     const typeItems = items.filter((item) => item.mediaType === mediaType);
+    const context = buildInsightsRankingContext(typeItems, sourceCountByMediaId);
     const ratedItems = typeItems
-      .map((item) => ({ item, score: mediaQualityScore(item) }))
+      .map((item) => ({ item, score: mediaQualityScore(item, context) }))
       .filter(
         (entry): entry is { item: (typeof typeItems)[number]; score: number } =>
           typeof entry.score === "number",
@@ -117,7 +131,7 @@ export async function getGenreInsightsByMediaType(
         ? ratedItems.reduce((sum, entry) => sum + entry.score, 0) /
           ratedItems.length
         : 0;
-    const genres = buildGenreInsights(typeItems, recentCutoff);
+    const genres = buildGenreInsights(typeItems, recentCutoff, context);
 
     return {
       mediaType,
@@ -154,13 +168,17 @@ export async function getGenreInsightsByMediaType(
 
 function buildGenreInsights(
   items: Array<{
+    id: string;
     status: string;
     updatedAt: Date;
     genres: Array<{ genre: { name: string } }>;
     computedConsensusScore: number | null;
     computedPersonalScore: number | null;
+    personalRating?: number | null;
+    comparisonCount?: number;
   }>,
   recentCutoff: Date,
+  context: InsightsRankingContext,
 ) {
   const genres = new Map<
     string,
@@ -175,7 +193,7 @@ function buildGenreInsights(
   >();
 
   for (const item of items) {
-    const score = mediaQualityScore(item);
+    const score = mediaQualityScore(item, context);
     const isCompleted = item.status === "COMPLETED";
     const isRecent = item.updatedAt >= recentCutoff;
 
@@ -270,14 +288,85 @@ function roundScore(value: number) {
   return Math.round(value * 10) / 10;
 }
 
-function mediaQualityScore(item: {
-  computedConsensusScore: number | null;
-  computedPersonalScore: number | null;
-}) {
-  const scoreParts = [
-    item.computedConsensusScore,
-    item.computedPersonalScore,
-  ].filter((score): score is number => typeof score === "number");
+type InsightsRankingContext = {
+  globalPersonalMean: number;
+  globalConsensusMean: number;
+  sourceCountByMediaId: Map<string, number>;
+};
+
+function buildInsightsRankingContext(
+  items: Array<{
+    computedConsensusScore: number | null;
+    computedPersonalScore: number | null;
+  }>,
+  sourceCountByMediaId: Map<string, number>,
+): InsightsRankingContext {
+  let consensusSum = 0;
+  let consensusCount = 0;
+  let personalSum = 0;
+  let personalCount = 0;
+  for (const item of items) {
+    if (typeof item.computedConsensusScore === "number") {
+      consensusSum += item.computedConsensusScore;
+      consensusCount += 1;
+    }
+    if (typeof item.computedPersonalScore === "number") {
+      personalSum += item.computedPersonalScore;
+      personalCount += 1;
+    }
+  }
+  return {
+    globalConsensusMean:
+      consensusCount > 0 ? consensusSum / consensusCount : TOP_RANKING.fallbackPrior,
+    globalPersonalMean:
+      personalCount > 0 ? personalSum / personalCount : TOP_RANKING.fallbackPrior,
+    sourceCountByMediaId,
+  };
+}
+
+function mediaQualityScore(
+  item: {
+    id?: string;
+    computedConsensusScore: number | null;
+    computedPersonalScore: number | null;
+    personalRating?: number | null;
+    comparisonCount?: number;
+  },
+  context: InsightsRankingContext,
+) {
+  const scoreParts: number[] = [];
+
+  if (typeof item.computedConsensusScore === "number") {
+    // Default to 1 source if we don't have a count — consensus existing means
+    // at least one source produced it.
+    const sources = Math.max(
+      (item.id ? context.sourceCountByMediaId.get(item.id) : undefined) ?? 0,
+      1,
+    );
+    scoreParts.push(
+      bayesianShrunkMean(
+        item.computedConsensusScore,
+        sources,
+        context.globalConsensusMean,
+        TOP_RANKING.shrinkageK.source,
+      ),
+    );
+  }
+  if (typeof item.computedPersonalScore === "number") {
+    // Evidence: each pairwise comparison counts as one unit; a present
+    // explicit rating contributes 3 units (matches the first real confidence
+    // bucket in PAIRWISE.confidenceBuckets).
+    const evidence =
+      (item.comparisonCount ?? 0) + (item.personalRating != null ? 3 : 0);
+    scoreParts.push(
+      bayesianShrunkMean(
+        item.computedPersonalScore,
+        evidence,
+        context.globalPersonalMean,
+        TOP_RANKING.shrinkageK.personal,
+      ),
+    );
+  }
 
   if (scoreParts.length === 0) return null;
   return scoreParts.reduce((sum, score) => sum + score, 0) / scoreParts.length;

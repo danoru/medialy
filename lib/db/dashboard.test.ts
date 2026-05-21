@@ -6,6 +6,9 @@ import {
   getDashboardTonightPicksByMediaType,
   dashboardUpcomingOrderBy,
   getDashboardUpcomingWhere,
+  type CommunityRatingEvidence,
+  type ConsensusEvidence,
+  type OverallTopRankingContext,
 } from "@/lib/db/dashboard";
 import type { MediaItemDTO, Recommendation } from "@/lib/types";
 
@@ -43,6 +46,19 @@ function recommendation(
   };
 }
 
+function rankingContext(
+  community: Record<string, CommunityRatingEvidence> = {},
+  consensus: Record<string, ConsensusEvidence> = {},
+  globals: { community?: number; consensus?: number } = {},
+): OverallTopRankingContext {
+  return {
+    communityByMediaId: new Map(Object.entries(community)),
+    consensusByMediaId: new Map(Object.entries(consensus)),
+    globalCommunityMean: globals.community ?? 7,
+    globalConsensusMean: globals.consensus ?? 7,
+  };
+}
+
 describe("dashboard upcoming query", () => {
   it("selects the next non-archived upcoming items without status filtering", () => {
     const today = new Date("2026-05-13T00:00:00");
@@ -76,43 +92,33 @@ describe("dashboard recommendation top 10", () => {
 });
 
 describe("dashboard overall top 10", () => {
-  it("blends external consensus with the community average rating", () => {
+  it("ranks broad-evidence items above thin-evidence outliers", () => {
+    // A: one user rated 10, no critic sources. Should be heavily shrunk.
+    // B: five users averaging 9, six critic sources averaging 9. Holds value.
     const grouped = getDashboardOverallTopItemsByMediaType(
       [
-        media("steady-quality", "MOVIE", "WATCHLIST", {
+        media("thin-outlier", "MOVIE"),
+        media("broad-consensus", "MOVIE", "UNTRACKED", {
           computedConsensusScore: 9,
         }),
-        media("lower-quality", "MOVIE", "WATCHLIST", {
-          computedConsensusScore: 6,
-        }),
       ],
-      new Map([
-        ["steady-quality", 8],
-        ["lower-quality", 6],
-      ]),
+      rankingContext(
+        {
+          "thin-outlier": { average: 10, voters: 1 },
+          "broad-consensus": { average: 9, voters: 5 },
+        },
+        { "broad-consensus": { sources: 6 } },
+        { community: 7.5, consensus: 7.5 },
+      ),
     );
 
-    expect(grouped.find((entry) => entry.mediaType === "MOVIE")?.items).toEqual(
-      [
-        {
-          media: media("steady-quality", "MOVIE", "WATCHLIST", {
-            computedConsensusScore: 9,
-          }),
-          score: 8.5,
-        },
-        {
-          media: media("lower-quality", "MOVIE", "WATCHLIST", {
-            computedConsensusScore: 6,
-          }),
-          score: 6,
-        },
-      ],
-    );
+    const ids = grouped
+      .find((entry) => entry.mediaType === "MOVIE")
+      ?.items.map((entry) => entry.media.id);
+    expect(ids).toEqual(["broad-consensus", "thin-outlier"]);
   });
 
   it("ignores per-viewer state (status, archived, personal score)", () => {
-    // The viewer-specific fields on the DTO must not affect either inclusion
-    // or ordering — same ranking for every user.
     const grouped = getDashboardOverallTopItemsByMediaType(
       [
         media("viewer-completed", "TV_SHOW", "COMPLETED", {
@@ -127,7 +133,7 @@ describe("dashboard overall top 10", () => {
           computedConsensusScore: 7,
         }),
       ],
-      new Map(),
+      rankingContext(),
     );
 
     expect(
@@ -145,42 +151,52 @@ describe("dashboard overall top 10", () => {
         }),
         media("community-only", "MOVIE", "WATCHLIST"),
         media("no-signal", "MOVIE", "WATCHLIST", {
-          // Viewer personal score must NOT rescue an item missing both objective signals.
+          // Viewer personal score must NOT rescue an item with no objective signal.
           computedPersonalScore: 9,
         }),
-        media("pairwise-only", "MOVIE", "WATCHLIST", {
-          pairwiseScore: 1400,
-        }),
+        media("pairwise-only", "MOVIE", "WATCHLIST", { pairwiseScore: 1400 }),
       ],
-      new Map([["community-only", 8]]),
+      rankingContext(
+        { "community-only": { average: 8, voters: 4 } },
+        {},
+        { community: 7, consensus: 7 },
+      ),
     );
 
-    expect(
-      grouped
-        .find((entry) => entry.mediaType === "MOVIE")
-        ?.items.map((entry) => entry.media.id),
-    ).toEqual(["community-only", "consensus-only"]);
+    const ids = grouped
+      .find((entry) => entry.mediaType === "MOVIE")
+      ?.items.map((entry) => entry.media.id);
+    expect(ids).toEqual(["community-only", "consensus-only"]);
   });
 
-  it("returns null quality score when both objective signals are missing", () => {
-    expect(dashboardQualityScore(null, null)).toBeNull();
-    expect(dashboardQualityScore(undefined, undefined)).toBeNull();
-    expect(dashboardQualityScore(8, null)).toBe(8);
-    expect(dashboardQualityScore(null, 6)).toBe(6);
-    expect(dashboardQualityScore(8, 6)).toBe(7);
+  it("dashboardQualityScore returns null when both objective signals are missing", () => {
+    expect(dashboardQualityScore(null, null, null, 7, 7)).toBeNull();
+    expect(dashboardQualityScore(undefined, undefined, undefined, 7, 7)).toBeNull();
+  });
+
+  it("dashboardQualityScore pulls a 1-vote 10/10 toward the prior", () => {
+    // With prior 7.5 and shrinkageK.user=3, 1 vote of 10 lands at ~8.13.
+    const ranked = dashboardQualityScore(
+      null,
+      { average: 10, voters: 1 },
+      null,
+      7.5,
+      7.5,
+    );
+    expect(ranked).not.toBeNull();
+    expect(ranked!.score).toBeCloseTo(8.125, 5);
+    expect(ranked!.evidence).toBe(1);
   });
 
   it("filters out hidden media types but keeps visible groups", () => {
     const grouped = getDashboardOverallTopItemsByMediaType(
       [
-        media("game", "VIDEO_GAME", "WATCHLIST", {
-          computedConsensusScore: 7,
-        }),
+        media("game", "VIDEO_GAME", "WATCHLIST", { computedConsensusScore: 7 }),
         media("hidden", "BOOK" as MediaItemDTO["mediaType"], "WATCHLIST", {
           computedConsensusScore: 10,
         }),
       ],
-      new Map(),
+      rankingContext(),
     );
 
     expect(
@@ -204,11 +220,9 @@ describe("dashboard overall top 10", () => {
           }),
         ),
         media("tv", "TV_SHOW", "WATCHLIST", { computedConsensusScore: 8 }),
-        media("game", "VIDEO_GAME", "WATCHLIST", {
-          computedConsensusScore: 8,
-        }),
+        media("game", "VIDEO_GAME", "WATCHLIST", { computedConsensusScore: 8 }),
       ].flat(),
-      new Map(),
+      rankingContext(),
     );
 
     expect(
