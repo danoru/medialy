@@ -2,8 +2,6 @@
 
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
@@ -16,7 +14,6 @@ import {
   Box,
   Button,
   Chip,
-  IconButton,
   LinearProgress,
   Stack,
   ToggleButton,
@@ -144,7 +141,6 @@ export function DashboardClient({
       ),
     ) ?? "MOVIE";
   const [topMediaType, setTopMediaType] = useState<MediaType>("MOVIE");
-  const [topPage, setTopPage] = useState(0);
   const [genreMediaType, setGenreMediaType] = useState<MediaType>("MOVIE");
   const [tonightPickType, setTonightPickType] = useState<MediaType>(
     initialTonightPickType,
@@ -159,14 +155,7 @@ export function DashboardClient({
     [data.topItemsByMediaType, topMediaType],
   );
 
-  const TOP_PAGE_SIZE = 5;
   const topItems = topItemsForType.slice(0, 10);
-  const topPageCount = Math.max(1, Math.ceil(topItems.length / TOP_PAGE_SIZE));
-  const safeTopPage = Math.min(topPage, topPageCount - 1);
-  const topItemsPage = topItems.slice(
-    safeTopPage * TOP_PAGE_SIZE,
-    safeTopPage * TOP_PAGE_SIZE + TOP_PAGE_SIZE,
-  );
 
   const upcomingItemsForType = useMemo(
     () =>
@@ -308,10 +297,10 @@ export function DashboardClient({
               .join("\n"),
             lg: [
               `"tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight"`,
-              `"top top top top top top top top genre genre genre genre"`,
+              `"top top top top top top top top top top top top"`,
               showPersonalSignals
-                ? `"watch watch watch watch watch watch side side side side side side"`
-                : `"side side side side side side side side side side side side"`,
+                ? `"genre genre genre genre watch watch watch watch side side side side"`
+                : `"genre genre genre genre genre genre side side side side side side"`,
               showSystemIntegrity
                 ? `"health health health health health health health health health health health health"`
                 : null,
@@ -350,59 +339,15 @@ export function DashboardClient({
         <Box sx={{ gridArea: "top", minWidth: 0 }}>
           <DashboardSection
             action={
-              <Stack direction="row" sx={{ alignItems: "center", gap: 0.5 }}>
-                {topPageCount > 1 ? (
-                  <>
-                    <IconButton
-                      aria-label="Previous"
-                      disabled={safeTopPage === 0}
-                      onClick={() =>
-                        setTopPage((page) => Math.max(0, page - 1))
-                      }
-                      size="small"
-                      sx={{ height: 26, width: 26 }}
-                    >
-                      <ChevronLeftIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
-                    <Typography
-                      sx={{
-                        color: "text.secondary",
-                        fontSize: "0.6875rem",
-                        fontWeight: 600,
-                        minWidth: 28,
-                        textAlign: "center",
-                      }}
-                    >
-                      {safeTopPage + 1}/{topPageCount}
-                    </Typography>
-                    <IconButton
-                      aria-label="Next"
-                      disabled={safeTopPage >= topPageCount - 1}
-                      onClick={() =>
-                        setTopPage((page) =>
-                          Math.min(topPageCount - 1, page + 1),
-                        )
-                      }
-                      size="small"
-                      sx={{ height: 26, width: 26 }}
-                    >
-                      <ChevronRightIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
-                  </>
-                ) : null}
-                <Button href="/discover" size="small" sx={panelActionSx}>
-                  Open lists
-                </Button>
-              </Stack>
+              <Button href="/discover" size="small" sx={panelActionSx}>
+                Open lists
+              </Button>
             }
             title="Overall top 10"
           >
             <MediaTypeTabs
               counts={data.mediaTypeCounts}
-              onChange={(value) => {
-                setTopMediaType(value);
-                setTopPage(0);
-              }}
+              onChange={setTopMediaType}
               showCounts={false}
               value={topMediaType}
             />
@@ -416,11 +361,12 @@ export function DashboardClient({
                   gridTemplateColumns: {
                     xs: "repeat(2, minmax(0, 1fr))",
                     sm: "repeat(5, minmax(0, 1fr))",
+                    lg: "repeat(10, minmax(0, 1fr))",
                   },
                   mt: 1.5,
                 }}
               >
-                {topItemsPage.map((recommendation) => {
+                {topItems.map((recommendation) => {
                   const releaseYear = releaseYearLabel(
                     recommendation.media.releaseDate,
                   );

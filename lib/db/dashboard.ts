@@ -350,9 +350,22 @@ export async function getDashboardData() {
     0,
     10,
   );
-  const mergedWatchlistItems = sortByPersonalThenPairwise(
-    mergeAll(watchlistItems),
-  ).slice(0, 5);
+  // Watchlist items haven't been watched, so personal/pairwise scores are
+  // mostly null or at the default — sort by the Medialy Match score shown in
+  // the UI (falling back to consensus) so the top 5 reflect predicted fit.
+  const watchlistMatchByMediaId = new Map<string, number>();
+  for (const rec of recommendations) {
+    watchlistMatchByMediaId.set(rec.media.id, rec.score);
+  }
+  const mergedWatchlistItems = [...mergeAll(watchlistItems)]
+    .sort((a, b) => {
+      const aScore =
+        watchlistMatchByMediaId.get(a.id) ?? a.computedConsensusScore ?? -Infinity;
+      const bScore =
+        watchlistMatchByMediaId.get(b.id) ?? b.computedConsensusScore ?? -Infinity;
+      return bScore - aScore;
+    })
+    .slice(0, 5);
   const mergedRecentItems = mergeAll(recentItems);
   const mergedUpcomingItems = mergeAll(upcomingItems);
   const mergedOverallTopItems = mergeAll(overallTopItems);

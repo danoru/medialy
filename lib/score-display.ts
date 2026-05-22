@@ -16,10 +16,12 @@ export function formatReasonValue(value: number): string {
 }
 
 /** Qualitative bucket for a 0–100 match score. */
-export function matchLabel(score: number): "Very High" | "High" | "Solid" | "Niche" {
+export function matchLabel(
+  score: number,
+): "Very High" | "High" | "Solid" | "Niche" {
   if (score >= 85) return "Very High";
-  if (score >= 70) return "High";
-  if (score >= 55) return "Solid";
+  if (score >= 60) return "High";
+  if (score >= 35) return "Solid";
   return "Niche";
 }
 
