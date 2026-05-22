@@ -1,4 +1,5 @@
 import { Box } from "@mui/material";
+import { ACCENTS } from "@/lib/media-ui-helpers";
 
 type SparklineProps = {
   values: number[];
@@ -20,7 +21,7 @@ export function Sparkline({
   values,
   width = 160,
   height = 36,
-  stroke = "#A78BFA",
+  stroke = ACCENTS.lavender,
   fill,
   baseline,
   ariaLabel,

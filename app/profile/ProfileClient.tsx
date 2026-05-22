@@ -13,12 +13,18 @@ import {
   DashboardSection,
 } from "@/components/cinematic/CinematicPrimitives";
 import { formatMediaType } from "@/lib/format";
-import { mediaAccent } from "@/lib/media-ui-helpers";
+import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
 import type { ProfileData } from "@/lib/db/profile";
 
-const ACCENTS = ["#6366F1", "#0EA5A4", "#D97706", "#DC2626", "#16A34A"];
+const PANEL_ACCENTS = [
+  ACCENTS.pink,
+  ACCENTS.lavender,
+  ACCENTS.teal,
+  ACCENTS.yellow,
+  ACCENTS.mint,
+];
 
-const ACCENT = "#6366F1";
+const ACCENT = ACCENTS.pink;
 
 function Donut({
   segments,
@@ -381,25 +387,25 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                   icon: <LibraryBooksIcon fontSize="small" />,
                   label: "Total items",
                   value: header.stats.totalItems.toLocaleString(),
-                  accent: ACCENTS[0],
+                  accent: PANEL_ACCENTS[0],
                 },
                 {
                   icon: <BookmarkIcon fontSize="small" />,
                   label: "Watchlist",
                   value: header.stats.watchlistCount.toLocaleString(),
-                  accent: ACCENTS[1],
+                  accent: PANEL_ACCENTS[1],
                 },
                 {
                   icon: <CompareArrowsIcon fontSize="small" />,
                   label: "Comparisons",
                   value: header.stats.comparisonCount.toLocaleString(),
-                  accent: ACCENTS[2],
+                  accent: PANEL_ACCENTS[2],
                 },
                 {
                   icon: <VerifiedIcon fontSize="small" />,
                   label: "Confidence",
                   value: `${header.stats.confidence}%`,
-                  accent: ACCENTS[4],
+                  accent: PANEL_ACCENTS[4],
                 },
               ].map((stat) => (
                 <Grid key={stat.label} size={{ xs: 6, sm: 3 }}>
@@ -439,7 +445,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6, lg: 3 }}>
-          <DashboardSection accent="#0EA5A4" title="Media Mix">
+          <DashboardSection accent={ACCENTS.teal} title="Media Mix">
             {data.mediaMix.length ? (
               <Stack
                 direction="row"
@@ -493,13 +499,13 @@ export function ProfileClient({ data }: { data: ProfileData }) {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6, lg: 3 }}>
-          <DashboardSection accent="#D97706" title="Top Genres">
+          <DashboardSection accent={ACCENTS.yellow} title="Top Genres">
             {data.topGenres.length ? (
               <Stack spacing={1.1} sx={{ justifyContent: "center", flex: 1 }}>
                 {data.topGenres.map((genre, index) => (
                   <BarRow
                     key={genre.name}
-                    color={ACCENTS[index % ACCENTS.length]}
+                    color={PANEL_ACCENTS[index % PANEL_ACCENTS.length]}
                     label={genre.name}
                     max={topGenreMax}
                     suffix={`${genre.share}%`}
@@ -535,7 +541,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
       {/* Friend / Coverage / Library status / Recent ratings */}
       <Grid container spacing={1.5}>
         <Grid size={{ xs: 12, md: 6, lg: 3 }}>
-          <DashboardSection accent="#DC2626" title="Friend Compatibility">
+          <DashboardSection accent={ACCENTS.peach} title="Friend Compatibility">
             {data.topFollow ? (
               <Stack spacing={1} sx={{ flex: 1, justifyContent: "center" }}>
                 <Stack direction="row" spacing={1.2} sx={{ alignItems: "center" }}>
@@ -588,14 +594,14 @@ export function ProfileClient({ data }: { data: ProfileData }) {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6, lg: 3 }}>
-          <DashboardSection accent="#0EA5A4" title="Comparison Coverage">
+          <DashboardSection accent={ACCENTS.teal} title="Comparison Coverage">
             <Stack
               direction="row"
               spacing={1.5}
               sx={{ alignItems: "center", flex: 1 }}
             >
               <Gauge
-                color="#0EA5A4"
+                color={ACCENTS.teal}
                 label="Covered"
                 value={data.comparisonCoverage.percent}
               />
@@ -609,13 +615,13 @@ export function ProfileClient({ data }: { data: ProfileData }) {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6, lg: 3 }}>
-          <DashboardSection accent="#16A34A" title="Library Status">
+          <DashboardSection accent={ACCENTS.mint} title="Library Status">
             {data.libraryStatus.length ? (
               <Stack spacing={1} sx={{ flex: 1, justifyContent: "center" }}>
                 {data.libraryStatus.map((entry, index) => (
                   <BarRow
                     key={entry.label}
-                    color={ACCENTS[index % ACCENTS.length]}
+                    color={PANEL_ACCENTS[index % PANEL_ACCENTS.length]}
                     label={entry.label}
                     max={Math.max(
                       1,
@@ -633,7 +639,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6, lg: 3 }}>
-          <DashboardSection accent="#D97706" title="Recent Ratings">
+          <DashboardSection accent={ACCENTS.yellow} title="Recent Ratings">
             {data.recentRatings.length ? (
               <Stack
                 direction="row"
@@ -718,7 +724,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                   >
                     <Typography
                       sx={{
-                        color: ACCENTS[index % ACCENTS.length],
+                        color: PANEL_ACCENTS[index % PANEL_ACCENTS.length],
                         fontSize: "1.5rem",
                         fontWeight: 650,
                         lineHeight: 1,
@@ -760,14 +766,14 @@ export function ProfileClient({ data }: { data: ProfileData }) {
         </Grid>
 
         <Grid size={{ xs: 12, lg: 5 }}>
-          <DashboardSection accent="#16A34A" title="Data Health">
+          <DashboardSection accent={ACCENTS.mint} title="Data Health">
             <Stack
               direction="row"
               spacing={2}
               sx={{ alignItems: "center", flex: 1 }}
             >
               <Gauge
-                color="#16A34A"
+                color={ACCENTS.mint}
                 label="Health"
                 value={data.dataHealth.score}
               />

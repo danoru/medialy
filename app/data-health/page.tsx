@@ -14,6 +14,10 @@ import Link from "next/link";
 import { getDataHealthReport } from "@/lib/insights";
 import { formatMediaType } from "@/lib/format";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
+import {
+  mediaTypeTabIndicatorColor,
+  mediaTypeTabSx,
+} from "@/lib/media-ui-helpers";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { requireUserId } from "@/lib/user";
 
@@ -60,6 +64,11 @@ export default async function DataHealthPage({
             allowScrollButtonsMobile
             scrollButtons="auto"
             sx={{ mb: 2 }}
+            slotProps={{
+              indicator: {
+                sx: { backgroundColor: mediaTypeTabIndicatorColor(selectedType) },
+              },
+            }}
             value={selectedType}
             variant="scrollable"
           >
@@ -69,6 +78,7 @@ export default async function DataHealthPage({
                 href={`/data-health?type=${type}`}
                 key={type}
                 label={formatMediaType(type)}
+                sx={mediaTypeTabSx(type)}
                 value={type}
               />
             ))}

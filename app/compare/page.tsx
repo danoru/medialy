@@ -15,7 +15,6 @@ import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
 import EmojiEventsOutlinedIcon from "@mui/icons-material/EmojiEventsOutlined";
 import EventOutlinedIcon from "@mui/icons-material/EventOutlined";
 import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
-import { alpha } from "@mui/material/styles";
 import { ComparisonContext, MediaType, Prisma } from "@prisma/client";
 import Link from "next/link";
 import { saveComparison } from "@/app/compare/actions";
@@ -28,6 +27,7 @@ import { requireUserId } from "@/lib/user";
 import { formatMediaType, formatStatus } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
+import { posterFallback } from "@/lib/media-ui-helpers";
 import { prisma } from "@/lib/prisma";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { ActionToastButton } from "@/components/shared/Toasts";
@@ -805,17 +805,6 @@ function PosterThumb({ item }: { item: CompareItem }) {
       }}
     />
   );
-}
-
-function posterFallback(mediaType: MediaType) {
-  const accent =
-    mediaType === "VIDEO_GAME"
-      ? "#D97706"
-      : mediaType === "TV_SHOW"
-        ? "#0EA5A4"
-        : "#6366F1";
-
-  return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
 }
 
 function stringParam(value: string | string[] | undefined) {

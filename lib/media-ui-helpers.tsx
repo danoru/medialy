@@ -12,27 +12,44 @@ import TheaterComedyIcon from "@mui/icons-material/TheaterComedy";
 import { formatMediaType } from "@/lib/format";
 
 /**
- * Canonical media-type accent palette. Tuned to be readable on both
- * light and dark surfaces. Used for icon tints, poster fallback
- * gradients, and chip borders across dashboard, watchlist, discover,
- * insights, and profile views.
- *
- * Note: the watchlist page previously used a different palette
- * (blue/green/purple). It is intentionally migrated here so all
- * surfaces share one media-type identity.
+ * Vaporwave Noir palette. Single source of truth for accent colors used
+ * outside the MUI theme tokens (which cover semantic roles — primary, success,
+ * warning, error). Import these by name; do not duplicate hex values at
+ * call sites.
+ */
+export const ACCENTS = {
+  pink: "#FF6FB5",
+  lavender: "#B58CFF",
+  teal: "#38E1D6",
+  mint: "#7DFFC4",
+  yellow: "#FFD56B",
+  peach: "#FF9E7D",
+  coral: "#FF6B6B",
+  navy: "#4D7CFF",
+  /** Brand chrome accent — used for nav, primary buttons, the Medialy logo,
+   * links, and the user avatar. Reusing peach (the most iconic vaporwave hue)
+   * for the brand identity; the MUSIC media-type uses `coral` instead so the
+   * 1:1 media-type → color mapping still holds. */
+  brand: "#FF9E7D",
+} as const;
+
+/**
+ * Canonical media-type accent map. One color per `MediaType`. Used for icon
+ * tints, poster fallback gradients, chip borders, and left-border accents
+ * across dashboard, watchlist, discover, insights, media detail, and profile.
  */
 export const MEDIA_ACCENT: Record<MediaType, string> = {
-  MOVIE: "#6366F1",
-  TV_SHOW: "#0EA5A4",
-  VIDEO_GAME: "#D97706",
-  BOOK: "#DC2626",
-  BOARD_GAME: "#16A34A",
-  MUSIC: "#0EA5A4",
-  MUSICAL: "#DC2626",
+  MOVIE: ACCENTS.pink,
+  TV_SHOW: ACCENTS.lavender,
+  VIDEO_GAME: ACCENTS.teal,
+  BOARD_GAME: ACCENTS.mint,
+  BOOK: ACCENTS.yellow,
+  MUSIC: ACCENTS.coral,
+  MUSICAL: ACCENTS.navy,
 };
 
 export function mediaAccent(mediaType: MediaType): string {
-  return MEDIA_ACCENT[mediaType] ?? "#6366F1";
+  return MEDIA_ACCENT[mediaType] ?? ACCENTS.pink;
 }
 
 /** Short, plural label suitable for nav/filter chips. */
@@ -80,4 +97,26 @@ export function mediaTypeIcon(
 export function posterFallback(mediaType: MediaType): string {
   const accent = mediaAccent(mediaType);
   return `linear-gradient(150deg, ${alpha(accent, 0.45)}, ${alpha(accent, 0.12)} 55%, rgba(8,8,11,0.85))`;
+}
+
+/**
+ * Per-tab sx for an MUI `<Tab>` representing a media type. Tints the tab's
+ * text/icon by the media accent — selected uses the full color, unselected
+ * shows a faded version so the palette still reads at a glance.
+ */
+export function mediaTypeTabSx(mediaType: MediaType) {
+  const accent = mediaAccent(mediaType);
+  return {
+    color: `${alpha(accent, 0.55)} !important`,
+    "&:hover": { color: `${accent} !important` },
+    "&.Mui-selected": { color: `${accent} !important` },
+  };
+}
+
+/**
+ * Indicator color for an MUI `<Tabs>` group when a media type is selected.
+ * Falls back to the brand accent for "All" / no-selection states.
+ */
+export function mediaTypeTabIndicatorColor(mediaType: MediaType | null) {
+  return mediaType ? mediaAccent(mediaType) : ACCENTS.brand;
 }

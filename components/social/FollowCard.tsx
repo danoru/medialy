@@ -12,6 +12,7 @@ import {
 } from "@/components/cinematic/CinematicPrimitives";
 import { UserAvatar } from "@/components/social/UserAvatar";
 import { FollowButton } from "@/components/social/FollowButton";
+import { ACCENTS } from "@/lib/media-ui-helpers";
 import type { UserOverlap } from "@/lib/social/overlap";
 
 /**
@@ -80,17 +81,17 @@ export function FollowCard({
 
         <Stack direction="row" spacing={1.5} sx={{ mb: 2 }}>
           <CompactStatCard
-            accent="#7C7AED"
+            accent={ACCENTS.pink}
             label="Shared ratings"
             value={overlap.overlapCount.toString()}
           />
           <CompactStatCard
-            accent="#3FD693"
+            accent={ACCENTS.mint}
             label="Both completed"
             value={overlap.sharedCompletedCount.toString()}
           />
           <CompactStatCard
-            accent="#F0B649"
+            accent={ACCENTS.yellow}
             label="Avg rating gap"
             value={
               overlap.averageDistance == null

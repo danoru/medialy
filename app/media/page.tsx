@@ -37,6 +37,10 @@ import { StatePanel } from "@/components/shared/StatePanel";
 import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { sortMediaTitleRows, type SortDirection } from "@/lib/media-sort";
+import {
+  mediaTypeTabIndicatorColor,
+  mediaTypeTabSx,
+} from "@/lib/media-ui-helpers";
 import { MediaPageNavigator } from "@/components/media/MediaPageNavigator";
 import { SaveRatingsButton } from "@/components/media/SaveRatingsButton";
 import { matchesMediaTitleSearch } from "@/lib/media-search";
@@ -179,6 +183,15 @@ export default async function MediaPage({
             allowScrollButtonsMobile
             scrollButtons="auto"
             sx={{ mb: 2 }}
+            slotProps={{
+              indicator: {
+                sx: {
+                  backgroundColor: mediaTypeTabIndicatorColor(
+                    selectedType === ALL_MEDIA_TYPES ? null : selectedType,
+                  ),
+                },
+              },
+            }}
             value={selectedType}
             variant="scrollable"
           >
@@ -197,6 +210,7 @@ export default async function MediaPage({
                 href={buildMediaHref(params, { type, page: undefined })}
                 key={type}
                 label={formatMediaType(type)}
+                sx={mediaTypeTabSx(type)}
                 value={type}
               />
             ))}

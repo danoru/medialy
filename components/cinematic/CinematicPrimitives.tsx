@@ -3,32 +3,34 @@ import type { ReactNode } from "react";
 import { Box, Card, CardContent, Stack, Typography } from "@mui/material";
 import type { CardProps } from "@mui/material";
 import { alpha, styled, useTheme } from "@mui/material/styles";
+import { ACCENTS } from "@/lib/media-ui-helpers";
 
 // Legacy token export. These now serve as fallback constants for code that
 // still imports `noirTokens` directly. Prefer reading from the MUI theme
-// (theme.palette.surface, theme.palette.border, theme.palette.accent).
+// (theme.palette.surface, theme.palette.border, theme.palette.accent) or the
+// named `ACCENTS` palette from `lib/media-ui-helpers`.
 export const noirTokens = {
   accent: {
-    amber: "#F0B649",
-    blue: "#7C7AED",
-    emerald: "#3FD693",
-    purple: "#7C7AED",
-    rose: "#F26D8A",
-    violet: "#7C7AED",
+    amber: ACCENTS.yellow,
+    blue: ACCENTS.navy,
+    emerald: ACCENTS.mint,
+    purple: ACCENTS.lavender,
+    rose: ACCENTS.pink,
+    violet: ACCENTS.lavender,
   },
   background: {
-    default: "#0A0A0D",
-    elevated: "#121216",
-    panel: "#16161B",
+    default: "#0A0810",
+    elevated: "#13101A",
+    panel: "#1A1624",
   },
   border: {
-    subtle: "rgba(255, 255, 255, 0.06)",
+    subtle: "rgba(255, 255, 255, 0.05)",
     strong: "rgba(255, 255, 255, 0.16)",
   },
   text: {
-    muted: "rgba(245, 245, 247, 0.5)",
-    primary: "#F5F5F7",
-    secondary: "rgba(245, 245, 247, 0.62)",
+    muted: "rgba(244, 238, 250, 0.5)",
+    primary: "#F4EEFA",
+    secondary: "rgba(244, 238, 250, 0.62)",
   },
 };
 
@@ -40,12 +42,15 @@ type AccentCardProps = CardProps & {
 
 export const CinematicCard = styled(Card, {
   shouldForwardProp: (prop) => prop !== "accent",
-})<AccentCardProps>(({ theme }) => ({
+})<AccentCardProps>(({ theme, accent }) => ({
   backgroundColor: theme.palette.background.paper,
   backgroundImage: `linear-gradient(180deg, ${alpha("#FFFFFF", 0.022)}, transparent 120px)`,
   border: `1px solid ${theme.palette.border.subtle}`,
+  borderLeft: accent ? `2px solid ${accent}` : `1px solid ${theme.palette.border.subtle}`,
   borderRadius: dashboardSurfaceRadius,
-  boxShadow: "0 6px 24px rgba(0, 0, 0, 0.35)",
+  boxShadow: accent
+    ? `0 8px 28px rgba(0, 0, 0, 0.42), 0 1px 0 ${alpha("#FFFFFF", 0.03)} inset, -8px 0 24px -16px ${alpha(accent, 0.55)}`
+    : "0 6px 24px rgba(0, 0, 0, 0.35)",
   height: "100%",
   overflow: "hidden",
   position: "relative",
@@ -53,8 +58,11 @@ export const CinematicCard = styled(Card, {
     "border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease",
   "&:hover": {
     borderColor: theme.palette.border.default,
+    borderLeftColor: accent ?? theme.palette.border.default,
     transform: "translateY(-2px)",
-    boxShadow: "0 12px 36px rgba(0, 0, 0, 0.45)",
+    boxShadow: accent
+      ? `0 16px 44px rgba(0, 0, 0, 0.52), 0 1px 0 ${alpha("#FFFFFF", 0.04)} inset, -10px 0 32px -14px ${alpha(accent, 0.7)}`
+      : "0 12px 36px rgba(0, 0, 0, 0.45)",
   },
   ...theme.applyStyles("light", {
     backgroundImage: "none",
@@ -117,6 +125,15 @@ export function DashboardSection({
             >
               {title}
             </Typography>
+            <Box
+              sx={{
+                background: `linear-gradient(90deg, ${accentColor}, ${alpha(accentColor, 0)})`,
+                borderRadius: 1,
+                height: 2,
+                mt: 0.65,
+                width: 36,
+              }}
+            />
           </Box>
           {action}
         </Stack>
@@ -155,6 +172,7 @@ export function CompactStatCard({
         bgcolor: "surface.1",
         border: "1px solid",
         borderColor: "border.subtle",
+        borderLeft: `2px solid ${accent}`,
         borderRadius: 2,
         display: "flex",
         gap: 1.25,

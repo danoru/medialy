@@ -26,6 +26,8 @@ import type {
   MediaTypeGenreInsights,
 } from "@/lib/types";
 import {
+  ACCENTS,
+  mediaAccent,
   mediaTypeIcon,
   posterFallback,
   shortMediaTypeLabel,
@@ -35,17 +37,13 @@ type InsightsClientProps = {
   insightsByType: MediaTypeGenreInsights[];
 };
 
-const localMediaAccent: Record<MediaType, string> = {
-  [MediaType.MOVIE]: "#6366F1",
-  [MediaType.TV_SHOW]: "#0EA5A4",
-  [MediaType.VIDEO_GAME]: "#D97706",
-  [MediaType.BOOK]: "#16A34A",
-  [MediaType.BOARD_GAME]: "#DC2626",
-  [MediaType.MUSIC]: "#5B5BD6",
-  [MediaType.MUSICAL]: "#D97706",
-};
-
-const bandColors = ["#6366F1", "#0EA5A4", "#D97706", "#16A34A", "#DC2626"];
+const bandColors = [
+  ACCENTS.pink,
+  ACCENTS.lavender,
+  ACCENTS.teal,
+  ACCENTS.yellow,
+  ACCENTS.mint,
+];
 
 export function InsightsClient({ insightsByType }: InsightsClientProps) {
   const [mediaType, setMediaType] =
@@ -53,7 +51,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
   const selected =
     insightsByType.find((entry) => entry.mediaType === mediaType) ??
     insightsByType[0];
-  const accent = selected ? localMediaAccent[selected.mediaType] : "#6366F1";
+  const accent = selected ? mediaAccent(selected.mediaType) : ACCENTS.pink;
   const topGenres =
     selected?.genres.filter((genre) => genre.ratedCount > 0).slice(0, 10) ?? [];
   const lowDataGenres =
@@ -143,7 +141,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#0EA5A4"
+          accent={ACCENTS.teal}
           icon={<AutoGraphIcon fontSize="small" />}
           sx={{ gridArea: "fingerprint" }}
           title="Taste Fingerprint"
@@ -155,7 +153,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#D97706"
+          accent={ACCENTS.yellow}
           icon={<DonutLargeIcon fontSize="small" />}
           sx={{ gridArea: "distribution" }}
           title="Score Distribution"
@@ -168,7 +166,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#16A34A"
+          accent={ACCENTS.mint}
           icon={<TrendingUpIcon fontSize="small" />}
           sx={{ gridArea: "rising" }}
           title="Recent Momentum"
@@ -180,7 +178,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#D97706"
+          accent={ACCENTS.peach}
           icon={<ReportProblemIcon fontSize="small" />}
           sx={{ gridArea: "low" }}
           title="Low Data"
@@ -189,7 +187,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
         </InsightsPanel>
 
         <InsightsPanel
-          accent="#5B5BD6"
+          accent={ACCENTS.navy}
           icon={<StarIcon fontSize="small" />}
           sx={{ gridArea: "titles" }}
           title="Standout Titles"
@@ -627,15 +625,15 @@ function TasteFingerprint({
           strokeWidth="1.5"
         />
         <polygon
-          fill="#6366F1"
+          fill={ACCENTS.pink}
           fillOpacity={0.18}
           points={userPoints}
-          stroke="#6366F1"
+          stroke={ACCENTS.pink}
           strokeWidth="2.5"
         />
       </Box>
       <Stack direction="row" sx={{ gap: 1.4, justifyContent: "center" }}>
-        <LegendDot color="#6366F1" label="You" />
+        <LegendDot color={ACCENTS.pink} label="You" />
         <LegendDot color="text.disabled" label="Type avg" />
       </Stack>
     </Box>

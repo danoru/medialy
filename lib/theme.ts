@@ -86,26 +86,26 @@ type Tokens = {
 };
 
 const darkTokens: Tokens = {
-  bg: { default: "#0C0C10", paper: "#141419" },
+  bg: { default: "#0A0810", paper: "#13101A" },
   bodyBackground:
-    "radial-gradient(1200px 600px at 12% -5%, rgba(124, 122, 237, 0.08), transparent 60%), radial-gradient(1000px 700px at 100% 0%, rgba(124, 122, 237, 0.05), transparent 55%), #0A0A0D",
-  surface: { 1: "#17171D", 2: "#1F1F26", 3: "#272730" },
+    "radial-gradient(1200px 700px at 18% -5%, rgba(255, 158, 125, 0.10), transparent 65%), #0A0810",
+  surface: { 1: "#13101A", 2: "#1A1624", 3: "#221E2C" },
   border: {
-    subtle: "rgba(255, 255, 255, 0.06)",
-    default: "rgba(255, 255, 255, 0.1)",
+    subtle: "rgba(255, 255, 255, 0.05)",
+    default: "rgba(255, 255, 255, 0.09)",
     strong: "rgba(255, 255, 255, 0.16)",
   },
   text: {
-    primary: "#F5F5F7",
-    secondary: "rgba(245, 245, 247, 0.62)",
-    disabled: "rgba(245, 245, 247, 0.32)",
+    primary: "#F4EEFA",
+    secondary: "rgba(244, 238, 250, 0.62)",
+    disabled: "rgba(244, 238, 250, 0.32)",
   },
   accent: {
-    primary: "#7C7AED",
-    primaryHover: "#9492F2",
-    muted: "rgba(124, 122, 237, 0.16)",
+    primary: "#FF9E7D",
+    primaryHover: "#FFB59A",
+    muted: "rgba(255, 158, 125, 0.16)",
   },
-  divider: "rgba(255, 255, 255, 0.08)",
+  divider: "rgba(255, 255, 255, 0.07)",
   shadow: {
     sm: "0 1px 2px rgba(0, 0, 0, 0.3)",
     md: "0 6px 24px rgba(0, 0, 0, 0.35)",
@@ -129,9 +129,9 @@ const lightTokens: Tokens = {
     disabled: "rgba(10, 10, 15, 0.36)",
   },
   accent: {
-    primary: "#5B5BD6",
-    primaryHover: "#4848C4",
-    muted: "rgba(91, 91, 214, 0.1)",
+    primary: "#C9633F",
+    primaryHover: "#A84F2E",
+    muted: "rgba(201, 99, 63, 0.10)",
   },
   divider: "rgba(15, 15, 20, 0.08)",
   shadow: {
@@ -151,7 +151,7 @@ function paletteForMode(mode: Mode) {
     primary: {
       main: t.accent.primary,
       light: t.accent.primaryHover,
-      dark: mode === "dark" ? "#5654C9" : "#3A3AA8",
+      dark: mode === "dark" ? "#E07759" : "#C9633F",
       contrastText: "#FFFFFF",
     },
 

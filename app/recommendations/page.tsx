@@ -15,6 +15,10 @@ import { getRecommendations } from "@/lib/recommendations";
 import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
+import {
+  mediaTypeTabIndicatorColor,
+  mediaTypeTabSx,
+} from "@/lib/media-ui-helpers";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { requireUserId } from "@/lib/user";
 
@@ -64,6 +68,11 @@ export default async function RecommendationsPage({
             allowScrollButtonsMobile
             scrollButtons="auto"
             sx={{ mb: 2 }}
+            slotProps={{
+              indicator: {
+                sx: { backgroundColor: mediaTypeTabIndicatorColor(selectedType) },
+              },
+            }}
             value={selectedType}
             variant="scrollable"
           >
@@ -73,6 +82,7 @@ export default async function RecommendationsPage({
                 href={buildRecommendationsHref(type)}
                 key={type}
                 label={`${formatMediaType(type)} (${countsByType.get(type) ?? 0})`}
+                sx={mediaTypeTabSx(type)}
                 value={type}
               />
             ))}

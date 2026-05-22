@@ -11,7 +11,11 @@ import {
 import type { MediaItem, MediaType } from "@prisma/client";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { formatMediaType } from "@/lib/format";
-import { posterFallback } from "@/lib/media-ui-helpers";
+import {
+  mediaTypeTabIndicatorColor,
+  mediaTypeTabSx,
+  posterFallback,
+} from "@/lib/media-ui-helpers";
 import { PosterImage } from "@/components/media/PosterCard";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
@@ -201,6 +205,11 @@ export default async function TopListsPage({
             scrollButtons="auto"
             value={selectedType}
             variant="scrollable"
+            slotProps={{
+              indicator: {
+                sx: { backgroundColor: mediaTypeTabIndicatorColor(selectedType) },
+              },
+            }}
             sx={{
               minHeight: 40,
               "& .MuiTab-root": {
@@ -218,6 +227,7 @@ export default async function TopListsPage({
                 href={topListsHref(type)}
                 key={type}
                 label={formatMediaType(type)}
+                sx={mediaTypeTabSx(type)}
                 value={type}
               />
             ))}

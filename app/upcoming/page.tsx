@@ -21,6 +21,10 @@ import {
   VISIBLE_MEDIA_TYPES,
 } from "@/lib/media-types";
 import {
+  mediaTypeTabIndicatorColor,
+  mediaTypeTabSx,
+} from "@/lib/media-ui-helpers";
+import {
   formatUpcomingRelativeLabel,
   sortUpcomingItems,
   startOfToday,
@@ -101,6 +105,11 @@ export default async function UpcomingPage({
             allowScrollButtonsMobile
             scrollButtons="auto"
             sx={{ mb: 2 }}
+            slotProps={{
+              indicator: {
+                sx: { backgroundColor: mediaTypeTabIndicatorColor(selectedType) },
+              },
+            }}
             value={selectedType}
             variant="scrollable"
           >
@@ -110,6 +119,7 @@ export default async function UpcomingPage({
                 href={`/upcoming?type=${type}`}
                 key={type}
                 label={formatMediaType(type)}
+                sx={mediaTypeTabSx(type)}
                 value={type}
               />
             ))}

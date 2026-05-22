@@ -37,6 +37,7 @@ import type { MediaItemDTO } from "@/lib/types";
 import { formatUpcomingRelativeLabel } from "@/lib/upcoming";
 import { releaseYearLabel } from "@/lib/date-labels";
 import {
+  ACCENTS,
   mediaAccent,
   mediaTypeIcon,
   posterFallback,
@@ -217,7 +218,7 @@ export function DashboardClient({
       (recommendation) =>
         recommendation.media.id !== heroRecommendation?.media.id,
     )
-    .slice(0, 4);
+    .slice(0, 5);
   const tonightPickCounts = dashboardMediaTypes.map((mediaType) => ({
     mediaType,
     count: tonightPicksByType.has(mediaType) ? 1 : 0,
@@ -281,7 +282,7 @@ export function DashboardClient({
           ) : null}
           {showSystemIntegrity ? (
             <CompactStatCard
-              accent="#D97706"
+              accent={ACCENTS.peach}
               icon={<ReportProblemIcon fontSize="small" />}
               label="Metadata gaps"
               value={data.missingMetadataCount.toLocaleString()}
@@ -296,8 +297,7 @@ export function DashboardClient({
           gap: 2,
           gridTemplateAreas: {
             xs: [
-              `"pick"`,
-              `"recs"`,
+              `"tonight"`,
               `"top"`,
               `"genre"`,
               showPersonalSignals ? `"watch"` : null,
@@ -307,7 +307,7 @@ export function DashboardClient({
               .filter(Boolean)
               .join("\n"),
             lg: [
-              `"pick pick pick pick pick recs recs recs recs recs recs recs"`,
+              `"tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight"`,
               `"top top top top top top top top genre genre genre genre"`,
               showPersonalSignals
                 ? `"watch watch watch watch watch watch side side side side side side"`
@@ -322,15 +322,19 @@ export function DashboardClient({
           gridTemplateColumns: { xs: "1fr", lg: "repeat(12, minmax(0, 1fr))" },
         }}
       >
-        <Box sx={{ gridArea: "pick", minWidth: 0 }}>
+        <Box sx={{ gridArea: "tonight", minWidth: 0 }}>
           {heroRecommendation ? (
-            <TonightPickCard
+            <DiagonalPickStrip
               counts={tonightPickCounts}
               confidence={heroRecommendation.confidence}
-              item={heroRecommendation.media}
+              hero={heroRecommendation.media}
+              heroScore={heroRecommendation.score}
               onTypeChange={setTonightPickType}
-              score={heroRecommendation.score}
               showMatch={showPersonalSignals}
+              upNext={recommendationRailItems.map((r) => ({
+                media: r.media,
+                score: r.score,
+              }))}
               value={tonightPickType}
             />
           ) : (
@@ -341,52 +345,6 @@ export function DashboardClient({
               />
             </DashboardSection>
           )}
-        </Box>
-
-        <Box sx={{ gridArea: "recs", minWidth: 0 }}>
-          <DashboardSection
-            action={
-              <Button href="/recommendations" size="small" sx={panelActionSx}>
-                View all
-              </Button>
-            }
-            title={`${shortMediaTypeLabel(tonightPickType)} up next`}
-          >
-            {recommendationRailItems.length > 0 ? (
-              <MediaRail>
-                {recommendationRailItems.map((recommendation) => {
-                  const score = showPersonalSignals
-                    ? recommendation.score
-                    : undefined;
-                  const releaseYear = releaseYearLabel(
-                    recommendation.media.releaseDate,
-                  );
-                  const meta = [
-                    formatMediaType(recommendation.media.mediaType),
-                    releaseYear,
-                    recommendation.media.genres[0],
-                  ].filter((value): value is string => Boolean(value));
-                  return (
-                    <PosterTile
-                      item={recommendation.media}
-                      key={recommendation.media.id}
-                      meta={meta}
-                      scoreBadge={
-                        typeof score === "number" ? (
-                          <PosterScoreBadge score={score} />
-                        ) : undefined
-                      }
-                    />
-                  );
-                })}
-              </MediaRail>
-            ) : (
-              <EmptyPanel
-                icon={<AutoAwesomeIcon />}
-                label={`No additional ${formatMediaType(tonightPickType).toLowerCase()} recommendations yet.`}
-              />
-            )}
-          </DashboardSection>
         </Box>
 
         <Box sx={{ gridArea: "top", minWidth: 0 }}>
@@ -609,30 +567,46 @@ export function DashboardClient({
   );
 }
 
-function TonightPickCard({
+
+// Diagonal skew offset (px) applied to each slice's clip-path. Larger = more
+// dramatic angle. Slices after the featured one are pulled back by this same
+// amount so adjacent diagonals share an edge exactly.
+const DIAG_SKEW = 40;
+
+function DiagonalPickStrip({
   counts,
   confidence,
-  item,
+  hero,
+  heroScore,
   onTypeChange,
-  score,
   showMatch,
+  upNext,
   value,
 }: {
   counts: Array<{ mediaType: MediaType; count: number }>;
   confidence: number;
-  item: MediaItemDTO;
+  hero: MediaItemDTO;
+  heroScore: number;
   onTypeChange: (value: MediaType) => void;
-  score: number;
   showMatch: boolean;
+  upNext: Array<{ media: MediaItemDTO; score: number }>;
   value: MediaType;
 }) {
-  const releaseYear = releaseYearLabel(item.releaseDate);
+  const heroYear = releaseYearLabel(hero.releaseDate);
   const heroMeta = [
-    formatMediaType(item.mediaType),
-    releaseYear,
-    ...item.genres.slice(0, 1),
-  ].filter(Boolean);
+    formatMediaType(hero.mediaType),
+    heroYear,
+    ...hero.genres.slice(0, 1),
+  ].filter((v): v is string => Boolean(v));
 
+  // Clip paths: featured has a straight left edge + diagonal right; up-next
+  // slices are parallelograms; the final slice has a diagonal left + straight
+  // right. Slice height is `100%` so the offset is purely horizontal.
+  const featuredClip = `polygon(0 0, 100% 0, calc(100% - ${DIAG_SKEW}px) 100%, 0 100%)`;
+  const middleClip = `polygon(${DIAG_SKEW}px 0, 100% 0, calc(100% - ${DIAG_SKEW}px) 100%, 0 100%)`;
+  const lastClip = `polygon(${DIAG_SKEW}px 0, 100% 0, 100% 100%, 0 100%)`;
+
+  const heroAccent = mediaAccent(hero.mediaType);
   return (
     <Box
       component="section"
@@ -640,147 +614,299 @@ function TonightPickCard({
         bgcolor: "background.paper",
         border: "1px solid",
         borderColor: "border.subtle",
+        borderLeft: `2px solid ${heroAccent}`,
         borderRadius: 3,
-        height: { xs: 420, md: 468 },
+        boxShadow: `0 14px 40px rgba(0,0,0,0.5), 0 1px 0 ${alpha("#FFFFFF", 0.04)} inset, -14px 0 56px -22px ${alpha(heroAccent, 0.6)}`,
+        display: "flex",
+        flexDirection: { xs: "column", md: "row" },
+        height: { xs: "auto", md: 468 },
+        minHeight: { xs: 720, md: 468 },
         overflow: "hidden",
         position: "relative",
-        "&:hover .tonight-backdrop": { transform: "scale(1.03)" },
       }}
     >
-      <Box
-        className="tonight-backdrop"
-        sx={{
-          backgroundImage: item.posterUrl
-            ? `url(${item.posterUrl})`
-            : posterFallback(item.mediaType),
-          backgroundPosition: "center",
-          backgroundSize: "cover",
-          inset: 0,
-          position: "absolute",
-          transition: "transform 700ms cubic-bezier(.2,.8,.2,1)",
-          zIndex: 0,
-        }}
-      />
+      {/* Featured slice */}
       <Box
         sx={{
-          background:
-            "linear-gradient(90deg, rgba(8,8,11,0.92) 0%, rgba(8,8,11,0.7) 42%, rgba(8,8,11,0.15) 72%, rgba(8,8,11,0.4) 100%), linear-gradient(0deg, rgba(8,8,11,0.95) 0%, rgba(8,8,11,0.4) 42%, rgba(8,8,11,0.05) 100%)",
-          inset: 0,
-          position: "absolute",
-          zIndex: 1,
-        }}
-      />
-      <Box
-        sx={{
-          left: { xs: 16, sm: 20 },
-          maxWidth: { xs: "calc(100% - 96px)", sm: 420 },
-          position: "absolute",
-          top: { xs: 16, sm: 18 },
-          zIndex: 5,
+          flex: { xs: "1 1 auto", md: "2.4 1 0" },
+          height: { xs: 360, md: "100%" },
+          minWidth: 0,
+          position: "relative",
+          clipPath: { xs: "none", md: featuredClip },
+          "&:hover .pick-backdrop": { transform: "scale(1.03)" },
         }}
       >
-        <MediaTypeTabs
-          counts={counts}
-          disabledMediaTypes={counts
-            .filter((entry) => entry.count === 0)
-            .map((entry) => entry.mediaType)}
-          onChange={onTypeChange}
-          onDark
-          showCounts={false}
-          value={value}
-        />
-      </Box>
-      {showMatch ? (
-        <ScoreBadge
-          label="Match"
+        <SliceBackdrop item={hero} className="pick-backdrop" />
+        {/* Dark gradient skewed left so the copy stays legible */}
+        <Box
           sx={{
+            background:
+              "linear-gradient(90deg, rgba(8,8,11,0.92) 0%, rgba(8,8,11,0.72) 45%, rgba(8,8,11,0.18) 80%, rgba(8,8,11,0.45) 100%), linear-gradient(0deg, rgba(8,8,11,0.95) 0%, rgba(8,8,11,0.35) 45%, rgba(8,8,11,0) 100%)",
+            inset: 0,
             position: "absolute",
-            right: { xs: 16, sm: 20 },
+            zIndex: 1,
+          }}
+        />
+        {/* Tabs */}
+        <Box
+          sx={{
+            left: { xs: 16, sm: 20 },
+            maxWidth: { xs: "calc(100% - 96px)", sm: 420 },
+            position: "absolute",
             top: { xs: 16, sm: 18 },
             zIndex: 5,
           }}
-          value={`${Math.round(score)}%`}
-        />
-      ) : null}
-      <Stack
-        spacing={1.25}
-        sx={{
-          bottom: { xs: 20, md: 26 },
-          left: { xs: 20, md: 26 },
-          maxWidth: { xs: "calc(100% - 40px)", sm: 600 },
-          position: "absolute",
-          right: { xs: 20, sm: "auto" },
-          zIndex: 4,
-        }}
-      >
-        <Typography
-          sx={{
-            color: "rgba(255,255,255,0.72)",
-            fontSize: "0.6875rem",
-            fontWeight: 600,
-            letterSpacing: "0.14em",
-            textTransform: "uppercase",
-          }}
         >
-          Tonight&apos;s pick
-        </Typography>
-        <Typography
-          component="h2"
-          sx={{
-            color: "#FFFFFF",
-            fontFamily: (theme) => theme.typography.displayHero.fontFamily,
-            fontSize: "clamp(2rem, 4.5vw, 3.5rem)",
-            fontWeight: 700,
-            letterSpacing: "-0.03em",
-            lineHeight: 1.02,
-          }}
-        >
-          {item.title}
-        </Typography>
-        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75, pt: 0.25 }}>
-          {heroMeta.map((entry) => (
-            <OnDarkChip key={entry}>{entry}</OnDarkChip>
-          ))}
-          {showMatch ? (
-            <OnDarkChip>{`${Math.round(confidence * 100)}% confidence`}</OnDarkChip>
-          ) : null}
-        </Stack>
-        <Typography
-          sx={{
-            color: "rgba(255,255,255,0.82)",
-            fontSize: "0.875rem",
-            lineHeight: 1.5,
-            maxWidth: 480,
-          }}
-        >
-          {pickReason(item)}
-        </Typography>
-        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1, pt: 0.5 }}>
-          <Button
-            component={Link}
-            endIcon={<ArrowForwardIcon sx={{ fontSize: 16 }} />}
-            href={`/media/${item.id}`}
-            size="small"
-            variant="contained"
-          >
-            View details
-          </Button>
-          <Button
-            component={Link}
-            href="/recommendations"
-            size="small"
-            startIcon={<InfoOutlinedIcon sx={{ fontSize: 16 }} />}
+          <MediaTypeTabs
+            counts={counts}
+            disabledMediaTypes={counts
+              .filter((entry) => entry.count === 0)
+              .map((entry) => entry.mediaType)}
+            onChange={onTypeChange}
+            onDark
+            showCounts={false}
+            value={value}
+          />
+        </Box>
+        {showMatch ? (
+          <ScoreBadge
+            label="Match"
             sx={{
-              bgcolor: "rgba(255,255,255,0.1)",
-              color: "#FFFFFF",
-              "&:hover": { bgcolor: "rgba(255,255,255,0.18)" },
+              position: "absolute",
+              right: { xs: 16, sm: 64 },
+              top: { xs: 16, sm: 18 },
+              zIndex: 5,
+            }}
+            value={`${Math.round(heroScore)}%`}
+          />
+        ) : null}
+        {/* Copy */}
+        <Stack
+          spacing={1.25}
+          sx={{
+            bottom: { xs: 20, md: 26 },
+            left: { xs: 20, md: 26 },
+            maxWidth: { xs: "calc(100% - 40px)", sm: 480 },
+            position: "absolute",
+            right: { xs: 20, sm: "auto" },
+            zIndex: 4,
+          }}
+        >
+          <Typography
+            sx={{
+              color: "rgba(255,255,255,0.72)",
+              fontSize: "0.6875rem",
+              fontWeight: 600,
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
             }}
           >
-            Why this pick?
-          </Button>
+            Tonight&apos;s pick
+          </Typography>
+          <Typography
+            component="h2"
+            sx={{
+              color: "#FFFFFF",
+              fontFamily: (theme) => theme.typography.displayHero.fontFamily,
+              fontSize: "clamp(1.75rem, 3.8vw, 3.1rem)",
+              fontWeight: 700,
+              letterSpacing: "-0.03em",
+              lineHeight: 1.02,
+            }}
+          >
+            {hero.title}
+          </Typography>
+          <Box
+            sx={{
+              background: `linear-gradient(90deg, ${heroAccent}, ${alpha(heroAccent, 0)})`,
+              borderRadius: 1,
+              boxShadow: `0 0 16px ${alpha(heroAccent, 0.55)}`,
+              height: 3,
+              mt: -0.5,
+              width: 72,
+            }}
+          />
+          <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75, pt: 0.25 }}>
+            {heroMeta.map((entry) => (
+              <OnDarkChip key={entry}>{entry}</OnDarkChip>
+            ))}
+            {showMatch ? (
+              <OnDarkChip>{`${Math.round(confidence * 100)}% confidence`}</OnDarkChip>
+            ) : null}
+          </Stack>
+          <Typography
+            sx={{
+              color: "rgba(255,255,255,0.82)",
+              fontSize: "0.875rem",
+              lineHeight: 1.5,
+              maxWidth: 420,
+            }}
+          >
+            {pickReason(hero)}
+          </Typography>
+          <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1, pt: 0.5 }}>
+            <Button
+              component={Link}
+              endIcon={<ArrowForwardIcon sx={{ fontSize: 16 }} />}
+              href={`/media/${hero.id}`}
+              size="small"
+              variant="contained"
+            >
+              View details
+            </Button>
+            <Button
+              component={Link}
+              href="/recommendations"
+              size="small"
+              startIcon={<InfoOutlinedIcon sx={{ fontSize: 16 }} />}
+              sx={{
+                bgcolor: "rgba(255,255,255,0.1)",
+                color: "#FFFFFF",
+                "&:hover": { bgcolor: "rgba(255,255,255,0.18)" },
+              }}
+            >
+              Why this pick?
+            </Button>
+          </Stack>
         </Stack>
-      </Stack>
+      </Box>
+
+      {/* Up-next slices */}
+      {upNext.map((rec, i) => {
+        const isLast = i === upNext.length - 1;
+        const clip = isLast ? lastClip : middleClip;
+        const sliceAccent = mediaAccent(rec.media.mediaType);
+        return (
+          <Box
+            component={Link}
+            href={`/media/${rec.media.id}`}
+            key={rec.media.id}
+            sx={{
+              color: "inherit",
+              display: "block",
+              flex: { xs: "1 1 auto", md: "1 1 0" },
+              height: { xs: 200, md: "100%" },
+              marginLeft: { xs: 0, md: `-${DIAG_SKEW}px` },
+              minWidth: 0,
+              position: "relative",
+              textDecoration: "none",
+              clipPath: { xs: "none", md: clip },
+              transition: "filter 200ms ease",
+              "&:hover .upnext-backdrop": { transform: "scale(1.04)" },
+              "&:hover .upnext-title-bar": { width: 56 },
+              "&:hover": { filter: "brightness(1.08)" },
+            }}
+          >
+            <SliceBackdrop item={rec.media} className="upnext-backdrop" />
+            <Box
+              sx={{
+                background:
+                  "linear-gradient(0deg, rgba(8,8,11,0.92) 0%, rgba(8,8,11,0.30) 55%, rgba(8,8,11,0.10) 100%)",
+                inset: 0,
+                position: "absolute",
+                zIndex: 1,
+              }}
+            />
+            {/* Diagonal seam line — sits on the slice's left edge, visible only
+                on md+ where the clip-path is active. Slants from (40,0) to (0,h)
+                matching the polygon's left edge exactly. */}
+            <Box
+              aria-hidden
+              sx={{
+                clipPath: {
+                  xs: "none",
+                  md: `polygon(${DIAG_SKEW}px 0, ${DIAG_SKEW + 1.5}px 0, 1.5px 100%, 0 100%)`,
+                },
+                background: `linear-gradient(180deg, ${alpha(sliceAccent, 0.55)} 0%, ${alpha("#FFFFFF", 0.18)} 50%, ${alpha(sliceAccent, 0.55)} 100%)`,
+                display: { xs: "none", md: "block" },
+                inset: 0,
+                position: "absolute",
+                zIndex: 2,
+              }}
+            />
+            {showMatch ? (
+              <ScoreBadge
+                label="Match"
+                sx={{
+                  position: "absolute",
+                  right: 18 + DIAG_SKEW / 2,
+                  top: 16,
+                  zIndex: 3,
+                  height: 44,
+                  width: 44,
+                }}
+                value={`${Math.round(rec.score)}%`}
+              />
+            ) : null}
+            <Stack
+              spacing={0.5}
+              sx={{
+                bottom: 18,
+                left: 18 + DIAG_SKEW / 2,
+                position: "absolute",
+                right: 16,
+                zIndex: 3,
+              }}
+            >
+              <Typography
+                sx={{
+                  color: "#FFFFFF",
+                  fontFamily: (theme) => theme.typography.displayHero.fontFamily,
+                  fontSize: "clamp(1rem, 1.5vw, 1.5rem)",
+                  fontWeight: 650,
+                  letterSpacing: "-0.015em",
+                  lineHeight: 1.1,
+                  textShadow: "0 2px 12px rgba(0,0,0,0.6)",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  overflow: "hidden",
+                }}
+              >
+                {rec.media.title}
+              </Typography>
+              <Box
+                className="upnext-title-bar"
+                sx={{
+                  background: `linear-gradient(90deg, ${sliceAccent}, ${alpha(sliceAccent, 0)})`,
+                  borderRadius: 1,
+                  boxShadow: `0 0 12px ${alpha(sliceAccent, 0.6)}`,
+                  height: 2.5,
+                  mt: 0.4,
+                  transition: "width 250ms cubic-bezier(.2,.8,.2,1)",
+                  width: 36,
+                }}
+              />
+            </Stack>
+          </Box>
+        );
+      })}
     </Box>
+  );
+}
+
+function SliceBackdrop({
+  item,
+  className,
+}: {
+  item: MediaItemDTO;
+  className?: string;
+}) {
+  return (
+    <Box
+      className={className}
+      sx={{
+        backgroundImage: item.posterUrl
+          ? `url(${item.posterUrl})`
+          : posterFallback(item.mediaType),
+        backgroundPosition: "center",
+        backgroundSize: "cover",
+        inset: 0,
+        position: "absolute",
+        transition: "transform 700ms cubic-bezier(.2,.8,.2,1)",
+        zIndex: 0,
+      }}
+    />
   );
 }
 
@@ -1011,56 +1137,42 @@ function MediaTypeTabs({
       sx={rootSx}
       value={value}
     >
-      {dashboardMediaTypes.map((mediaType) => (
-        <ToggleButton
-          disabled={disabledTypes.has(mediaType)}
-          key={mediaType}
-          value={mediaType}
-        >
-          {mediaTypeIcon(mediaType)}
-          <Typography
-            component="span"
-            sx={{ fontSize: "0.75rem", fontWeight: 550 }}
+      {dashboardMediaTypes.map((mediaType) => {
+        const accent = mediaAccent(mediaType);
+        return (
+          <ToggleButton
+            disabled={disabledTypes.has(mediaType)}
+            key={mediaType}
+            value={mediaType}
+            sx={{
+              borderLeft: `2px solid ${alpha(accent, 0.35)} !important`,
+              "& svg": { color: accent },
+              "&.Mui-selected": {
+                bgcolor: `${alpha(accent, 0.18)} !important`,
+                borderLeft: `2px solid ${accent} !important`,
+                color: `${accent} !important`,
+              },
+            }}
           >
-            {shortMediaTypeLabel(mediaType)}
-          </Typography>
-          {showCounts ? (
+            {mediaTypeIcon(mediaType)}
             <Typography
               component="span"
-              sx={{ fontSize: "0.6875rem", opacity: 0.7 }}
+              sx={{ fontSize: "0.75rem", fontWeight: 550 }}
             >
-              {countByType.get(mediaType) ?? 0}
+              {shortMediaTypeLabel(mediaType)}
             </Typography>
-          ) : null}
-        </ToggleButton>
-      ))}
+            {showCounts ? (
+              <Typography
+                component="span"
+                sx={{ fontSize: "0.6875rem", opacity: 0.7 }}
+              >
+                {countByType.get(mediaType) ?? 0}
+              </Typography>
+            ) : null}
+          </ToggleButton>
+        );
+      })}
     </ToggleButtonGroup>
-  );
-}
-
-function MediaRail({ children }: { children: React.ReactNode }) {
-  return (
-    <Box
-      sx={{
-        alignItems: "stretch",
-        display: "grid",
-        flex: 1,
-        gap: 1.25,
-        gridAutoColumns: { xs: "min(42vw, 138px)", sm: "auto" },
-        gridAutoFlow: { xs: "column", md: "row" },
-        gridTemplateColumns: { xs: "none", md: "repeat(4, minmax(0, 1fr))" },
-        height: "100%",
-        minHeight: { xs: 248, sm: 308, xl: 336 },
-        mt: 1.5,
-        overflowX: { xs: "auto", md: "hidden" },
-        pb: 0.5,
-        scrollSnapType: "x proximity",
-        scrollbarWidth: "thin",
-        "& > *": { height: "100%", minWidth: 0 },
-      }}
-    >
-      {children}
-    </Box>
   );
 }
 

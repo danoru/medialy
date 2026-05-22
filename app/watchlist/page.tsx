@@ -43,6 +43,8 @@ import { releaseYearLabel, compactDateLabel } from "@/lib/date-labels";
 import {
   mediaAccent,
   mediaTypeIcon,
+  mediaTypeTabIndicatorColor,
+  mediaTypeTabSx,
   shortMediaTypeLabel,
 } from "@/lib/media-ui-helpers";
 import { PosterImage, PosterThumb } from "@/components/media/PosterCard";
@@ -282,6 +284,7 @@ function WatchlistHeader({
                 iconPosition="start"
                 key={type}
                 label={`${shortMediaTypeLabel(type)} (${countsByType.get(type) ?? 0})`}
+                sx={mediaTypeTabSx(type)}
                 value={type}
               />
             ))}

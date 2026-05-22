@@ -261,11 +261,35 @@ export function AppShell({
               href="/media/new"
               startIcon={<AddIcon sx={{ fontSize: 18 }} />}
               variant="contained"
-              sx={{
+              sx={(theme) => ({
+                background: `linear-gradient(135deg, ${theme.palette.accent.primary} 0%, ${alpha(theme.palette.accent.primary, 0.78)} 100%)`,
+                border: `1px solid ${alpha(theme.palette.accent.primary, 0.55)}`,
+                boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.04)} inset, 0 2px 8px ${alpha(theme.palette.accent.primary, 0.45)}, 0 0 20px ${alpha(theme.palette.accent.primary, 0.35)}`,
+                color: "#0A0810",
+                fontWeight: 650,
                 height: 36,
-                px: 1.5,
+                position: "relative",
+                px: 1.75,
+                transition:
+                  "transform 180ms ease, box-shadow 180ms ease, background 180ms ease",
                 whiteSpace: "nowrap",
-              }}
+                "&::before": {
+                  background: `linear-gradient(180deg, ${alpha("#FFFFFF", 0.22)} 0%, transparent 60%)`,
+                  borderRadius: "inherit",
+                  content: '""',
+                  inset: 0,
+                  pointerEvents: "none",
+                  position: "absolute",
+                },
+                "&:hover": {
+                  background: `linear-gradient(135deg, ${theme.palette.accent.primary} 0%, ${theme.palette.accent.primary} 100%)`,
+                  boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.06)} inset, 0 4px 14px ${alpha(theme.palette.accent.primary, 0.55)}, 0 0 28px ${alpha(theme.palette.accent.primary, 0.55)}`,
+                  transform: "translateY(-1px)",
+                },
+                "&:active": {
+                  transform: "translateY(0)",
+                },
+              })}
             >
               <Box
                 component="span"
@@ -294,15 +318,21 @@ export function AppShell({
                 }}
               >
                 <Avatar
-                  sx={{
-                    bgcolor: (theme) =>
-                      alpha(theme.palette.accent.primary, 0.16),
+                  sx={(theme) => ({
+                    background: `radial-gradient(circle at 30% 30%, ${alpha(theme.palette.accent.primary, 0.32)} 0%, ${alpha(theme.palette.accent.primary, 0.14)} 100%)`,
+                    border: `1px solid ${alpha(theme.palette.accent.primary, 0.55)}`,
+                    boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.04)} inset, 0 0 14px ${alpha(theme.palette.accent.primary, 0.45)}`,
                     color: "primary.main",
                     fontSize: "0.75rem",
-                    fontWeight: 600,
+                    fontWeight: 650,
                     height: 28,
+                    transition: "box-shadow 180ms ease, transform 180ms ease",
                     width: 28,
-                  }}
+                    "[aria-haspopup='true']:hover &": {
+                      boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.06)} inset, 0 0 22px ${alpha(theme.palette.accent.primary, 0.65)}`,
+                      transform: "scale(1.04)",
+                    },
+                  })}
                 >
                   {displayInitial}
                 </Avatar>
@@ -451,19 +481,30 @@ export function AppShell({
             }}
           >
             <Box
-              sx={{
+              sx={(theme) => ({
                 alignItems: "center",
-                bgcolor: "primary.main",
+                background: `linear-gradient(140deg, ${theme.palette.accent.primary} 0%, ${alpha(theme.palette.accent.primary, 0.7)} 100%)`,
+                border: `1px solid ${alpha(theme.palette.accent.primary, 0.65)}`,
                 borderRadius: 1,
-                color: "primary.contrastText",
+                boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.08)} inset, 0 0 14px ${alpha(theme.palette.accent.primary, 0.5)}`,
+                color: "#0A0810",
                 display: "flex",
-                fontFamily: (theme) => theme.typography.h6.fontFamily,
+                fontFamily: theme.typography.h6.fontFamily,
                 fontSize: "0.875rem",
                 fontWeight: 700,
                 height: 24,
                 justifyContent: "center",
+                position: "relative",
                 width: 24,
-              }}
+                "&::before": {
+                  background: `linear-gradient(180deg, ${alpha("#FFFFFF", 0.25)} 0%, transparent 60%)`,
+                  borderRadius: "inherit",
+                  content: '""',
+                  inset: 0,
+                  pointerEvents: "none",
+                  position: "absolute",
+                },
+              })}
             >
               M
             </Box>

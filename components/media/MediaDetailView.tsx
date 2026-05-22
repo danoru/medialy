@@ -34,6 +34,7 @@ import { MediaRatingControl } from "@/components/media/MediaRatingControl";
 import { ActionToastButton } from "@/components/shared/Toasts";
 import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
+import { ACCENTS } from "@/lib/media-ui-helpers";
 import { statusLabel } from "@/lib/status-labels";
 import type { UserMediaFields } from "@/lib/db/user-media";
 
@@ -864,15 +865,17 @@ function formatRatingSource(source: string) {
     .join(" ");
 }
 
-// Mode-agnostic accent hues — readable on both light and dark surfaces.
+// Local aliases mapping the semantic role used in this view to the central
+// vaporwave palette. Everything routes through `ACCENTS` so there are no
+// hardcoded hex values at the call sites below.
 const detailTokens = {
   accent: {
-    amber: "#D97706",
-    cyan: "#0EA5A4",
-    danger: "#DC2626",
-    emerald: "#059669",
-    green: "#16A34A",
-    purple: "#6366F1",
+    amber: ACCENTS.yellow,
+    cyan: ACCENTS.teal,
+    danger: ACCENTS.pink,
+    emerald: ACCENTS.mint,
+    green: ACCENTS.mint,
+    purple: ACCENTS.lavender,
   },
   text: {
     frost: "#D8E6FF",

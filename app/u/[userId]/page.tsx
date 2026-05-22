@@ -19,6 +19,7 @@ import {
   CompactStatCard,
   DashboardSection,
 } from "@/components/cinematic/CinematicPrimitives";
+import { ACCENTS } from "@/lib/media-ui-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -116,17 +117,17 @@ export default async function PublicProfilePage({
 
       <Stack direction="row" spacing={1.5}>
         <CompactStatCard
-          accent="#3FD693"
+          accent={ACCENTS.mint}
           label="Completed"
           value={stats.completedCount.toString()}
         />
         <CompactStatCard
-          accent="#7C7AED"
+          accent={ACCENTS.pink}
           label="Rated"
           value={stats.ratedCount.toString()}
         />
         <CompactStatCard
-          accent="#F0B649"
+          accent={ACCENTS.yellow}
           label="Shared with you"
           value={overlap.sharedCompletedCount.toString()}
         />
