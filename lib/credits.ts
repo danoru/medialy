@@ -24,13 +24,13 @@ export type CreditDTO = {
 };
 
 export const CREDIT_ROLES_BY_MEDIA_TYPE: Record<MediaType, CreditRole[]> = {
-  MOVIE: ["DIRECTOR"],
-  TV_SHOW: ["CREATOR"],
+  MOVIE: ["DIRECTOR", "ACTOR"],
+  TV_SHOW: ["CREATOR", "ACTOR"],
   VIDEO_GAME: ["DEVELOPER", "PUBLISHER"],
   BOOK: [],
   BOARD_GAME: [],
   MUSIC: [],
-  MUSICAL: [],
+  MUSICAL: ["ACTOR"],
 };
 
 export function normalizeContributorName(value: string) {
@@ -55,6 +55,7 @@ export function creditLabel(mediaType: MediaType, role: CreditRole) {
     return "Developed by";
   if (mediaType === "VIDEO_GAME" && role === "PUBLISHER")
     return "Published by";
+  if (role === "ACTOR") return "Starring";
   return role
     .toLowerCase()
     .split("_")
@@ -67,6 +68,7 @@ export function creditFieldName(role: CreditRole) {
   if (role === "CREATOR") return "creatorCredits";
   if (role === "DEVELOPER") return "developerCredits";
   if (role === "PUBLISHER") return "publisherCredits";
+  if (role === "ACTOR") return "actorCredits";
   return "credits";
 }
 

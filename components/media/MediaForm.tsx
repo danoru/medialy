@@ -134,7 +134,7 @@ export function MediaForm({
               name="originalTitle"
             />
           </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               fullWidth
               label="Type"
@@ -170,7 +170,17 @@ export function MediaForm({
               ))}
             </TextField>
           </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+            <TextField
+              defaultValue={dateValue(item?.releaseDate)}
+              fullWidth
+              label="Release date"
+              name="releaseDate"
+              slotProps={{ inputLabel: { shrink: true } }}
+              type="date"
+            />
+          </Grid>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               defaultValue={item?.status ?? "UNTRACKED"}
               fullWidth
@@ -185,7 +195,7 @@ export function MediaForm({
               ))}
             </TextField>
           </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
             <TextField
               defaultValue={item?.personalRating ?? ""}
               fullWidth
@@ -193,16 +203,6 @@ export function MediaForm({
               name="personalRating"
               slotProps={{ htmlInput: { min: 0, max: 10, step: 0.1 } }}
               type="number"
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              defaultValue={dateValue(item?.releaseDate)}
-              fullWidth
-              label="Release date"
-              name="releaseDate"
-              slotProps={{ inputLabel: { shrink: true } }}
-              type="date"
             />
           </Grid>
           {CREDIT_ROLES_BY_MEDIA_TYPE[mediaType].map((role) => (

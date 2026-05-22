@@ -509,4 +509,5 @@ enum CreditRole {
   CREATOR
   DEVELOPER
   PUBLISHER
+  ACTOR
 }

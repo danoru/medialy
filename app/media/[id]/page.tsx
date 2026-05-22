@@ -5,6 +5,7 @@ import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { calculateCommunityAverage } from "@/lib/scoring/communityAverage";
 import { calculateConsensusScore } from "@/lib/scoring/consensus";
+import { getMediaItemMatch } from "@/lib/scoring/itemMatch";
 import {
   MediaDetailView,
   type MediaDetailViewItem,
@@ -91,6 +92,8 @@ export default async function MediaDetailPage({
     mediaType: rawItem.mediaType,
   });
 
+  const matchSummary = await getMediaItemMatch(rawItem.id, userId);
+
   const merged = mergeUserMedia(rawItem);
   const item = {
     ...merged,
@@ -98,6 +101,7 @@ export default async function MediaDetailPage({
     communityRaterCount: community.raterCount,
     consensusAgreement: consensus.agreementConfidence,
     consensusUsedSourceCount: consensus.usedSourceCount,
+    matchSummary,
   } as unknown as MediaDetailViewItem;
 
   return <MediaDetailView item={item} userId={userId} />;

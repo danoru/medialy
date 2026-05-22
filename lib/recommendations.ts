@@ -188,6 +188,9 @@ const ROLE_WEIGHT: Record<string, number> = {
   CREATOR: 1,
   DEVELOPER: 0.55,
   PUBLISHER: 0.35,
+  // Actor data is brand-new; suppress its scoring contribution until we have
+  // enough rated items to validate the signal isn't just popularity noise.
+  ACTOR: 0,
 };
 
 // Excluded from country affinity: most users have a US-heavy library by
@@ -210,7 +213,10 @@ function pushRating(acc: Map<string, RatingAccumulator>, key: string, rating: nu
   }
 }
 
-async function getAffinityMaps(userId: string): Promise<AffinityMaps> {
+export async function getAffinityMaps(
+  userId: string,
+  options: { excludeMediaId?: string } = {},
+): Promise<AffinityMaps> {
   const completed = await prisma.userMedia.findMany({
     where: {
       userId,
@@ -222,6 +228,9 @@ async function getAffinityMaps(userId: string): Promise<AffinityMaps> {
         { personalRating: { gte: 8 } },
         { pairwiseScore: { gte: 1150 } },
       ],
+      ...(options.excludeMediaId
+        ? { mediaId: { not: options.excludeMediaId } }
+        : {}),
     },
     include: {
       media: {
@@ -323,7 +332,7 @@ async function getAffinityMaps(userId: string): Promise<AffinityMaps> {
   return { genres, tags, contributors, countries };
 }
 
-function buildContributorDetail(
+export function buildContributorDetail(
   credits: Array<{ contributor: { id: string }; role: string }>,
   affinity: AffinityMaps,
 ): string | undefined {

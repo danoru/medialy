@@ -218,6 +218,7 @@ function roleFieldName(role: CreditInput["role"]) {
   if (role === "CREATOR") return "creatorCredits";
   if (role === "DEVELOPER") return "developerCredits";
   if (role === "PUBLISHER") return "publisherCredits";
+  if (role === "ACTOR") return "actorCredits";
   return "credits";
 }
 
