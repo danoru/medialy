@@ -25,6 +25,7 @@ import type {
 import {
   assertExportVersion,
   mediaFormInputFromCsvRow,
+  sanitizeExternalUrl,
 } from "@/lib/validation";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 
@@ -157,23 +158,25 @@ const mediaImportTemplateRows = [
 
 export async function buildJsonExport(): Promise<MedialyExport> {
   const userId = await requireUserId();
-  const [media, genres, tags, comparisons, notes, lists, importJobs] =
-    await Promise.all([
-      prisma.mediaItem.findMany({
-        include: {
-          genres: { include: { genre: true } },
-          tags: { include: { tag: true } },
-          credits: { include: { contributor: true }, orderBy: { order: "asc" } },
-          userMedia: { where: { userId }, take: 1 },
-        },
-      }),
-      prisma.genre.findMany(),
-      prisma.tag.findMany(),
-      prisma.pairwiseComparison.findMany(),
-      prisma.note.findMany(),
-      prisma.customList.findMany({ include: { items: true } }),
-      prisma.importJob.findMany(),
-    ]);
+  const [media, genres, tags, comparisons, notes, lists] = await Promise.all([
+    prisma.mediaItem.findMany({
+      where: { userMedia: { some: { userId } } },
+      include: {
+        genres: { include: { genre: true } },
+        tags: { include: { tag: true } },
+        credits: { include: { contributor: true }, orderBy: { order: "asc" } },
+        userMedia: { where: { userId }, take: 1 },
+      },
+    }),
+    prisma.genre.findMany(),
+    prisma.tag.findMany(),
+    prisma.pairwiseComparison.findMany({ where: { userId } }),
+    prisma.note.findMany({ where: { userId } }),
+    prisma.customList.findMany({
+      where: { userId },
+      include: { items: true },
+    }),
+  ]);
 
   return {
     version: 1,
@@ -184,7 +187,7 @@ export async function buildJsonExport(): Promise<MedialyExport> {
     comparisons,
     notes,
     lists,
-    importJobs,
+    importJobs: [],
   };
 }
 
@@ -224,6 +227,7 @@ export function buildMediaImportTemplateCsv() {
 export async function buildMediaCsvExport() {
   const userId = await requireUserId();
   const items = await prisma.mediaItem.findMany({
+    where: { userMedia: { some: { userId } } },
     include: {
       genres: { include: { genre: true } },
       tags: { include: { tag: true } },
@@ -410,7 +414,7 @@ export function mediaInputFromLetterboxdRow(
     status: role === "watchlist" ? "WATCHLIST" : "COMPLETED",
     description: "",
     releaseDate: parseLetterboxdYear(year),
-    externalUrl: uri,
+    externalUrl: sanitizeExternalUrl(uri),
     metadataJson: JSON.stringify(metadata),
     personalRating: rating ? parseLetterboxdRating(rating) : null,
     isFavorite: false,
@@ -782,8 +786,11 @@ function isCompatibleTitleMatch(
 
 function csvEscape(value: unknown) {
   const raw = String(value ?? "");
-  if (!/[",\n]/.test(raw)) return raw;
-  return `"${raw.replaceAll('"', '""')}"`;
+  // Prefix formula-trigger characters so spreadsheet apps treat the cell as
+  // text rather than executing it (CSV formula injection / CWE-1236).
+  const safe = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  if (!/[",\n]/.test(safe)) return safe;
+  return `"${safe.replaceAll('"', '""')}"`;
 }
 
 function normalizeHeader(value: string) {

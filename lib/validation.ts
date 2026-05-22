@@ -25,6 +25,25 @@ export function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+/**
+ * Accept only absolute http(s) URLs. Empty input passes through as "" so the
+ * field stays optional; anything else (javascript:, data:, mailto:, relative
+ * paths, garbage) is rejected so it can't reach an `<a href>` or fetcher.
+ */
+export function sanitizeExternalUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("External URL must use http or https.");
+    }
+    return url.toString();
+  } catch {
+    throw new Error("External URL must be a valid http(s) URL.");
+  }
+}
+
 export function normalizeKey(title: string, mediaType: string) {
   return `${normalizeSearchText(normalizeName(title))}::${mediaType.toUpperCase()}`;
 }
@@ -101,7 +120,7 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
     status: coerceMediaStatus(formData.get("status")),
     description: String(formData.get("description") ?? "").trim(),
     releaseDate: parseOptionalDate(formData.get("releaseDate")),
-    externalUrl: String(formData.get("externalUrl") ?? "").trim(),
+    externalUrl: sanitizeExternalUrl(String(formData.get("externalUrl") ?? "")),
     metadataJson,
     personalRating: parseOptionalRating(formData.get("personalRating")),
     isFavorite: formData.get("isFavorite") === "on",
@@ -125,7 +144,7 @@ export function mediaFormInputFromCsvRow(row: CsvMediaRow): MediaFormInput {
     status: row.status ? coerceMediaStatus(row.status) : "UNTRACKED",
     description: row.description?.trim() ?? "",
     releaseDate: parseOptionalDate(row.releaseDate ?? ""),
-    externalUrl: row.externalUrl?.trim() ?? "",
+    externalUrl: sanitizeExternalUrl(row.externalUrl ?? ""),
     personalRating: parseOptionalRating(row.personalRating ?? ""),
     isFavorite: parseOptionalBoolean(row.isFavorite ?? ""),
     genres: split.genres,

@@ -16,10 +16,11 @@ export default async function SignInPage({
   searchParams: Promise<{ callbackUrl?: string }>;
 }) {
   const session = await auth();
-  const { callbackUrl } = await searchParams;
+  const { callbackUrl: rawCallbackUrl } = await searchParams;
+  const callbackUrl = safeCallbackUrl(rawCallbackUrl);
 
   if (session?.user) {
-    redirect(callbackUrl ?? "/");
+    redirect(callbackUrl);
   }
 
   return (
@@ -37,7 +38,7 @@ export default async function SignInPage({
           action={async () => {
             "use server";
             await signIn("google", {
-              redirectTo: callbackUrl ?? "/",
+              redirectTo: callbackUrl,
             });
           }}
         >
@@ -48,4 +49,12 @@ export default async function SignInPage({
       </Stack>
     </Container>
   );
+}
+
+function safeCallbackUrl(value: string | undefined): string {
+  if (!value) return "/";
+  if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) {
+    return "/";
+  }
+  return value;
 }

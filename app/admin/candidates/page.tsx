@@ -158,6 +158,7 @@ function CandidateRow({ candidate }: { candidate: ReleaseCandidateItem }) {
           {candidate.externalUrl ? (
             <Link
               href={candidate.externalUrl}
+              rel="noopener noreferrer"
               style={{ textDecoration: "none" }}
               target="_blank"
             >
