@@ -15,8 +15,10 @@ import {
   previewMediaImport,
 } from "@/lib/import-export";
 import type { LetterboxdImportRole, MediaImportMapping } from "@/lib/types";
+import { requireUser } from "@/lib/user";
 
 export async function importCsvFile(formData: FormData) {
+  await requireUser("/import-export");
   const file = formData.get("file");
   if (!(file instanceof File)) return;
   const rows = mapTabularMediaRows(
@@ -44,6 +46,7 @@ export async function importCsvFile(formData: FormData) {
 }
 
 export async function importXlsxFile(formData: FormData) {
+  await requireUser("/import-export");
   const file = formData.get("file");
   if (!(file instanceof File)) return;
   const rows = mapTabularMediaRows(
@@ -71,6 +74,7 @@ export async function importXlsxFile(formData: FormData) {
 }
 
 export async function importJsonFile(formData: FormData) {
+  await requireUser("/import-export");
   const file = formData.get("file");
   if (!(file instanceof File)) return;
   await importJsonExport(JSON.parse(await file.text()), file.name);
@@ -79,6 +83,7 @@ export async function importJsonFile(formData: FormData) {
 }
 
 export async function importLetterboxdCsvFile(formData: FormData) {
+  await requireUser("/import-export");
   const file = formData.get("file");
   if (!(file instanceof File)) return;
   const role = parseLetterboxdRole(formData);

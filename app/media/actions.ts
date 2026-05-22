@@ -297,6 +297,11 @@ export async function unarchiveMediaItem(id: string) {
 }
 
 export async function deleteMediaItem(id: string) {
+  const user = await requireUser();
+  if (!user.isAdmin) {
+    await queueToast("Only admins can delete shared catalog items.");
+    redirect(`/media/${id}`);
+  }
   await prisma.mediaItem.delete({ where: { id } });
   revalidatePath("/library");
   await queueToast("Media item deleted.");
@@ -317,11 +322,15 @@ export async function updateNote(
   mediaId: string,
   formData: FormData,
 ) {
+  const userId = await requireUserId();
   const body = String(formData.get("body") ?? "").trim();
   if (body) {
-    await prisma.note.update({ where: { id: noteId }, data: { body } });
+    await prisma.note.updateMany({
+      where: { id: noteId, userId },
+      data: { body },
+    });
   } else {
-    await prisma.note.delete({ where: { id: noteId } });
+    await prisma.note.deleteMany({ where: { id: noteId, userId } });
   }
   revalidatePath(`/media/${mediaId}`);
 }

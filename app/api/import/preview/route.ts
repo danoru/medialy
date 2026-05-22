@@ -15,6 +15,7 @@ import type {
   MedialyExport,
   TabularMediaRows,
 } from "@/lib/types";
+import { getCurrentUser } from "@/lib/user";
 import {
   assertExportVersion,
   mediaFormInputFromCsvRow,
@@ -22,6 +23,10 @@ import {
 } from "@/lib/validation";
 
 export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const formData = await request.formData();
   const file = formData.get("file");
   const type = String(formData.get("type") ?? "");
