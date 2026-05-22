@@ -17,14 +17,23 @@ const spaceGrotesk = Space_Grotesk({
   variable: "--font-heading",
 });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : "http://localhost:3001");
+function absoluteSiteUrl() {
+  const url =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ??
+    process.env.VERCEL_URL ??
+    "http://localhost:3001";
+
+  return url.startsWith("http://") || url.startsWith("https://")
+    ? url
+    : `https://${url}`;
+}
+
+const metadataBase = new URL(absoluteSiteUrl());
+const ogImageUrl = new URL("/og-images/medialy-og-v2.png", metadataBase);
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase,
   title: {
     default: "Medialy",
     template: "%s | Medialy",
@@ -33,9 +42,12 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Medialy",
     description: "A local-first personal media recommendation dashboard.",
+    siteName: "Medialy",
+    type: "website",
+    url: "/",
     images: [
       {
-        url: "/og-images/medialy-og-v2.png",
+        url: ogImageUrl,
         width: 1200,
         height: 630,
         alt: "Medialy personal media recommendations dashboard",
@@ -46,7 +58,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Medialy",
     description: "A local-first personal media recommendation dashboard.",
-    images: ["/og-images/medialy-og-v2.png"],
+    images: [ogImageUrl],
   },
 };
 
