@@ -49,6 +49,7 @@ import {
 } from "@/lib/media-ui-helpers";
 import { PosterImage, PosterThumb } from "@/components/media/PosterCard";
 import { ScoreRing, ScoreBars } from "@/components/media/ScoreDisplay";
+import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Watchlist" };
@@ -102,6 +103,7 @@ export default async function WatchlistPage({
 
   return (
     <Box sx={{ pb: 2 }}>
+      <PageAccentBackground mediaType={selectedType} />
       <Stack spacing={1.5}>
         <WatchlistHeader
           countsByType={countsByType}
@@ -1182,8 +1184,8 @@ function EmptyState({ selectedLabel }: { selectedLabel: string }) {
           Add watchlist or backlog items and they will appear as a ranked queue
           with compact match signals.
         </Typography>
-        <Button href="/media" sx={{ mt: 1.3 }} variant="outlined">
-          Browse media
+        <Button href="/library" sx={{ mt: 1.3 }} variant="outlined">
+          Browse library
         </Button>
       </CardContent>
     </Card>

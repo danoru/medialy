@@ -55,6 +55,7 @@ type NavItem = {
   icon: React.ReactNode;
   description: string;
   visibility: NavVisibility;
+  activePrefixes?: string[];
 };
 
 const navItems: NavItem[] = [
@@ -66,11 +67,12 @@ const navItems: NavItem[] = [
     visibility: "public",
   },
   {
-    label: "Media",
-    href: "/media",
+    label: "Library",
+    href: "/library",
     icon: <MovieIcon />,
     description: "Browse, filter, add, and edit your local media.",
     visibility: "public",
+    activePrefixes: ["/media"],
   },
   {
     label: "Discover",
@@ -145,13 +147,13 @@ function isItemVisible(
 // users still get one-tap Watchlist access.
 const mobilePrimaryHrefsAuthed = [
   "/dashboard",
-  "/media",
+  "/library",
   "/discover",
   "/watchlist",
 ] as const;
 const mobilePrimaryHrefsPublic = [
   "/dashboard",
-  "/media",
+  "/library",
   "/discover",
   "/upcoming",
 ] as const;
@@ -190,8 +192,9 @@ export function AppShell({
     (item) => !mobilePrimaryHrefs.includes(item.href as never),
   );
   const mobileBottomValue =
-    mobilePrimaryNav.find((item) => isSelectedPath(pathname, item.href))
-      ?.href ?? "more";
+    mobilePrimaryNav.find((item) =>
+      isSelectedPath(pathname, item.href, item.activePrefixes),
+    )?.href ?? "more";
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
@@ -522,7 +525,11 @@ export function AppShell({
           <Divider />
           <List component="nav" sx={{ flex: 1, overflowY: "auto", p: 1 }}>
             {visibleNavItems.map((item) => {
-              const selected = isSelectedPath(pathname, item.href);
+              const selected = isSelectedPath(
+                pathname,
+                item.href,
+                item.activePrefixes,
+              );
               return (
                 <ListItemButton
                   href={item.href}
@@ -631,7 +638,11 @@ export function AppShell({
                 item={item}
                 key={item.href}
                 onClick={() => setMobileMoreOpen(false)}
-                selected={isSelectedPath(pathname, item.href)}
+                selected={isSelectedPath(
+                  pathname,
+                  item.href,
+                  item.activePrefixes,
+                )}
               />
             ))}
             <Divider sx={{ my: 0.75 }} />
@@ -861,6 +872,16 @@ function MobileDrawerItem({
   );
 }
 
-function isSelectedPath(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isSelectedPath(
+  pathname: string,
+  href: string,
+  activePrefixes?: string[],
+) {
+  if (pathname === href || pathname.startsWith(`${href}/`)) return true;
+  if (activePrefixes) {
+    for (const prefix of activePrefixes) {
+      if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return true;
+    }
+  }
+  return false;
 }

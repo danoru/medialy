@@ -88,7 +88,7 @@ type Tokens = {
 const darkTokens: Tokens = {
   bg: { default: "#0A0810", paper: "#13101A" },
   bodyBackground:
-    "radial-gradient(1200px 700px at 18% -5%, rgba(255, 158, 125, 0.10), transparent 65%), #0A0810",
+    "radial-gradient(1200px 700px at 18% -5%, rgb(var(--page-accent-r, 255) var(--page-accent-g, 158) var(--page-accent-b, 125) / 0.10), transparent 65%), #0A0810",
   surface: { 1: "#13101A", 2: "#1A1624", 3: "#221E2C" },
   border: {
     subtle: "rgba(255, 255, 255, 0.05)",

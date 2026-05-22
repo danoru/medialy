@@ -14,7 +14,12 @@ import {
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
+  MenuItem,
   Stack,
   TextField,
   Tooltip,
@@ -29,13 +34,13 @@ import {
   updateMediaStatus,
   updateNote,
 } from "@/app/media/actions";
-import { MediaDetailActions } from "@/components/media/MediaDetailActions";
-import { MediaRatingControl } from "@/components/media/MediaRatingControl";
 import { ActionToastButton } from "@/components/shared/Toasts";
 import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
-import { ACCENTS } from "@/lib/media-ui-helpers";
-import { statusLabel } from "@/lib/status-labels";
+import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
+import { formatMediaType } from "@/lib/format";
+import { availableStatuses, statusLabel } from "@/lib/status-labels";
+import { useState } from "react";
 import type { UserMediaFields } from "@/lib/db/user-media";
 
 /**
@@ -60,6 +65,12 @@ type ComparisonLite = {
   winnerScoreAfter: number | null;
   loserScoreAfter: number | null;
   expectedWinnerWinProb: number | null;
+};
+
+export type MediaDetailMatchSummary = {
+  score: number;
+  similarTitles: string[];
+  contributorReason: string | null;
 };
 
 export type MediaDetailViewItem = UserMediaFields & {
@@ -88,6 +99,7 @@ export type MediaDetailViewItem = UserMediaFields & {
   consensusUsedSourceCount: number;
   communityScore: number | null;
   communityRaterCount: number;
+  matchSummary: MediaDetailMatchSummary | null;
 };
 
 export function MediaDetailView({
@@ -142,6 +154,7 @@ export function MediaDetailView({
     )
     .sort((a, b) => a.at.getTime() - b.at.getTime());
   const eloTimeline = eloTimelineSource.map((entry) => entry.scoreAfter);
+
   const genres = item.genres.map((entry) => entry.genre.name);
   const tags = item.tags.map((entry) => entry.tag.name);
   const releaseLabel = item.releaseDate
@@ -160,7 +173,7 @@ export function MediaDetailView({
       role,
     }))
     .filter((entry) => entry.names.length > 0);
-  const primaryCredit = creditsByRole[0];
+  const primaryCredit = creditsByRole.find((entry) => entry.role !== "ACTOR");
   const missingFields = [
     item.description ? null : "description",
     item.posterUrl ? null : "poster",
@@ -168,11 +181,14 @@ export function MediaDetailView({
     genres.length > 0 ? null : "genres",
     item.externalRatings.length > 0 ? null : "external ratings",
   ].filter((field): field is string => field !== null);
+
+  const inlineMatchReason = buildInlineMatchReason(item.matchSummary);
+
   return (
     <Box sx={pageSx}>
-      <Stack spacing={2.5}>
+      <Stack spacing={3.5}>
         <Button
-          href="/media"
+          href="/library"
           size="small"
           startIcon={<ArrowBackRoundedIcon />}
           sx={backButtonSx}
@@ -181,312 +197,122 @@ export function MediaDetailView({
           Back to media
         </Button>
 
-        <Box sx={detailGridSx}>
-          <Box sx={posterColumnSx}>
-            <Box sx={posterFrameSx}>
-              {item.posterUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  alt={`${item.title} poster`}
-                  src={item.posterUrl}
-                  style={{
-                    display: "block",
-                    height: "100%",
-                    objectFit: "cover",
-                    width: "100%",
-                  }}
-                />
-              ) : (
-                <Stack sx={posterPlaceholderSx}>
-                  <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
-                    Poster missing
-                  </Typography>
-                  <Typography
-                    color="text.secondary"
-                    sx={{ fontSize: "0.75rem" }}
-                  >
-                    Add artwork to improve this page.
-                  </Typography>
-                </Stack>
-              )}
-            </Box>
+        {/* HERO ---------------------------------------------------------- */}
+        <Box sx={heroGridSx}>
+          <Box sx={posterFrameSx(item.mediaType)}>
+            {item.posterUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                alt={`${item.title} poster`}
+                src={item.posterUrl}
+                style={{
+                  display: "block",
+                  height: "100%",
+                  objectFit: "cover",
+                  width: "100%",
+                }}
+              />
+            ) : (
+              <Stack sx={posterPlaceholderSx}>
+                <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+                  Poster missing
+                </Typography>
+                <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                  Add artwork to improve this page.
+                </Typography>
+              </Stack>
+            )}
           </Box>
 
-          <Stack spacing={3} sx={{ minWidth: 0 }}>
-            <Stack spacing={1.35}>
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                sx={{
-                  alignItems: { sm: "flex-start" },
-                  gap: 1.5,
-                  justifyContent: "space-between",
-                }}
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography component="h1" sx={heroTitleSx}>
-                    {item.title}
-                  </Typography>
-                  {item.originalTitle ? (
-                    <Typography color="text.secondary" sx={metadataTextSx}>
-                      {item.originalTitle}
-                    </Typography>
-                  ) : null}
-                </Box>
-              </Stack>
-
-              <Stack
-                direction="row"
-                sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}
-              >
-                {yearLabel ? (
-                  <Typography sx={metaPillSx}>{yearLabel}</Typography>
-                ) : null}
-                {primaryCredit ? (
-                  <Typography sx={creditLineSx}>
-                    {creditLabel(item.mediaType, primaryCredit.role)}{" "}
-                    <Box
-                      component="span"
-                      sx={{ color: "text.primary", fontWeight: 600 }}
-                    >
-                      {primaryCredit.names.join(", ")}
-                    </Box>
-                  </Typography>
-                ) : (
-                  <Typography color="text.secondary" sx={metadataTextSx}>
-                    No primary credits yet.
-                  </Typography>
-                )}
-                {releaseLabel ? (
-                  <Typography color="text.secondary" sx={metadataTextSx}>
-                    {releaseLabel}
-                  </Typography>
-                ) : null}
-              </Stack>
-
-              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.7 }}>
-                {userId ? (
-                  <StatusChip mediaType={item.mediaType} status={item.status} />
-                ) : null}
-                {userId && item.isFavorite ? (
-                  <GlassChip icon={<StarRoundedIcon />} label="Favorite" warm />
-                ) : null}
-                {userId && item.isArchived ? (
-                  <GlassChip
-                    icon={<ArchiveRoundedIcon />}
-                    label="Archived"
-                    warning
-                  />
-                ) : null}
-                {[...genres, ...tags].slice(0, 5).map((label) => (
-                  <GlassChip key={label} label={label} muted />
-                ))}
-              </Stack>
+          <Stack spacing={2.5} sx={{ minWidth: 0 }}>
+            <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.7 }}>
+              <MediaTypeChip mediaType={item.mediaType} />
+              {userId ? (
+                <StatusChip mediaType={item.mediaType} status={item.status} />
+              ) : null}
+              {userId && item.isFavorite ? (
+                <GlassChip icon={<StarRoundedIcon />} label="Favorite" warm />
+              ) : null}
+              {userId && item.isArchived ? (
+                <GlassChip
+                  icon={<ArchiveRoundedIcon />}
+                  label="Archived"
+                  warning
+                />
+              ) : null}
             </Stack>
 
-            <SectionBlock
-              actionHref={`/media/${item.id}/edit`}
-              actionLabel="Edit Details"
-              title="Synopsis"
-            >
-              <Typography
-                color={item.description ? "text.primary" : "text.secondary"}
-                sx={bodyTextSx}
-              >
-                {item.description || "No description yet."}
+            <Box sx={{ minWidth: 0 }}>
+              <Typography component="h1" sx={heroTitleSx}>
+                {item.title}
               </Typography>
-            </SectionBlock>
+              {item.originalTitle ? (
+                <Typography color="text.secondary" sx={originalTitleSx}>
+                  {item.originalTitle}
+                </Typography>
+              ) : null}
+            </Box>
 
-            {userId ? (
-              <Box id="notes" sx={panelSx(detailTokens.accent.emerald)}>
-                <SectionHeader title="Notes" />
-                <Stack spacing={1.2}>
-                  <Box action={addNote.bind(null, item.id)} component="form">
-                    <Stack
-                      direction={{ xs: "column", md: "row" }}
-                      sx={{ alignItems: { md: "flex-start" }, gap: 1 }}
-                    >
-                      <TextField
-                        fullWidth
-                        minRows={2}
-                        multiline
-                        name="body"
-                        placeholder="Write a note..."
-                        sx={textareaSx}
-                      />
-                      <ActionToastButton
-                        size="small"
-                        successMessage="Note added."
-                        sx={{ minWidth: 112 }}
-                        variant="contained"
-                      >
-                        Add note
-                      </ActionToastButton>
-                    </Stack>
+            <Stack
+              direction="row"
+              sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.25 }}
+            >
+              {yearLabel ? (
+                <Typography sx={metaPillSx}>{yearLabel}</Typography>
+              ) : null}
+              {primaryCredit ? (
+                <Typography sx={creditLineSx}>
+                  {creditLabel(item.mediaType, primaryCredit.role)}{" "}
+                  <Box
+                    component="span"
+                    sx={{ color: "text.primary", fontWeight: 600 }}
+                  >
+                    {primaryCredit.names.join(", ")}
                   </Box>
+                </Typography>
+              ) : null}
+              {releaseLabel ? (
+                <Typography color="text.secondary" sx={metadataTextSx}>
+                  {releaseLabel}
+                </Typography>
+              ) : null}
+            </Stack>
 
-                  {item.notes.map((note) => (
-                    <Box
-                      action={updateNote.bind(null, note.id, item.id)}
-                      component="form"
-                      key={note.id}
-                      sx={noteRowSx}
-                    >
-                      <TextField
-                        defaultValue={note.body}
-                        fullWidth
-                        minRows={2}
-                        multiline
-                        name="body"
-                        sx={textareaSx}
-                      />
-                      <Stack
-                        direction="row"
-                        sx={{
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                        }}
-                      >
-                        <Typography color="text.secondary" sx={metadataTextSx}>
-                          Updated {note.updatedAt.toLocaleDateString()}
-                        </Typography>
-                        <ActionToastButton
-                          size="small"
-                          successMessage="Note saved."
-                          variant="outlined"
-                        >
-                          Save note
-                        </ActionToastButton>
-                      </Stack>
+            {item.matchSummary && userId ? (
+              <Box sx={matchPanelSx}>
+                <Stack spacing={0.5}>
+                  <Typography sx={kickerSx}>Medialy Match</Typography>
+                  <Typography sx={matchScoreSx}>
+                    {item.matchSummary.score}
+                    <Box component="span" sx={matchPercentSx}>
+                      %
                     </Box>
-                  ))}
+                  </Typography>
                 </Stack>
+                {inlineMatchReason ? (
+                  <>
+                    <Divider flexItem orientation="vertical" sx={matchDividerSx} />
+                    <Typography sx={matchReasonSx}>
+                      {inlineMatchReason}
+                    </Typography>
+                  </>
+                ) : null}
               </Box>
             ) : null}
 
-            <Box sx={panelSx(detailTokens.accent.cyan)}>
-              <Stack
-                direction={{ xs: "column", sm: "row" }}
-                sx={{
-                  alignItems: { sm: "center" },
-                  gap: 1,
-                  justifyContent: "space-between",
-                  mb: 1.5,
-                }}
-              >
-                <SectionHeader title="Comparison History" />
-                <Button
-                  href={`/compare?focus=${item.id}`}
-                  size="small"
-                  startIcon={<CompareArrowsRoundedIcon />}
-                  variant="outlined"
-                >
-                  Compare
-                </Button>
-              </Stack>
-
-              {eloTimeline.length >= 2 && (
-                <Tooltip
-                  title={`Pairwise score trajectory across ${eloTimeline.length} comparisons. Baseline = ${1000} (starting Elo).`}
-                  arrow
-                  placement="top"
-                >
-                  <Stack
-                    direction="row"
-                    sx={{
-                      alignItems: "center",
-                      gap: 1.5,
-                      mb: 1.5,
-                      px: 1,
-                      py: 1,
-                      borderRadius: 2,
-                      bgcolor: "surface.1",
-                    }}
-                  >
-                    <Sparkline
-                      values={eloTimeline}
-                      width={200}
-                      height={40}
-                      baseline={1000}
-                      ariaLabel="Pairwise score over time"
-                    />
-                    <Stack>
-                      <Typography
-                        sx={{ fontSize: "0.6875rem", color: "text.secondary" }}
-                      >
-                        Pairwise trajectory
-                      </Typography>
-                      <Typography
-                        sx={{ fontSize: "0.8125rem", fontWeight: 600 }}
-                      >
-                        {Math.round(eloTimeline[0])} →{" "}
-                        {Math.round(eloTimeline[eloTimeline.length - 1])}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                </Tooltip>
-              )}
-
-              {comparisons.length > 0 ? (
-                <Box sx={comparisonTableSx}>
-                  <Box sx={comparisonHeaderSx}>
-                    <Typography sx={comparisonHeaderCellSx}>
-                      Compared With
-                    </Typography>
-                    <Typography sx={comparisonHeaderCellSx}>Date</Typography>
-                    <Typography sx={comparisonHeaderCellSx}>Result</Typography>
-                  </Box>
-                  {comparisons.map((entry) => {
-                    const deltaLabel =
-                      entry.delta == null
-                        ? null
-                        : `${entry.delta >= 0 ? "+" : ""}${Math.round(entry.delta)}`;
-                    const upsetTooltip =
-                      entry.expectedWinProb == null
-                        ? `${entry.result} ${entry.opponent}`
-                        : `Expected win ${(entry.expectedWinProb * 100).toFixed(0)}%. ${deltaLabel ? `Pairwise moved ${deltaLabel}.` : ""}`;
-                    return (
-                      <Box key={entry.id} sx={comparisonRowSx}>
-                        <Typography sx={comparisonOpponentSx}>
-                          {entry.opponent}
-                        </Typography>
-                        <Typography sx={comparisonDateSx}>
-                          {entry.createdAt.toLocaleDateString()}
-                        </Typography>
-                        <Tooltip title={upsetTooltip} arrow placement="left">
-                          <Typography sx={comparisonResultSx(entry.result)}>
-                            {entry.result}
-                            {deltaLabel ? ` (${deltaLabel})` : ""}
-                          </Typography>
-                        </Tooltip>
-                      </Box>
-                    );
-                  })}
-                </Box>
-              ) : (
-                <Stack sx={emptyStateSx}>
-                  <Typography sx={{ fontSize: "1.125rem", fontWeight: 650 }}>
-                    No comparisons yet
-                  </Typography>
-                  <Typography color="text.secondary" sx={{ maxWidth: 430 }}>
-                    Start comparing this media with others to see how it stacks
-                    up.
-                  </Typography>
-                </Stack>
-              )}
-            </Box>
-          </Stack>
-
-          <Stack spacing={1.25} sx={rightRailSx}>
             {userId ? (
-              <MediaDetailActions
+              <ActionRow
+                editHref={`/media/${item.id}/edit`}
                 favoriteAction={toggleFavoriteMediaItem.bind(null, item.id)}
                 isFavorite={item.isFavorite}
                 mediaType={item.mediaType}
+                personalRating={item.personalRating}
+                ratingAction={updateMediaRating.bind(null, item.id)}
                 status={item.status}
                 statusAction={updateMediaStatus.bind(null, item.id)}
               />
             ) : (
-              <Box sx={scorePanelSx}>
+              <Box sx={panelSx()}>
                 <Stack spacing={1}>
                   <Typography sx={kickerSx}>Track this</Typography>
                   <Typography color="text.secondary" sx={metadataTextSx}>
@@ -495,6 +321,7 @@ export function MediaDetailView({
                   <Button
                     href={`/signin?callbackUrl=${encodeURIComponent(`/media/${item.id}`)}`}
                     size="small"
+                    sx={{ alignSelf: "flex-start" }}
                     variant="contained"
                   >
                     Sign in
@@ -502,109 +329,540 @@ export function MediaDetailView({
                 </Stack>
               </Box>
             )}
-
-            <Box sx={scorePanelSx}>
-              <Stack spacing={1.25}>
-                {userId ? (
-                  <>
-                    <Stack spacing={0.75}>
-                      <Typography sx={{ ...kickerSx, textAlign: "center" }}>
-                        Your rating
-                      </Typography>
-                      <MediaRatingControl
-                        action={updateMediaRating.bind(null, item.id)}
-                        mediaType={item.mediaType}
-                        personalRating={item.personalRating}
-                        status={item.status}
-                        statusAction={updateMediaStatus.bind(null, item.id)}
-                      />
-                    </Stack>
-
-                    <Divider sx={panelDividerSx} />
-                  </>
-                ) : null}
-
-                <Box sx={scoreGridSx}>
-                  <ScoreLine
-                    color={detailTokens.accent.purple}
-                    info={refinedTooltip(
-                      item.personalRating,
-                      item.computedPersonalScore,
-                      item.comparisonCount,
-                    )}
-                    label="Refined"
-                    value={formatOptionalScore(item.computedPersonalScore)}
-                  />
-                  <ScoreLine
-                    color={detailTokens.accent.cyan}
-                    info={communityTooltip(
-                      item.communityScore,
-                      item.communityRaterCount,
-                    )}
-                    label="Community"
-                    value={formatOptionalScore(item.communityScore)}
-                  />
-                </Box>
-
-                {item.externalRatings.length > 0 ||
-                item.computedConsensusScore != null ? (
-                  <>
-                    <Divider sx={panelDividerSx} />
-                    <ScoreLine
-                      centered
-                      color={detailTokens.accent.green}
-                      info={consensusTooltip(
-                        item.computedConsensusScore,
-                        item.consensusUsedSourceCount,
-                        item.consensusAgreement,
-                      )}
-                      label="Consensus"
-                      value={formatOptionalScore(item.computedConsensusScore)}
-                    />
-                    {item.externalRatings.length > 0 ? (
-                      <Divider sx={panelDividerSx} />
-                    ) : null}
-                    {item.externalRatings.length > 0 ? (
-                      <Box sx={externalRatingsRowSx}>
-                        {item.externalRatings.map((rating) => (
-                          <ExternalRatingTile
-                            key={rating.id}
-                            label={formatRatingSource(rating.source)}
-                            scale={rating.scale}
-                            score={rating.score}
-                            source={rating.source}
-                          />
-                        ))}
-                      </Box>
-                    ) : null}
-                  </>
-                ) : null}
-              </Stack>
-            </Box>
-
-            {missingFields.length > 0 ? (
-              <Box sx={dataCalloutSx}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography sx={calloutTitleSx}>Improve data</Typography>
-                  <Typography color="text.secondary" sx={metadataTextSx}>
-                    Missing {missingFields.join(", ")}.
-                  </Typography>
-                </Box>
-                <Button
-                  href={`/media/${item.id}/edit`}
-                  size="small"
-                  startIcon={<EditRoundedIcon />}
-                  variant="text"
-                >
-                  Edit
-                </Button>
-              </Box>
-            ) : null}
           </Stack>
         </Box>
+
+        {/* GENRES + TAGS ------------------------------------------------- */}
+        {genres.length > 0 || tags.length > 0 ? (
+          <Box sx={taxonomyGridSx}>
+            {genres.length > 0 ? (
+              <Box>
+                <SectionTitle>Genres</SectionTitle>
+                <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.7 }}>
+                  {genres.map((genre) => (
+                    <GlassChip key={genre} label={genre} />
+                  ))}
+                </Stack>
+              </Box>
+            ) : null}
+            {tags.length > 0 ? (
+              <Box>
+                <SectionTitle>Tags</SectionTitle>
+                <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.7 }}>
+                  {tags.map((tag) => (
+                    <GlassChip key={tag} label={tag} muted />
+                  ))}
+                </Stack>
+              </Box>
+            ) : null}
+          </Box>
+        ) : null}
+
+        {/* SCORE BREAKDOWN ---------------------------------------------- */}
+        <Box>
+          <SectionTitle>Score breakdown</SectionTitle>
+          <Box sx={scoreTileGridSx}>
+            <ScoreTile
+              color={detailTokens.accent.purple}
+              info={refinedTooltip(
+                item.personalRating,
+                item.computedPersonalScore,
+                item.comparisonCount,
+              )}
+              label="Refined"
+              sub="Your blended personal score"
+              value={formatOptionalScore(item.computedPersonalScore)}
+            />
+            <ScoreTile
+              color={detailTokens.accent.cyan}
+              info={communityTooltip(
+                item.communityScore,
+                item.communityRaterCount,
+              )}
+              label="Community"
+              sub={
+                item.communityRaterCount > 0
+                  ? `Averaged across ${item.communityRaterCount} Medialy ${item.communityRaterCount === 1 ? "user" : "users"}`
+                  : "Not yet rated by others"
+              }
+              value={formatOptionalScore(item.communityScore)}
+            />
+            <ScoreTile
+              color={detailTokens.accent.green}
+              info={consensusTooltip(
+                item.computedConsensusScore,
+                item.consensusUsedSourceCount,
+                item.consensusAgreement,
+              )}
+              label="Consensus"
+              sub={
+                item.consensusUsedSourceCount > 0
+                  ? `${item.consensusUsedSourceCount} external ${item.consensusUsedSourceCount === 1 ? "source" : "sources"}, weighted`
+                  : "Not enough external ratings yet"
+              }
+              value={formatOptionalScore(item.computedConsensusScore)}
+            />
+          </Box>
+        </Box>
+
+        {/* EXTERNAL RATINGS --------------------------------------------- */}
+        {item.externalRatings.length > 0 ? (
+          <Box>
+            <SectionTitle>External ratings</SectionTitle>
+            <Box sx={externalRatingsRowSx}>
+              {item.externalRatings.map((rating) => (
+                <ExternalRatingTile
+                  key={rating.id}
+                  label={formatRatingSource(rating.source)}
+                  scale={rating.scale}
+                  score={rating.score}
+                  source={rating.source}
+                />
+              ))}
+            </Box>
+          </Box>
+        ) : null}
+
+        {/* SYNOPSIS + NOTES + COMPARISON HISTORY ------------------------ */}
+        <Box sx={threeColGridSx}>
+          <SectionBlock title="Synopsis">
+            <Typography
+              color={item.description ? "text.primary" : "text.secondary"}
+              sx={bodyTextSx}
+            >
+              {item.description || "No description yet."}
+            </Typography>
+          </SectionBlock>
+
+          {userId ? (
+            <Box id="notes" sx={panelSx()}>
+              <SectionHeader title="Notes" />
+              <Stack spacing={1.2} sx={{ mt: 1.2 }}>
+                <Box action={addNote.bind(null, item.id)} component="form">
+                  <Stack spacing={1}>
+                    <TextField
+                      fullWidth
+                      minRows={2}
+                      multiline
+                      name="body"
+                      placeholder="Write a note..."
+                      sx={textareaSx}
+                    />
+                    <ActionToastButton
+                      size="small"
+                      successMessage="Note added."
+                      sx={{ alignSelf: "flex-end" }}
+                      variant="contained"
+                    >
+                      Add note
+                    </ActionToastButton>
+                  </Stack>
+                </Box>
+
+                {item.notes.map((note) => (
+                  <Box
+                    action={updateNote.bind(null, note.id, item.id)}
+                    component="form"
+                    key={note.id}
+                    sx={noteRowSx}
+                  >
+                    <TextField
+                      defaultValue={note.body}
+                      fullWidth
+                      minRows={2}
+                      multiline
+                      name="body"
+                      sx={textareaSx}
+                    />
+                    <Stack
+                      direction="row"
+                      sx={{
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        mt: 0.75,
+                      }}
+                    >
+                      <Typography color="text.secondary" sx={metadataTextSx}>
+                        Updated {note.updatedAt.toLocaleDateString()}
+                      </Typography>
+                      <ActionToastButton
+                        size="small"
+                        successMessage="Note saved."
+                        variant="outlined"
+                      >
+                        Save note
+                      </ActionToastButton>
+                    </Stack>
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          ) : null}
+
+          <Box sx={panelSx()}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              sx={{
+                alignItems: { sm: "center" },
+                gap: 1,
+                justifyContent: "space-between",
+                mb: 1.5,
+              }}
+            >
+              <SectionHeader title="Comparison history" />
+              <Button
+                href={`/compare?focus=${item.id}`}
+                size="small"
+                startIcon={<CompareArrowsRoundedIcon />}
+                variant="outlined"
+              >
+                Compare
+              </Button>
+            </Stack>
+
+            {eloTimeline.length >= 2 && (
+              <Tooltip
+                title={`Pairwise score trajectory across ${eloTimeline.length} comparisons. Baseline = ${1000} (starting Elo).`}
+                arrow
+                placement="top"
+              >
+                <Stack
+                  direction="row"
+                  sx={{
+                    alignItems: "center",
+                    gap: 1.5,
+                    mb: 1.5,
+                    px: 1,
+                    py: 1,
+                    borderRadius: 2,
+                    bgcolor: "surface.1",
+                  }}
+                >
+                  <Sparkline
+                    values={eloTimeline}
+                    width={200}
+                    height={40}
+                    baseline={1000}
+                    ariaLabel="Pairwise score over time"
+                  />
+                  <Stack>
+                    <Typography
+                      sx={{ fontSize: "0.6875rem", color: "text.secondary" }}
+                    >
+                      Pairwise trajectory
+                    </Typography>
+                    <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+                      {Math.round(eloTimeline[0])} →{" "}
+                      {Math.round(eloTimeline[eloTimeline.length - 1])}
+                    </Typography>
+                  </Stack>
+                </Stack>
+              </Tooltip>
+            )}
+
+            {comparisons.length > 0 ? (
+              <Box sx={comparisonTableSx}>
+                <Box sx={comparisonHeaderSx}>
+                  <Typography sx={comparisonHeaderCellSx}>
+                    Compared with
+                  </Typography>
+                  <Typography sx={comparisonHeaderCellSx}>Date</Typography>
+                  <Typography sx={comparisonHeaderCellSx}>Result</Typography>
+                </Box>
+                {comparisons.map((entry) => {
+                  const deltaLabel =
+                    entry.delta == null
+                      ? null
+                      : `${entry.delta >= 0 ? "+" : ""}${Math.round(entry.delta)}`;
+                  const upsetTooltip =
+                    entry.expectedWinProb == null
+                      ? `${entry.result} ${entry.opponent}`
+                      : `Expected win ${(entry.expectedWinProb * 100).toFixed(0)}%. ${deltaLabel ? `Pairwise moved ${deltaLabel}.` : ""}`;
+                  return (
+                    <Box key={entry.id} sx={comparisonRowSx}>
+                      <Typography sx={comparisonOpponentSx}>
+                        {entry.opponent}
+                      </Typography>
+                      <Typography sx={comparisonDateSx}>
+                        {entry.createdAt.toLocaleDateString()}
+                      </Typography>
+                      <Tooltip title={upsetTooltip} arrow placement="left">
+                        <Typography sx={comparisonResultSx(entry.result)}>
+                          {entry.result}
+                          {deltaLabel ? ` (${deltaLabel})` : ""}
+                        </Typography>
+                      </Tooltip>
+                    </Box>
+                  );
+                })}
+              </Box>
+            ) : (
+              <Stack sx={emptyStateSx}>
+                <Typography sx={{ fontSize: "1.125rem", fontWeight: 650 }}>
+                  No comparisons yet
+                </Typography>
+                <Typography color="text.secondary" sx={{ maxWidth: 430 }}>
+                  Start comparing this media with others to see how it stacks
+                  up.
+                </Typography>
+              </Stack>
+            )}
+          </Box>
+        </Box>
+
+        {/* CREDITS ------------------------------------------------------ */}
+        {item.credits.length > 0 ? (
+          <Box>
+            <SectionTitle>Credits</SectionTitle>
+            <Box sx={creditsGridSx}>
+              {creditsByRole
+                .flatMap((entry) =>
+                  entry.names.map((name) => ({
+                    name,
+                    role: creditLabel(item.mediaType, entry.role),
+                  })),
+                )
+                .map((credit, index) => (
+                  <Box key={`${credit.name}-${index}`} sx={creditCardSx}>
+                    <Box sx={creditAvatarSx}>
+                      {credit.name
+                        .split(" ")
+                        .map((word) => word[0])
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .join("")
+                        .toUpperCase()}
+                    </Box>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={creditNameSx}>{credit.name}</Typography>
+                      <Typography sx={creditRoleSx}>{credit.role}</Typography>
+                    </Box>
+                  </Box>
+                ))}
+            </Box>
+          </Box>
+        ) : null}
+
+        {/* IMPROVE DATA CALLOUT ----------------------------------------- */}
+        {missingFields.length > 0 ? (
+          <Box sx={dataCalloutSx}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={calloutTitleSx}>Improve data</Typography>
+              <Typography color="text.secondary" sx={metadataTextSx}>
+                Missing {missingFields.join(", ")}.
+              </Typography>
+            </Box>
+            <Button
+              href={`/media/${item.id}/edit`}
+              size="small"
+              startIcon={<EditRoundedIcon />}
+              variant="text"
+            >
+              Edit
+            </Button>
+          </Box>
+        ) : null}
       </Stack>
     </Box>
   );
+}
+
+// ─── Action row (Rate & set status + Favorite + Edit) ────────────────
+function ActionRow({
+  editHref,
+  favoriteAction,
+  isFavorite,
+  mediaType,
+  personalRating,
+  ratingAction,
+  status,
+  statusAction,
+}: {
+  editHref: string;
+  favoriteAction: () => void | Promise<void>;
+  isFavorite: boolean;
+  mediaType: MediaType;
+  personalRating: number | null;
+  ratingAction: (formData: FormData) => void | Promise<void>;
+  status: MediaStatus;
+  statusAction: (formData: FormData) => void | Promise<void>;
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const ratingLabel =
+    personalRating == null
+      ? "Rate & set status"
+      : `${formatNumber(personalRating)} · ${statusLabel(status, mediaType)}`;
+
+  return (
+    <>
+      <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
+        <Button
+          onClick={() => setModalOpen(true)}
+          startIcon={<StarRoundedIcon />}
+          variant="contained"
+        >
+          {ratingLabel}
+        </Button>
+        <Box action={favoriteAction} component="form">
+          <Button
+            startIcon={<StarRoundedIcon />}
+            sx={
+              isFavorite
+                ? { color: "warning.main", borderColor: "warning.main" }
+                : undefined
+            }
+            type="submit"
+            variant="outlined"
+          >
+            {isFavorite ? "Favorited" : "Favorite"}
+          </Button>
+        </Box>
+        <Button
+          href={editHref}
+          startIcon={<EditRoundedIcon />}
+          variant="outlined"
+        >
+          Edit
+        </Button>
+      </Stack>
+
+      <RateStatusModal
+        initialRating={personalRating}
+        initialStatus={status}
+        mediaType={mediaType}
+        onClose={() => setModalOpen(false)}
+        open={modalOpen}
+        ratingAction={ratingAction}
+        statusAction={statusAction}
+      />
+    </>
+  );
+}
+
+function RateStatusModal({
+  initialRating,
+  initialStatus,
+  mediaType,
+  onClose,
+  open,
+  ratingAction,
+  statusAction,
+}: {
+  initialRating: number | null;
+  initialStatus: MediaStatus;
+  mediaType: MediaType;
+  onClose: () => void;
+  open: boolean;
+  ratingAction: (formData: FormData) => void | Promise<void>;
+  statusAction: (formData: FormData) => void | Promise<void>;
+}) {
+  const [rating, setRating] = useState<string>(
+    initialRating == null ? "" : String(initialRating),
+  );
+  const [status, setStatus] = useState<MediaStatus>(initialStatus);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const trimmed = rating.trim();
+      if (trimmed !== (initialRating == null ? "" : String(initialRating))) {
+        const ratingData = new FormData();
+        ratingData.set("personalRating", trimmed);
+        await ratingAction(ratingData);
+      }
+      if (status !== initialStatus) {
+        const statusData = new FormData();
+        statusData.set("status", status);
+        await statusAction(statusData);
+      }
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
+      <DialogTitle>Rate &amp; set status</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2.5} sx={{ pt: 1 }}>
+          <TextField
+            autoFocus
+            fullWidth
+            helperText="0–10, decimals allowed."
+            label="Your rating"
+            onChange={(event) => setRating(event.target.value)}
+            slotProps={{ htmlInput: { min: 0, max: 10, step: 0.1 } }}
+            type="number"
+            value={rating}
+          />
+          <TextField
+            fullWidth
+            label="Status"
+            onChange={(event) => setStatus(event.target.value as MediaStatus)}
+            select
+            value={status}
+          >
+            {availableStatuses(mediaType).map((value) => (
+              <MenuItem key={value} value={value}>
+                {statusLabel(value, mediaType)}
+              </MenuItem>
+            ))}
+          </TextField>
+        </Stack>
+      </DialogContent>
+      <DialogActions sx={{ px: 3, pb: 2 }}>
+        <Button disabled={saving} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          disabled={saving}
+          onClick={() => void submit()}
+          variant="contained"
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function MediaTypeChip({ mediaType }: { mediaType: MediaType }) {
+  const color = mediaAccent(mediaType);
+  return (
+    <Chip
+      label={formatMediaType(mediaType)}
+      size="small"
+      sx={{
+        bgcolor: alpha(color, 0.16),
+        color,
+        fontWeight: 600,
+      }}
+    />
+  );
+}
+
+function buildInlineMatchReason(
+  summary: MediaDetailMatchSummary | null,
+): string | null {
+  if (!summary) return null;
+  const pieces: string[] = [];
+  if (summary.similarTitles.length > 0) {
+    pieces.push(`You loved ${joinWithAnd(summary.similarTitles)}`);
+  }
+  if (summary.contributorReason) {
+    pieces.push(summary.contributorReason);
+  }
+  if (pieces.length === 0) return null;
+  return pieces.join(". ") + ".";
+}
+
+function joinWithAnd(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 }
 
 function GlassChip({
@@ -673,26 +931,21 @@ function StatusChip({
   );
 }
 
-function ScoreLine({
-  centered = false,
+function ScoreTile({
   color,
   info,
   label,
-  meta,
+  sub,
   value,
 }: {
-  centered?: boolean;
   color?: string;
   info?: string;
   label: string;
-  meta?: string;
+  sub: string;
   value: ReactNode;
 }) {
   return (
-    <Stack
-      spacing={0.75}
-      sx={centered ? { alignItems: "center", textAlign: "center" } : undefined}
-    >
+    <Box sx={scoreTileSx(color)}>
       <Stack direction="row" sx={{ alignItems: "center", gap: 0.45 }}>
         <Typography sx={metricLabelSx}>{label}</Typography>
         {info ? (
@@ -704,12 +957,10 @@ function ScoreLine({
       <Typography sx={{ ...scoreValueSx, ...(color ? { color } : {}) }}>
         {value}
       </Typography>
-      {meta ? (
-        <Typography color="text.secondary" sx={metadataTextSx}>
-          {meta}
-        </Typography>
-      ) : null}
-    </Stack>
+      <Typography color="text.secondary" sx={scoreTileSubSx}>
+        {sub}
+      </Typography>
+    </Box>
   );
 }
 
@@ -765,7 +1016,7 @@ function SectionBlock({
   title: string;
 }) {
   return (
-    <Box sx={panelSx(detailTokens.accent.cyan)}>
+    <Box sx={panelSx()}>
       <Stack
         direction="row"
         sx={{ alignItems: "center", justifyContent: "space-between", mb: 1.3 }}
@@ -784,6 +1035,14 @@ function SectionBlock({
       </Stack>
       {children}
     </Box>
+  );
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <Typography component="h2" sx={sectionTitleSx}>
+      {children}
+    </Typography>
   );
 }
 
@@ -865,24 +1124,15 @@ function formatRatingSource(source: string) {
     .join(" ");
 }
 
-// Local aliases mapping the semantic role used in this view to the central
-// vaporwave palette. Everything routes through `ACCENTS` so there are no
-// hardcoded hex values at the call sites below.
 const detailTokens = {
   accent: {
-    amber: ACCENTS.yellow,
     cyan: ACCENTS.teal,
-    danger: ACCENTS.pink,
-    emerald: ACCENTS.mint,
     green: ACCENTS.mint,
     purple: ACCENTS.lavender,
   },
-  text: {
-    frost: "#D8E6FF",
-  },
 };
 
-function panelSx(_accent?: string) {
+function panelSx(): SxProps<Theme> {
   return {
     bgcolor: "background.paper",
     border: "1px solid",
@@ -890,7 +1140,7 @@ function panelSx(_accent?: string) {
     borderRadius: 3,
     boxShadow: (theme: Theme) => theme.shadows[1],
     p: { xs: 2, md: 2.5 },
-  } satisfies SxProps<Theme>;
+  };
 }
 
 const backButtonSx: SxProps<Theme> = {
@@ -995,12 +1245,12 @@ const dataCalloutSx: SxProps<Theme> = {
   py: 1.25,
 };
 
-const detailGridSx: SxProps<Theme> = {
+const heroGridSx: SxProps<Theme> = {
   display: "grid",
-  gap: { xs: 2, md: 2.5, lg: 3 },
+  gap: { xs: 2.5, md: 4 },
   gridTemplateColumns: {
     xs: "1fr",
-    lg: "minmax(220px, 280px) minmax(0, 1fr) minmax(260px, 320px)",
+    md: "minmax(240px, 300px) minmax(0, 1fr)",
   },
 };
 
@@ -1015,7 +1265,10 @@ const emptyStateSx: SxProps<Theme> = {
 const externalRatingsRowSx: SxProps<Theme> = {
   display: "grid",
   gap: 1,
-  gridTemplateColumns: "repeat(auto-fit, minmax(0, 1fr))",
+  gridTemplateColumns: {
+    xs: "repeat(2, minmax(0, 1fr))",
+    sm: "repeat(auto-fit, minmax(160px, 1fr))",
+  },
 };
 
 function externalLogoSx(source: string): SxProps<Theme> {
@@ -1070,12 +1323,59 @@ const heroTitleSx: SxProps<Theme> = {
   textWrap: "balance",
 };
 
+const originalTitleSx: SxProps<Theme> = {
+  fontSize: "0.9375rem",
+  mt: 0.5,
+};
+
 const kickerSx: SxProps<Theme> = {
   color: "text.secondary",
   fontSize: "0.6875rem",
   fontWeight: 600,
   letterSpacing: "0.1em",
   textTransform: "uppercase",
+};
+
+const matchPanelSx: SxProps<Theme> = {
+  alignItems: "center",
+  bgcolor: "surface.1",
+  border: "1px solid",
+  borderColor: "border.subtle",
+  borderRadius: 3,
+  borderLeft: (theme) => `2px solid ${theme.palette.primary.main}`,
+  display: "flex",
+  flexWrap: "wrap",
+  gap: { xs: 1.5, md: 3 },
+  px: { xs: 2, md: 3 },
+  py: 2,
+};
+
+const matchScoreSx: SxProps<Theme> = {
+  color: "primary.main",
+  fontFamily: (theme) => theme.typography.statValue.fontFamily,
+  fontSize: { xs: "2.5rem", md: "3rem" },
+  fontWeight: 700,
+  letterSpacing: "-0.03em",
+  lineHeight: 1,
+};
+
+const matchPercentSx: SxProps<Theme> = {
+  fontSize: "0.7em",
+  fontWeight: 600,
+  ml: 0.25,
+};
+
+const matchDividerSx: SxProps<Theme> = {
+  borderColor: "border.subtle",
+  display: { xs: "none", md: "block" },
+};
+
+const matchReasonSx: SxProps<Theme> = {
+  color: "text.secondary",
+  flex: 1,
+  fontSize: "0.9375rem",
+  lineHeight: 1.5,
+  minWidth: 240,
 };
 
 const metaPillSx: SxProps<Theme> = {
@@ -1113,10 +1413,6 @@ const noteRowSx: SxProps<Theme> = {
 
 const pageSx: SxProps<Theme> = {};
 
-const panelDividerSx: SxProps<Theme> = {
-  borderColor: "border.subtle",
-};
-
 const panelTitleSx: SxProps<Theme> = {
   fontFamily: (theme) => theme.typography.h5.fontFamily,
   fontSize: "1.0625rem",
@@ -1124,25 +1420,30 @@ const panelTitleSx: SxProps<Theme> = {
   letterSpacing: "-0.02em",
 };
 
-const posterColumnSx: SxProps<Theme> = {
-  alignSelf: "start",
-  display: "flex",
-  flexDirection: "column",
-  gap: 1.5,
+const sectionTitleSx: SxProps<Theme> = {
+  color: "text.secondary",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  letterSpacing: "0.18em",
+  mb: 1.25,
+  textTransform: "uppercase",
 };
 
-const posterFrameSx: SxProps<Theme> = {
-  aspectRatio: "2 / 3",
-  bgcolor: "surface.2",
-  border: "1px solid",
-  borderColor: "border.subtle",
-  borderRadius: 3,
-  boxShadow: (theme) => theme.shadows[6],
-  justifySelf: { xs: "center", lg: "stretch" },
-  maxWidth: { xs: 280, sm: 330, lg: "none" },
-  overflow: "hidden",
-  width: "100%",
-};
+function posterFrameSx(mediaType: MediaType): SxProps<Theme> {
+  return {
+    aspectRatio: "2 / 3",
+    bgcolor: "surface.2",
+    border: "1px solid",
+    borderColor: "border.subtle",
+    borderLeft: `2px solid ${mediaAccent(mediaType)}`,
+    borderRadius: 3,
+    boxShadow: (theme) => theme.shadows[6],
+    justifySelf: { xs: "center", md: "stretch" },
+    maxWidth: { xs: 280, sm: 330, md: "none" },
+    overflow: "hidden",
+    width: "100%",
+  };
+}
 
 const posterPlaceholderSx: SxProps<Theme> = {
   alignItems: "center",
@@ -1154,35 +1455,100 @@ const posterPlaceholderSx: SxProps<Theme> = {
   width: "100%",
 };
 
-const rightRailSx: SxProps<Theme> = {
-  alignSelf: "start",
-  minWidth: 0,
-  width: "100%",
+const scoreTileGridSx: SxProps<Theme> = {
+  display: "grid",
+  gap: 1.5,
+  gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" },
 };
 
-const scoreGridSx: SxProps<Theme> = {
-  display: "grid",
-  gap: 1,
-  gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr", lg: "1fr 1fr" },
-  "& > *": {
-    bgcolor: "surface.1",
+function scoreTileSx(accent?: string): SxProps<Theme> {
+  return {
+    bgcolor: "background.paper",
     border: "1px solid",
     borderColor: "border.subtle",
-    borderRadius: 2,
-    p: 1.25,
-  },
-};
+    borderLeft: accent ? `2px solid ${accent}` : undefined,
+    borderRadius: 3,
+    boxShadow: (theme: Theme) => theme.shadows[1],
+    display: "flex",
+    flexDirection: "column",
+    gap: 0.75,
+    p: { xs: 2, md: 2.25 },
+  };
+}
 
-const scorePanelSx: SxProps<Theme> = {
-  ...panelSx(),
+const scoreTileSubSx: SxProps<Theme> = {
+  fontSize: "0.8125rem",
+  mt: 0.25,
 };
 
 const scoreValueSx: SxProps<Theme> = {
   fontFamily: (theme) => theme.typography.statValue.fontFamily,
-  fontSize: "1.625rem",
+  fontSize: "2.25rem",
   fontWeight: 700,
   letterSpacing: "-0.03em",
   lineHeight: 1,
+};
+
+const taxonomyGridSx: SxProps<Theme> = {
+  display: "grid",
+  gap: 2,
+  gridTemplateColumns: { xs: "1fr", md: "1fr 1.6fr" },
+};
+
+const threeColGridSx: SxProps<Theme> = {
+  display: "grid",
+  gap: 2,
+  gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" },
+};
+
+const creditsGridSx: SxProps<Theme> = {
+  display: "grid",
+  gap: 1.25,
+  gridTemplateColumns: {
+    xs: "1fr",
+    sm: "repeat(2, minmax(0, 1fr))",
+    md: "repeat(4, minmax(0, 1fr))",
+  },
+};
+
+const creditCardSx: SxProps<Theme> = {
+  alignItems: "center",
+  bgcolor: "surface.1",
+  border: "1px solid",
+  borderColor: "border.subtle",
+  borderRadius: 2,
+  display: "flex",
+  gap: 1.5,
+  p: 1.5,
+};
+
+const creditAvatarSx: SxProps<Theme> = {
+  alignItems: "center",
+  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.16),
+  borderRadius: "50%",
+  color: "primary.main",
+  display: "flex",
+  flexShrink: 0,
+  fontSize: "0.8125rem",
+  fontWeight: 700,
+  height: 36,
+  justifyContent: "center",
+  width: 36,
+};
+
+const creditNameSx: SxProps<Theme> = {
+  fontSize: "0.9375rem",
+  fontWeight: 550,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const creditRoleSx: SxProps<Theme> = {
+  color: "text.secondary",
+  fontSize: "0.75rem",
+  letterSpacing: "0.05em",
+  mt: 0.25,
 };
 
 const textareaSx: SxProps<Theme> = {

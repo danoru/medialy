@@ -39,7 +39,7 @@ export async function approveTag(id: string, formData: FormData) {
   });
   revalidatePath("/admin/tags");
   revalidatePath("/media/new");
-  revalidatePath("/media");
+  revalidatePath("/library");
 }
 
 export async function rejectTag(id: string) {

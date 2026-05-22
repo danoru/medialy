@@ -524,7 +524,7 @@ export default async function ComparePage({
         </Stack>
       ) : (
         <StatePanel
-          action={{ href: "/media", label: "Review media" }}
+          action={{ href: "/library", label: "Review library" }}
           description="Add at least two released, active items in the same media type, or loosen the selected genre and tag filters."
           title="No comparison pair available"
         />

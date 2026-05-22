@@ -12,7 +12,7 @@ import { requireAdmin } from "@/lib/user";
 function revalidateUpcomingChange(id: string) {
   revalidatePath("/upcoming");
   revalidatePath("/dashboard");
-  revalidatePath("/media");
+  revalidatePath("/library");
   revalidatePath(`/media/${id}`);
 }
 
@@ -20,7 +20,7 @@ function revalidateCandidateChange() {
   revalidatePath("/admin/candidates");
   revalidatePath("/recommendations");
   revalidatePath("/dashboard");
-  revalidatePath("/media");
+  revalidatePath("/library");
 }
 
 export async function clearReleaseDate(id: string) {

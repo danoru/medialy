@@ -40,7 +40,7 @@ export async function importCsvFile(formData: FormData) {
   }
   await importMediaRows(preview.rows, file.name);
   revalidatePath("/import-export");
-  revalidatePath("/media");
+  revalidatePath("/library");
 }
 
 export async function importXlsxFile(formData: FormData) {
@@ -67,7 +67,7 @@ export async function importXlsxFile(formData: FormData) {
   }
   await importMediaRowsWithSource(preview.rows, "XLSX", file.name);
   revalidatePath("/import-export");
-  revalidatePath("/media");
+  revalidatePath("/library");
 }
 
 export async function importJsonFile(formData: FormData) {
@@ -75,7 +75,7 @@ export async function importJsonFile(formData: FormData) {
   if (!(file instanceof File)) return;
   await importJsonExport(JSON.parse(await file.text()), file.name);
   revalidatePath("/import-export");
-  revalidatePath("/media");
+  revalidatePath("/library");
 }
 
 export async function importLetterboxdCsvFile(formData: FormData) {
@@ -103,7 +103,7 @@ export async function importLetterboxdCsvFile(formData: FormData) {
   }
   await importLetterboxdRows(preview.rows, file.name);
   revalidatePath("/import-export");
-  revalidatePath("/media");
+  revalidatePath("/library");
   revalidatePath("/watchlist");
   revalidatePath("/dashboard");
 }

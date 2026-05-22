@@ -55,7 +55,7 @@ export async function createMediaItem(
       await queueToast(
         "Thanks! Your addition was sent for admin review.",
       );
-      redirect("/media");
+      redirect("/library");
     }
 
     const media = await prisma.$transaction(async (tx) => {
@@ -79,7 +79,7 @@ export async function createMediaItem(
     await upsertMediaRelations(media.id, input);
     await replaceManualExternalRatings(media.id, input);
     await recomputeMediaScores(media.id, user.id);
-    revalidatePath("/media");
+    revalidatePath("/library");
     await queueToast(`${media.title} added.`);
     redirect(`/media/${media.id}`);
   } catch (error) {
@@ -133,7 +133,7 @@ export async function updateMediaItem(
     await upsertMediaRelations(id, input);
     await replaceManualExternalRatings(id, input);
     await recomputeMediaScores(id, user.id);
-    revalidatePath("/media");
+    revalidatePath("/library");
     revalidatePath(`/media/${id}`);
     await queueToast("Media item saved.");
     redirect(`/media/${id}`);
@@ -144,7 +144,7 @@ export async function updateMediaItem(
 }
 
 export async function updateMediaRatings(formData: FormData) {
-  const returnTo = String(formData.get("returnTo") ?? "/media");
+  const returnTo = String(formData.get("returnTo") ?? "/library");
   const ids = formData
     .getAll("mediaId")
     .map((value) => String(value))
@@ -185,7 +185,7 @@ export async function updateMediaRatings(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/dashboard");
-  revalidatePath("/media");
+  revalidatePath("/library");
   revalidatePath("/recommendations");
   revalidatePath("/discover");
   await queueToast(
@@ -194,7 +194,7 @@ export async function updateMediaRatings(formData: FormData) {
       : `Saved ${updatedCount} rating${updatedCount === 1 ? "" : "s"}.`,
   );
 
-  let destination = returnTo.startsWith("/media") ? returnTo : "/media";
+  let destination = returnTo.startsWith("/library") ? returnTo : "/library";
   if (untrackedNewlyRated.length > 0) {
     const reviewIds = untrackedNewlyRated.map((row) => row.mediaId).join(",");
     const separator = destination.includes("?") ? "&" : "?";
@@ -221,7 +221,7 @@ export async function updateMediaStatuses(formData: FormData) {
 
   revalidatePath("/");
   revalidatePath("/dashboard");
-  revalidatePath("/media");
+  revalidatePath("/library");
   revalidatePath("/recommendations");
   revalidatePath("/discover");
   await queueToast(
@@ -230,8 +230,8 @@ export async function updateMediaStatuses(formData: FormData) {
       : `Updated ${updatedCount} status${updatedCount === 1 ? "" : "es"}.`,
   );
 
-  const returnTo = String(formData.get("returnTo") ?? "/media");
-  redirect(returnTo.startsWith("/media") ? returnTo.split("?")[0] : "/media");
+  const returnTo = String(formData.get("returnTo") ?? "/library");
+  redirect(returnTo.startsWith("/library") ? returnTo.split("?")[0] : "/library");
 }
 
 export async function updateMediaRating(id: string, formData: FormData) {
@@ -241,7 +241,7 @@ export async function updateMediaRating(id: string, formData: FormData) {
   await recomputeMediaScores(id, userId);
   revalidatePath("/");
   revalidatePath("/dashboard");
-  revalidatePath("/media");
+  revalidatePath("/library");
   revalidatePath(`/media/${id}`);
   revalidatePath("/recommendations");
   revalidatePath("/discover");
@@ -259,7 +259,7 @@ export async function updateMediaStatus(id: string, formData: FormData) {
 
   const userId = await requireUserId();
   await upsertUserMedia(userId, id, { status });
-  revalidatePath("/media");
+  revalidatePath("/library");
   revalidatePath(`/media/${id}`);
   revalidatePath("/recommendations");
   revalidatePath("/discover");
@@ -274,7 +274,7 @@ export async function toggleFavoriteMediaItem(id: string) {
   });
   const isFavorite = !(item?.isFavorite ?? false);
   await upsertUserMedia(userId, id, { isFavorite });
-  revalidatePath("/media");
+  revalidatePath("/library");
   revalidatePath(`/media/${id}`);
   revalidatePath("/recommendations");
   await queueToast(isFavorite ? "Added to favorites." : "Removed favorite.");
@@ -283,24 +283,24 @@ export async function toggleFavoriteMediaItem(id: string) {
 export async function archiveMediaItem(id: string) {
   const userId = await requireUserId();
   await upsertUserMedia(userId, id, { isArchived: true });
-  revalidatePath("/media");
+  revalidatePath("/library");
   await queueToast("Media item archived.");
-  redirect("/media");
+  redirect("/library");
 }
 
 export async function unarchiveMediaItem(id: string) {
   const userId = await requireUserId();
   await upsertUserMedia(userId, id, { isArchived: false });
-  revalidatePath("/media");
+  revalidatePath("/library");
   await queueToast("Media item unarchived.");
   redirect(`/media/${id}`);
 }
 
 export async function deleteMediaItem(id: string) {
   await prisma.mediaItem.delete({ where: { id } });
-  revalidatePath("/media");
+  revalidatePath("/library");
   await queueToast("Media item deleted.");
-  redirect("/media");
+  redirect("/library");
 }
 
 export async function addNote(id: string, formData: FormData) {

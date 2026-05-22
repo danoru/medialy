@@ -20,6 +20,7 @@ import {
   mediaTypeTabSx,
 } from "@/lib/media-ui-helpers";
 import { StatePanel } from "@/components/shared/StatePanel";
+import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 import { requireUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +54,7 @@ export default async function RecommendationsPage({
 
   return (
     <Stack spacing={3}>
+      <PageAccentBackground mediaType={selectedType} />
       <Box>
         <Typography component="h1" sx={{ fontWeight: 650 }} variant="h4">
           Discovery Recommendations
@@ -165,7 +167,7 @@ export default async function RecommendationsPage({
         ))}
         {visibleRecommendations.length === 0 ? (
           <StatePanel
-            action={{ href: "/media", label: "Review media library" }}
+            action={{ href: "/library", label: "Review library" }}
             description={`Add ratings, comparisons, or watchlist items to unlock ${formatMediaType(selectedType).toLowerCase()} recommendations.`}
             title={`No ${formatMediaType(selectedType).toLowerCase()} recommendations yet`}
           />

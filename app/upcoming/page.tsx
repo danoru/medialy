@@ -30,6 +30,7 @@ import {
   startOfToday,
 } from "@/lib/upcoming";
 import { StatePanel } from "@/components/shared/StatePanel";
+import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 import { getCurrentUser } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import {
@@ -99,6 +100,7 @@ export default async function UpcomingPage({
 
   return (
     <Stack spacing={2.5}>
+      <PageAccentBackground mediaType={selectedType} />
       <Card variant="outlined">
         <CardContent>
           <Tabs

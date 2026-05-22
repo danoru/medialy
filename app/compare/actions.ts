@@ -126,6 +126,6 @@ export async function saveComparison(formData: FormData) {
   });
 
   revalidatePath("/compare");
-  revalidatePath("/media");
+  revalidatePath("/library");
   revalidatePath("/dashboard");
 }

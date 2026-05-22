@@ -48,7 +48,7 @@ function snapshotToFormInput(snapshot: EditSuggestionSnapshot): MediaFormInput {
 function revalidateAfterReview() {
   revalidatePath("/admin/edits");
   revalidatePath("/admin");
-  revalidatePath("/media");
+  revalidatePath("/library");
 }
 
 export async function approveMediaEditSuggestion(id: string) {

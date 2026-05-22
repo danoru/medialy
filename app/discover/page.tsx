@@ -11,12 +11,15 @@ import {
 import type { MediaItem, MediaType } from "@prisma/client";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { formatMediaType } from "@/lib/format";
+import { alpha } from "@mui/material/styles";
 import {
+  mediaAccent,
   mediaTypeTabIndicatorColor,
   mediaTypeTabSx,
   posterFallback,
 } from "@/lib/media-ui-helpers";
 import { PosterImage } from "@/components/media/PosterCard";
+import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
@@ -41,8 +44,7 @@ function mergeUserMediaInline<T extends { userMedia: UserMedia[] }>(row: T) {
     personalScoreConfidence:
       um?.personalScoreConfidence ?? DEFAULT_USER_MEDIA.personalScoreConfidence,
     pairwiseScore: um?.pairwiseScore ?? DEFAULT_USER_MEDIA.pairwiseScore,
-    comparisonCount:
-      um?.comparisonCount ?? DEFAULT_USER_MEDIA.comparisonCount,
+    comparisonCount: um?.comparisonCount ?? DEFAULT_USER_MEDIA.comparisonCount,
     isFavorite: um?.isFavorite ?? false,
     isArchived: um?.isArchived ?? false,
   };
@@ -169,7 +171,11 @@ export default async function TopListsPage({
     );
 
   const discoverPrior = computeDiscoverPrior(discoverItems);
-  const genreWorlds = getGenreWorlds(discoverItems, selectedType, discoverPrior);
+  const genreWorlds = getGenreWorlds(
+    discoverItems,
+    selectedType,
+    discoverPrior,
+  );
   const selectedWorld =
     genreWorlds.find((world) => world.name === requestedGenre) ??
     genreWorlds[0] ??
@@ -190,9 +196,16 @@ export default async function TopListsPage({
     ? `The ${copy.noun} that make ${selectedWorld.name.toLowerCase()} feel vivid, approachable, and worth exploring deeper.`
     : copy.dek;
   const heroItems = essentials.slice(0, 5);
+  const accentColor = mediaAccent(selectedType);
+  const heroTitleNode = highlightLastWord(heroTitle, accentColor);
 
   return (
-    <Box>
+    <Box
+      sx={{
+        mx: "auto",
+      }}
+    >
+      <PageAccentBackground mediaType={selectedType} />
       <Stack spacing={2.5}>
         <Box
           sx={{
@@ -207,7 +220,9 @@ export default async function TopListsPage({
             variant="scrollable"
             slotProps={{
               indicator: {
-                sx: { backgroundColor: mediaTypeTabIndicatorColor(selectedType) },
+                sx: {
+                  backgroundColor: mediaTypeTabIndicatorColor(selectedType),
+                },
               },
             }}
             sx={{
@@ -235,13 +250,15 @@ export default async function TopListsPage({
         </Box>
 
         <HeroSection
+          accent={accentColor}
           copy={heroDek}
           eyebrow={`${formatMediaType(selectedType)} discovery engine`}
           items={heroItems}
-          title={heroTitle}
+          title={heroTitleNode}
         />
 
         <GenreRail
+          accent={accentColor}
           genres={genreWorlds}
           selectedGenre={selectedWorld?.name ?? null}
           selectedType={selectedType}
@@ -258,11 +275,13 @@ export default async function TopListsPage({
               }}
             >
               <StartHerePanel
+                accent={accentColor}
                 genre={selectedWorld.name}
                 items={startHere}
                 mediaNoun={copy.noun}
               />
               <SubgenreExplorer
+                accent={accentColor}
                 selectedSubgenre={selectedSubgenre?.name ?? null}
                 selectedType={selectedType}
                 subgenres={selectedWorld.tags}
@@ -272,6 +291,7 @@ export default async function TopListsPage({
             </Box>
 
             <PosterShelf
+              accent={accentColor}
               eyebrow="Definitive entries"
               items={essentials}
               title={
@@ -289,16 +309,21 @@ export default async function TopListsPage({
               }}
             >
               <PosterShelf
+                accent={accentColor}
                 compact
                 eyebrow="Worth digging for"
                 grid
                 items={hiddenGems}
                 title="Hidden Gems"
               />
-              <IfYouLikedPanel chains={relationshipChains} />
+              <IfYouLikedPanel
+                accent={accentColor}
+                chains={relationshipChains}
+              />
             </Box>
 
             <CuratedCollections
+              accent={accentColor}
               collections={collections}
               country={requestedCountry}
               selectedType={selectedType}
@@ -312,16 +337,50 @@ export default async function TopListsPage({
   );
 }
 
+function highlightLastWord(text: string, accent: string): React.ReactNode {
+  const trimmed = text.trim();
+  const lastSpace = trimmed.lastIndexOf(" ");
+  if (lastSpace === -1) {
+    return (
+      <Box
+        component="span"
+        sx={{
+          color: accent,
+          textShadow: `0 0 28px ${alpha(accent, 0.5)}`,
+        }}
+      >
+        {trimmed}
+      </Box>
+    );
+  }
+  return (
+    <>
+      {trimmed.slice(0, lastSpace + 1)}
+      <Box
+        component="span"
+        sx={{
+          color: accent,
+          textShadow: `0 0 28px ${alpha(accent, 0.5)}`,
+        }}
+      >
+        {trimmed.slice(lastSpace + 1)}
+      </Box>
+    </>
+  );
+}
+
 function HeroSection({
+  accent,
   copy,
   eyebrow,
   items,
   title,
 }: {
+  accent: string;
   copy: string;
   eyebrow: string;
   items: DiscoveryItem[];
-  title: string;
+  title: React.ReactNode;
 }) {
   return (
     <Box
@@ -350,7 +409,7 @@ function HeroSection({
         >
           <Typography
             variant="eyebrow"
-            sx={{ display: "block", mb: 1.5 }}
+            sx={{ color: accent, display: "block", mb: 1.5 }}
           >
             {eyebrow}
           </Typography>
@@ -392,14 +451,15 @@ function HeroSection({
         >
           <Box
             sx={{
-              background:
-                "radial-gradient(circle at 50% 52%, rgba(var(--mui-palette-primary-mainChannel) / 0.14), transparent 22rem)",
+              background: `radial-gradient(circle at 45% 22%, ${alpha(accent, 0.08)} 0%, transparent 24rem)`,
               inset: 0,
               position: "absolute",
+              pointerEvents: "none",
             }}
           />
           {items.map((item, index) => (
             <PosterCard
+              accent={accent}
               elevated={index === 2}
               item={item}
               key={item.id}
@@ -420,11 +480,13 @@ function HeroSection({
 }
 
 function GenreRail({
+  accent,
   country,
   genres,
   selectedGenre,
   selectedType,
 }: {
+  accent: string;
   country?: string | null;
   genres: GenreWorld[];
   selectedGenre: string | null;
@@ -432,7 +494,9 @@ function GenreRail({
 }) {
   return (
     <Stack spacing={1}>
-      <Typography variant="eyebrow">Choose a world</Typography>
+      <Typography variant="eyebrow" sx={{ color: accent }}>
+        Choose a world
+      </Typography>
       <Box
         sx={{
           display: "flex",
@@ -444,45 +508,51 @@ function GenreRail({
       >
         {[...genres]
           .sort((first, second) => first.name.localeCompare(second.name))
-          .map((genre) => (
-            <Chip
-              clickable
-              component="a"
-              href={topListsHref(selectedType, genre.name, null, country)}
-              key={genre.name}
-              label={genre.name}
-              sx={{
-                bgcolor:
-                  selectedGenre === genre.name
-                    ? "rgba(var(--mui-palette-primary-mainChannel) / 0.16)"
-                    : "var(--mui-palette-surface-1)",
-                border:
-                  selectedGenre === genre.name
-                    ? "1px solid rgba(var(--mui-palette-primary-mainChannel) / 0.4)"
+          .map((genre) => {
+            const active = selectedGenre === genre.name;
+            return (
+              <Chip
+                clickable
+                component="a"
+                href={topListsHref(selectedType, genre.name, null, country)}
+                key={genre.name}
+                label={genre.name}
+                sx={{
+                  bgcolor: active ? alpha(accent, 0.1) : "surface.1",
+                  border: active
+                    ? `1px solid ${alpha(accent, 0.4)}`
                     : "1px solid var(--mui-palette-border-subtle)",
-                color: selectedGenre === genre.name ? "primary.main" : "text.primary",
-                flex: "0 0 auto",
-                fontWeight: selectedGenre === genre.name ? 600 : 500,
-              }}
-            />
-          ))}
+                  color: active ? accent : "text.primary",
+                  flex: "0 0 auto",
+                  fontWeight: active ? 600 : 500,
+                  boxShadow: active
+                    ? `0 0 14px ${alpha(accent, 0.25)}`
+                    : "none",
+                }}
+              />
+            );
+          })}
       </Box>
     </Stack>
   );
 }
 
 function StartHerePanel({
+  accent,
   genre,
   items,
   mediaNoun,
 }: {
+  accent: string;
   genre: string;
   items: DiscoveryItem[];
   mediaNoun: string;
 }) {
   return (
-    <DiscoveryPanel>
-      <Typography variant="eyebrow">Start here</Typography>
+    <DiscoveryPanel accent={accent}>
+      <Typography variant="eyebrow" sx={{ color: accent }}>
+        Start here
+      </Typography>
       <Typography component="h2" sx={sectionTitleSx}>
         Gateway {mediaNoun} for {genre.toLowerCase()}
       </Typography>
@@ -495,7 +565,12 @@ function StartHerePanel({
         }}
       >
         {items.map((item, index) => (
-          <GatewayCard index={index} item={item} key={item.id} />
+          <GatewayCard
+            accent={accent}
+            index={index}
+            item={item}
+            key={item.id}
+          />
         ))}
       </Box>
       {items.length === 0 ? <EmptyText>No entries yet.</EmptyText> : null}
@@ -503,7 +578,15 @@ function StartHerePanel({
   );
 }
 
-function GatewayCard({ index, item }: { index: number; item: DiscoveryItem }) {
+function GatewayCard({
+  accent,
+  index,
+  item,
+}: {
+  accent: string;
+  index: number;
+  item: DiscoveryItem;
+}) {
   return (
     <Box
       component="a"
@@ -513,6 +596,7 @@ function GatewayCard({ index, item }: { index: number; item: DiscoveryItem }) {
         bgcolor: "surface.1",
         border: "1px solid",
         borderColor: "border.subtle",
+        borderLeft: `2px solid ${accent}`,
         borderRadius: 2,
         color: "inherit",
         display: "grid",
@@ -551,12 +635,14 @@ function GatewayCard({ index, item }: { index: number; item: DiscoveryItem }) {
 }
 
 function SubgenreExplorer({
+  accent,
   country,
   genre,
   selectedSubgenre,
   selectedType,
   subgenres,
 }: {
+  accent: string;
   country?: string | null;
   genre: string;
   selectedSubgenre: string | null;
@@ -564,8 +650,10 @@ function SubgenreExplorer({
   subgenres: Subgenre[];
 }) {
   return (
-    <DiscoveryPanel>
-      <Typography variant="eyebrow">Subgenre explorer</Typography>
+    <DiscoveryPanel accent={accent}>
+      <Typography variant="eyebrow" sx={{ color: accent }}>
+        Subgenre explorer
+      </Typography>
       <Typography component="h2" sx={sectionTitleSx}>
         Go deeper than {genre.toLowerCase()}
       </Typography>
@@ -575,7 +663,7 @@ function SubgenreExplorer({
           component="a"
           href={topListsHref(selectedType, genre, null, country)}
           label="All essentials"
-          sx={subgenreChipSx(!selectedSubgenre)}
+          sx={subgenreChipSx(!selectedSubgenre, accent)}
         />
         {subgenres.slice(0, 14).map((tag) => (
           <Chip
@@ -584,7 +672,7 @@ function SubgenreExplorer({
             href={topListsHref(selectedType, genre, tag.name, country)}
             key={tag.name}
             label={tag.name}
-            sx={subgenreChipSx(selectedSubgenre === tag.name)}
+            sx={subgenreChipSx(selectedSubgenre === tag.name, accent)}
           />
         ))}
       </Stack>
@@ -598,12 +686,14 @@ function SubgenreExplorer({
 }
 
 function PosterShelf({
+  accent,
   compact = false,
   eyebrow,
   grid = false,
   items,
   title,
 }: {
+  accent: string;
   compact?: boolean;
   eyebrow: string;
   grid?: boolean;
@@ -611,8 +701,10 @@ function PosterShelf({
   title: string;
 }) {
   return (
-    <DiscoveryPanel>
-      <Typography variant="eyebrow">{eyebrow}</Typography>
+    <DiscoveryPanel accent={accent}>
+      <Typography variant="eyebrow" sx={{ color: accent }}>
+        {eyebrow}
+      </Typography>
       <Typography component="h2" sx={sectionTitleSx}>
         {title}
       </Typography>
@@ -642,7 +734,12 @@ function PosterShelf({
         }}
       >
         {items.map((item, index) => (
-          <ShelfPoster item={item} key={item.id} rank={index + 1} />
+          <ShelfPoster
+            accent={accent}
+            item={item}
+            key={item.id}
+            rank={index + 1}
+          />
         ))}
       </Box>
       {items.length === 0 ? <EmptyText>No entries yet.</EmptyText> : null}
@@ -650,7 +747,15 @@ function PosterShelf({
   );
 }
 
-function ShelfPoster({ item, rank }: { item: DiscoveryItem; rank: number }) {
+function ShelfPoster({
+  accent,
+  item,
+  rank,
+}: {
+  accent: string;
+  item: DiscoveryItem;
+  rank: number;
+}) {
   return (
     <Box
       component="a"
@@ -667,10 +772,11 @@ function ShelfPoster({ item, rank }: { item: DiscoveryItem; rank: number }) {
         <Box
           sx={{
             alignItems: "center",
-            bgcolor: "rgba(8,8,11,0.65)",
+            bgcolor: "rgba(8,8,11,0.7)",
             backdropFilter: "blur(6px)",
+            border: `1px solid ${alpha(accent, 0.4)}`,
             borderRadius: 1,
-            color: "#FFFFFF",
+            color: accent,
             display: "flex",
             fontSize: "0.6875rem",
             fontWeight: 700,
@@ -696,13 +802,17 @@ function ShelfPoster({ item, rank }: { item: DiscoveryItem; rank: number }) {
 }
 
 function IfYouLikedPanel({
+  accent,
   chains,
 }: {
+  accent: string;
   chains: Array<{ seed: DiscoveryItem; next: DiscoveryItem }>;
 }) {
   return (
-    <DiscoveryPanel>
-      <Typography variant="eyebrow">Recommendation pathways</Typography>
+    <DiscoveryPanel accent={accent}>
+      <Typography variant="eyebrow" sx={{ color: accent }}>
+        Recommendation pathways
+      </Typography>
       <Typography component="h2" sx={sectionTitleSx}>
         If You Liked...
       </Typography>
@@ -750,17 +860,21 @@ function IfYouLikedPanel({
 }
 
 function CuratedCollections({
+  accent,
   collections,
   country,
   selectedType,
 }: {
+  accent: string;
   collections: Array<{ title: string; description: string; genre: string }>;
   country?: string | null;
   selectedType: MediaType;
 }) {
   return (
-    <DiscoveryPanel>
-      <Typography variant="eyebrow">Curated collections</Typography>
+    <DiscoveryPanel accent={accent}>
+      <Typography variant="eyebrow" sx={{ color: accent }}>
+        Curated collections
+      </Typography>
       <Box
         sx={{
           display: "grid",
@@ -778,6 +892,7 @@ function CuratedCollections({
               bgcolor: "surface.1",
               border: "1px solid",
               borderColor: "border.subtle",
+              borderLeft: `2px solid ${accent}`,
               borderRadius: 2,
               color: "inherit",
               display: "flex",
@@ -792,7 +907,9 @@ function CuratedCollections({
               },
             }}
           >
-            <Typography variant="eyebrow">{collection.genre}</Typography>
+            <Typography variant="eyebrow" sx={{ color: accent }}>
+              {collection.genre}
+            </Typography>
             <Typography
               sx={{
                 fontFamily:
@@ -816,14 +933,17 @@ function CuratedCollections({
 }
 
 function PosterCard({
+  accent,
   elevated = false,
   item,
   sx,
 }: {
+  accent?: string;
   elevated?: boolean;
   item: DiscoveryItem;
   sx?: object;
 }) {
+  const tint = accent ?? mediaAccent(item.mediaType);
   return (
     <Box
       component="a"
@@ -835,11 +955,11 @@ function PosterCard({
           : posterFallback(item.mediaType),
         backgroundPosition: "center",
         backgroundSize: "cover",
-        border: elevated
-          ? "1px solid var(--mui-palette-border-strong)"
-          : "1px solid var(--mui-palette-border-subtle)",
+        border: `1px solid ${alpha(tint, elevated ? 0.55 : 0.3)}`,
         borderRadius: 2,
-        boxShadow: elevated ? 8 : 3,
+        boxShadow: elevated
+          ? `0 18px 42px rgba(0,0,0,0.55), 0 0 32px ${alpha(tint, 0.45)}`
+          : `0 10px 24px rgba(0,0,0,0.45), 0 0 18px ${alpha(tint, 0.22)}`,
         display: "block",
         minWidth: 0,
         overflow: "hidden",
@@ -848,7 +968,7 @@ function PosterCard({
         transition: "transform 180ms ease, box-shadow 180ms ease",
         width: "100%",
         "&:hover": {
-          boxShadow: 10,
+          boxShadow: `0 22px 48px rgba(0,0,0,0.6), 0 0 38px ${alpha(tint, 0.55)}`,
           transform: "translateY(-4px)",
         },
         ...sx,
@@ -857,9 +977,23 @@ function PosterCard({
   );
 }
 
-function DiscoveryPanel({ children }: { children: React.ReactNode }) {
+function DiscoveryPanel({
+  accent,
+  children,
+}: {
+  accent?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <Card sx={{ height: "100%" }}>
+    <Card
+      sx={{
+        height: "100%",
+        borderLeft: accent ? `2px solid ${accent}` : undefined,
+        boxShadow: accent
+          ? `0 8px 24px rgba(0,0,0,0.25), -10px 0 32px -18px ${alpha(accent, 0.6)}`
+          : undefined,
+      }}
+    >
       <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>{children}</CardContent>
     </Card>
   );
@@ -896,16 +1030,15 @@ const sectionTitleSx: SxProps<Theme> = {
   mt: 0.75,
 };
 
-function subgenreChipSx(active: boolean): SxProps<Theme> {
+function subgenreChipSx(active: boolean, accent: string): SxProps<Theme> {
   return {
-    bgcolor: active
-      ? "rgba(var(--mui-palette-primary-mainChannel) / 0.16)"
-      : "var(--mui-palette-surface-1)",
+    bgcolor: active ? alpha(accent, 0.1) : "surface.1",
     border: active
-      ? "1px solid rgba(var(--mui-palette-primary-mainChannel) / 0.4)"
+      ? `1px solid ${alpha(accent, 0.4)}`
       : "1px solid var(--mui-palette-border-subtle)",
-    color: active ? "primary.main" : "text.primary",
+    color: active ? accent : "text.primary",
     fontWeight: active ? 600 : 500,
+    boxShadow: active ? `0 0 14px ${alpha(accent, 0.25)}` : "none",
   };
 }
 
@@ -1171,4 +1304,3 @@ function topListsHref(
   if (country) params.set("country", country);
   return `/discover?${params.toString()}`;
 }
-

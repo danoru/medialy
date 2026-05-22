@@ -37,11 +37,16 @@ import { StatePanel } from "@/components/shared/StatePanel";
 import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { sortMediaTitleRows, type SortDirection } from "@/lib/media-sort";
+import { alpha } from "@mui/material/styles";
 import {
+  ACCENTS,
+  mediaAccent,
   mediaTypeTabIndicatorColor,
   mediaTypeTabSx,
 } from "@/lib/media-ui-helpers";
 import { MediaPageNavigator } from "@/components/media/MediaPageNavigator";
+import { PosterThumb } from "@/components/media/PosterCard";
+import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 import { SaveRatingsButton } from "@/components/media/SaveRatingsButton";
 import { matchesMediaTitleSearch } from "@/lib/media-search";
 import {
@@ -169,15 +174,57 @@ export default async function MediaPage({
     {},
   );
 
+  const selectedAccent =
+    selectedType === ALL_MEDIA_TYPES ? ACCENTS.brand : mediaAccent(selectedType);
+
   return (
     <Stack spacing={3}>
+      <PageAccentBackground
+        mediaType={selectedType === ALL_MEDIA_TYPES ? null : selectedType}
+      />
       {reviewItems.length > 0 ? (
         <BulkStatusReviewModal
           items={reviewItems}
           returnTo={reviewReturnTo}
         />
       ) : null}
-      <Card variant="outlined">
+      <Box>
+        <Typography variant="eyebrow" sx={{ display: "block", mb: 0.75 }}>
+          Library
+        </Typography>
+        <Typography
+          component="h1"
+          sx={{
+            fontFamily:
+              'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif',
+            fontSize: { xs: "2rem", md: "2.5rem" },
+            fontWeight: 650,
+            letterSpacing: "-0.025em",
+            lineHeight: 1.1,
+          }}
+        >
+          Everything,{" "}
+          <Box
+            component="span"
+            sx={{
+              color: selectedAccent,
+              textShadow: `0 0 24px ${alpha(selectedAccent, 0.45)}`,
+            }}
+          >
+            rated
+          </Box>
+          .
+        </Typography>
+        <Typography color="text.secondary" sx={{ mt: 0.75 }} variant="body2">
+          Filter, rate inline, and re-sort by personal or consensus signal.
+        </Typography>
+      </Box>
+      <Card
+        variant="outlined"
+        sx={{
+          borderLeft: `2px solid ${selectedAccent}`,
+        }}
+      >
         <CardContent>
           <Tabs
             allowScrollButtonsMobile
@@ -550,8 +597,19 @@ function MediaRatingsTable({
             </TableRow>
           </TableHead>
           <TableBody>
-            {items.map((item) => (
-              <TableRow hover key={item.id}>
+            {items.map((item) => {
+              const rowAccent = mediaAccent(item.mediaType);
+              return (
+              <TableRow
+                hover
+                key={item.id}
+                sx={{
+                  "& > td:first-of-type": {
+                    borderLeft: `2px solid ${rowAccent}`,
+                  },
+                  background: `linear-gradient(90deg, ${alpha(rowAccent, 0.05)} 0%, transparent 20%)`,
+                }}
+              >
                 <TableCell>
                   <input name="mediaId" type="hidden" value={item.id} />
                   <input
@@ -559,43 +617,70 @@ function MediaRatingsTable({
                     type="hidden"
                     value={item.personalRating ?? ""}
                   />
-                  <Stack spacing={0.5}>
-                    <Link
-                      href={`/media/${item.id}`}
-                      style={{ textDecoration: "none" }}
-                    >
-                      <Typography
-                        sx={{ color: "primary.main", fontWeight: 700 }}
+                  <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
+                    <PosterThumb item={item} size="sm" />
+                    <Stack spacing={0.5} sx={{ minWidth: 0 }}>
+                      <Link
+                        href={`/media/${item.id}`}
+                        style={{ textDecoration: "none" }}
                       >
-                        {item.title}
-                      </Typography>
-                    </Link>
-                    <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                      {item.isFavorite ? (
-                        <Chip color="secondary" label="Favorite" size="small" />
-                      ) : null}
-                      {item.isArchived ? (
-                        <Chip label="Archived" size="small" />
-                      ) : null}
-                      {item.tags.slice(0, 2).map((entry) => (
-                        <Chip
-                          key={entry.tagId}
-                          label={entry.tag.name}
-                          size="small"
-                          variant="outlined"
-                        />
-                      ))}
+                        <Typography sx={{ color: "text.primary", fontWeight: 600 }}>
+                          {item.title}
+                        </Typography>
+                      </Link>
+                      <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.5 }}>
+                        {item.isFavorite ? (
+                          <Chip color="secondary" label="Favorite" size="small" />
+                        ) : null}
+                        {item.isArchived ? (
+                          <Chip label="Archived" size="small" />
+                        ) : null}
+                        {item.tags.slice(0, 2).map((entry) => (
+                          <Chip
+                            key={entry.tagId}
+                            label={entry.tag.name}
+                            size="small"
+                            variant="outlined"
+                          />
+                        ))}
+                      </Stack>
                     </Stack>
                   </Stack>
                 </TableCell>
-                <TableCell>{formatMediaType(item.mediaType)}</TableCell>
+                <TableCell>
+                  <Typography
+                    component="span"
+                    sx={{
+                      color: rowAccent,
+                      fontSize: "0.7rem",
+                      fontWeight: 700,
+                      letterSpacing: "0.18em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {formatMediaType(item.mediaType)}
+                  </Typography>
+                </TableCell>
                 <TableCell>{statusLabel(item.status, item.mediaType)}</TableCell>
                 <TableCell>
                   {item.genres.map((entry) => entry.genre.name).join(", ") ||
                     "Missing"}
                 </TableCell>
                 <TableCell align="right">
-                  {formatScore(item.computedPersonalScore)}
+                  <Typography
+                    component="span"
+                    sx={{
+                      color: item.computedPersonalScore != null ? rowAccent : "text.secondary",
+                      fontWeight: 600,
+                      fontVariantNumeric: "tabular-nums",
+                      textShadow:
+                        item.computedPersonalScore != null
+                          ? `0 0 12px ${alpha(rowAccent, 0.33)}`
+                          : "none",
+                    }}
+                  >
+                    {formatScore(item.computedPersonalScore)}
+                  </Typography>
                 </TableCell>
                 <TableCell align="right">
                   {formatScore(item.computedConsensusScore)}
@@ -613,7 +698,8 @@ function MediaRatingsTable({
                 </TableCell>
                 <TableCell>{item.updatedAt.toLocaleDateString()}</TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       ) : (
@@ -667,13 +753,18 @@ function MediaRatingsCards({
         />
       ) : (
         <Stack sx={{ p: 1 }}>
-          {items.map((item, index) => (
+          {items.map((item, index) => {
+            const rowAccent = mediaAccent(item.mediaType);
+            return (
             <Box
               key={item.id}
               sx={{
                 borderTop: index === 0 ? 0 : "1px solid",
                 borderColor: "divider",
-                px: 0.4,
+                borderLeft: `2px solid ${rowAccent}`,
+                background: `linear-gradient(90deg, ${alpha(rowAccent, 0.05)} 0%, transparent 20%)`,
+                pl: 1,
+                pr: 0.4,
                 py: 1,
               }}
             >
@@ -776,7 +867,8 @@ function MediaRatingsCards({
                 </Box>
               </Stack>
             </Box>
-          ))}
+            );
+          })}
         </Stack>
       )}
       <CardContent>
@@ -934,7 +1026,7 @@ function buildMediaHref(
   }
 
   const query = searchParams.toString();
-  return query ? `/media?${query}` : "/media";
+  return query ? `/library?${query}` : "/library";
 }
 
 function mediaHrefParam(
