@@ -13,6 +13,7 @@ import {
   shrunkContribution,
   type RatingAccumulator,
 } from "@/lib/scoring/affinity";
+import { mediaTypeNoun } from "@/lib/format";
 import { toMediaItemDTO } from "@/lib/media";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 import type { Recommendation, RecommendationReason } from "@/lib/types";
@@ -100,7 +101,11 @@ export async function getRecommendations(
         AFFINITY_TUNING.saturationK.contributor,
       );
 
-      const contributorDetail = buildContributorDetail(item.credits, affinity);
+      const contributorDetail = buildContributorDetail(
+        item.credits,
+        affinity,
+        item.mediaType,
+      );
       const countryDetail = buildCountryDetail(item.tags, affinity);
       const friendSignal = computeFriendSignal(
         followedRatingsByMedia.get(item.id) ?? [],
@@ -335,6 +340,7 @@ export async function getAffinityMaps(
 export function buildContributorDetail(
   credits: Array<{ contributor: { id: string }; role: string }>,
   affinity: AffinityMaps,
+  mediaType: string,
 ): string | undefined {
   type Match = ContributorAffinity & { role: string };
   let best: Match | undefined;
@@ -346,11 +352,13 @@ export function buildContributorDetail(
   }
   if (!best) return undefined;
 
-  const roleLabel = ROLE_NOUN[best.role] ?? "contributor";
+  const verb = ROLE_VERB[best.role] ?? "credited on";
+  const noun = mediaTypeNoun(mediaType, best.exampleCount);
+  const head = `You've rated ${best.exampleCount} ${noun} ${verb} ${best.name} highly`;
   if (best.exampleCount === 1) {
-    return `${capitalize(roleLabel)} ${best.name} — you rated ${best.topExample.title} ${best.topExample.rating}/10`;
+    return `${head} (${best.topExample.title}, ${best.topExample.rating}/10)`;
   }
-  return `${capitalize(roleLabel)} ${best.name} — you've rated ${best.exampleCount} of their ${pluralizeWork(best.role)} highly`;
+  return head;
 }
 
 function buildCountryDetail(
@@ -371,29 +379,14 @@ function buildCountryDetail(
   return `Shares country (${best.name}) with ${best.count} of your ${noun}`;
 }
 
-const ROLE_NOUN: Record<string, string> = {
-  DIRECTOR: "director",
-  CREATOR: "creator",
-  DEVELOPER: "developer",
-  PUBLISHER: "publisher",
+const ROLE_VERB: Record<string, string> = {
+  DIRECTOR: "directed by",
+  CREATOR: "created by",
+  DEVELOPER: "developed by",
+  PUBLISHER: "published by",
+  ACTOR: "starring",
 };
 
-function pluralizeWork(role: string): string {
-  switch (role) {
-    case "DIRECTOR":
-    case "CREATOR":
-      return "works";
-    case "DEVELOPER":
-    case "PUBLISHER":
-      return "titles";
-    default:
-      return "works";
-  }
-}
-
-function capitalize(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
 
 /**
  * For each candidate mediaId, fetch the public ratings + completion status

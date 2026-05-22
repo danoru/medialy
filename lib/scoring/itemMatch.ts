@@ -1,8 +1,9 @@
+import { MediaType } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { AFFINITY_TUNING } from "@/lib/scoring/config";
 import { saturate } from "@/lib/scoring/affinity";
 import { calculateMedialyMatch } from "@/lib/scoring/medialyMatch";
-import { calculateTaxonomySimilarity } from "@/lib/scoring/taxonomySimilarity";
 import { getAffinityMaps, buildContributorDetail } from "@/lib/recommendations";
 
 /**
@@ -11,10 +12,18 @@ import { getAffinityMaps, buildContributorDetail } from "@/lib/recommendations";
  * here we want to explain the match for *any* item (including ones already
  * watched/in the library).
  */
+export type SimilarTitleGroup = {
+  /** Facet name shared by these titles, e.g. "Roguelike" or "Action". */
+  facet: string;
+  /** "subgenre" or "genre" — drives copy phrasing. */
+  facetKind: "subgenre" | "genre";
+  titles: string[];
+};
+
 export type MediaItemMatchSummary = {
   score: number;
-  /** Top user-rated titles that share signal with this item. */
-  similarTitles: string[];
+  /** Groups of highly-rated titles sharing a subgenre/genre with this item. */
+  similarTitleGroups: SimilarTitleGroup[];
   /** "Director X — you rated Y 9/10" or null when no contributor match. */
   contributorReason: string | null;
 };
@@ -73,36 +82,70 @@ export async function getMediaItemMatch(
       role: credit.role,
     })),
     affinity,
+    item.mediaType,
   ) ?? null;
 
-  const similarTitles = await findSimilarTitles(userId, {
+  const subgenreNames = item.tags
+    .filter((entry) => entry.tag.category === "SUBGENRE")
+    .map((entry) => entry.tag.name);
+
+  const similarTitleGroups = await findSimilarTitleGroups(userId, {
     id: item.id,
+    mediaType: item.mediaType,
     genres: item.genres.map((entry) => entry.genre.name),
-    tags: item.tags.map((entry) => entry.tag.name),
-    contributorIds: item.credits.map((credit) => credit.contributor.id),
+    subgenres: subgenreNames,
   });
 
   return {
     score: match.score,
-    similarTitles,
+    similarTitleGroups,
     contributorReason,
   };
 }
 
-async function findSimilarTitles(
+const MAX_GROUPS = 3;
+const MAX_TITLES_PER_GROUP = 3;
+
+async function findSimilarTitleGroups(
   userId: string,
   reference: {
     id: string;
+    mediaType: string;
     genres: string[];
-    tags: string[];
-    contributorIds: string[];
+    subgenres: string[];
   },
-): Promise<string[]> {
+): Promise<
+  Array<{
+    facet: string;
+    facetKind: "subgenre" | "genre";
+    titles: string[];
+  }>
+> {
+  if (reference.genres.length === 0 && reference.subgenres.length === 0) {
+    return [];
+  }
   const rated = await prisma.userMedia.findMany({
     where: {
       userId,
       isArchived: false,
       mediaId: { not: reference.id },
+      media: {
+        mediaType: reference.mediaType as MediaType,
+        OR: [
+          { genres: { some: { genre: { name: { in: reference.genres } } } } },
+          {
+            tags: {
+              some: {
+                tag: {
+                  status: "APPROVED",
+                  category: "SUBGENRE",
+                  name: { in: reference.subgenres },
+                },
+              },
+            },
+          },
+        ],
+      },
       OR: [
         { personalRating: { gte: 8 } },
         { computedPersonalScore: { gte: 8 } },
@@ -116,41 +159,65 @@ async function findSimilarTitles(
             where: { tag: { status: "APPROVED" } },
             include: { tag: true },
           },
-          credits: { include: { contributor: true } },
         },
       },
     },
-    take: 80,
+    take: 120,
   });
 
-  const referenceContributors = new Set(reference.contributorIds);
+  type Entry = {
+    title: string;
+    rating: number;
+    subgenres: Set<string>;
+    genres: Set<string>;
+  };
+  const entries: Entry[] = rated
+    .map((row) => ({
+      title: row.media.title,
+      rating: row.computedPersonalScore ?? row.personalRating ?? 0,
+      genres: new Set(row.media.genres.map((entry) => entry.genre.name)),
+      subgenres: new Set(
+        row.media.tags
+          .filter((entry) => entry.tag.category === "SUBGENRE")
+          .map((entry) => entry.tag.name),
+      ),
+    }))
+    .sort((a, b) => b.rating - a.rating);
 
-  const scored = rated
-    .map((row) => {
-      const otherGenres = row.media.genres.map((entry) => entry.genre.name);
-      const otherTags = row.media.tags.map((entry) => entry.tag.name);
-      const sharedContributors = row.media.credits.filter((credit) =>
-        referenceContributors.has(credit.contributor.id),
-      ).length;
-      const taxonomy = calculateTaxonomySimilarity(
-        { genres: reference.genres, tags: reference.tags },
-        { genres: otherGenres, tags: otherTags },
-      );
-      // Contributor overlap is rarer than genre/tag overlap, so weight it
-      // heavily so titles by the same director surface near the top.
-      const score = taxonomy.score + sharedContributors * 25;
-      return { title: row.media.title, score };
-    })
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score);
+  type Bucket = {
+    facet: string;
+    facetKind: "subgenre" | "genre";
+    titles: string[];
+  };
+  const buckets: Bucket[] = [];
+  const usedTitles = new Set<string>();
 
-  const seen = new Set<string>();
-  const titles: string[] = [];
-  for (const entry of scored) {
-    if (seen.has(entry.title)) continue;
-    seen.add(entry.title);
-    titles.push(entry.title);
-    if (titles.length >= 3) break;
+  // Subgenres first (more specific), then genres as fallback.
+  const facets: Array<{ name: string; kind: "subgenre" | "genre" }> = [
+    ...reference.subgenres.map((name) => ({
+      name,
+      kind: "subgenre" as const,
+    })),
+    ...reference.genres.map((name) => ({ name, kind: "genre" as const })),
+  ];
+
+  for (const facet of facets) {
+    if (buckets.length >= MAX_GROUPS) break;
+    const matching = entries.filter((entry) => {
+      if (usedTitles.has(entry.title)) return false;
+      return facet.kind === "subgenre"
+        ? entry.subgenres.has(facet.name)
+        : entry.genres.has(facet.name);
+    });
+    if (matching.length === 0) continue;
+    const titles: string[] = [];
+    for (const entry of matching) {
+      if (titles.length >= MAX_TITLES_PER_GROUP) break;
+      titles.push(entry.title);
+      usedTitles.add(entry.title);
+    }
+    buckets.push({ facet: facet.name, facetKind: facet.kind, titles });
   }
-  return titles;
+
+  return buckets;
 }

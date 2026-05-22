@@ -38,7 +38,7 @@ import { ActionToastButton } from "@/components/shared/Toasts";
 import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
 import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
-import { formatMediaType } from "@/lib/format";
+import { formatMediaType, mediaTypeNoun } from "@/lib/format";
 import { availableStatuses, statusLabel } from "@/lib/status-labels";
 import { useState } from "react";
 import type { UserMediaFields } from "@/lib/db/user-media";
@@ -69,7 +69,11 @@ type ComparisonLite = {
 
 export type MediaDetailMatchSummary = {
   score: number;
-  similarTitles: string[];
+  similarTitleGroups: Array<{
+    facet: string;
+    facetKind: "subgenre" | "genre";
+    titles: string[];
+  }>;
   contributorReason: string | null;
 };
 
@@ -182,7 +186,10 @@ export function MediaDetailView({
     item.externalRatings.length > 0 ? null : "external ratings",
   ].filter((field): field is string => field !== null);
 
-  const inlineMatchReason = buildInlineMatchReason(item.matchSummary);
+  const inlineMatchReasons = buildInlineMatchReasons(
+    item.matchSummary,
+    item.mediaType,
+  );
 
   return (
     <Box sx={pageSx}>
@@ -289,12 +296,16 @@ export function MediaDetailView({
                     </Box>
                   </Typography>
                 </Stack>
-                {inlineMatchReason ? (
+                {inlineMatchReasons.length > 0 ? (
                   <>
                     <Divider flexItem orientation="vertical" sx={matchDividerSx} />
-                    <Typography sx={matchReasonSx}>
-                      {inlineMatchReason}
-                    </Typography>
+                    <Stack spacing={0.5}>
+                      {inlineMatchReasons.map((line) => (
+                        <Typography key={line} sx={matchReasonSx}>
+                          {line}
+                        </Typography>
+                      ))}
+                    </Stack>
                   </>
                 ) : null}
               </Box>
@@ -844,19 +855,29 @@ function MediaTypeChip({ mediaType }: { mediaType: MediaType }) {
   );
 }
 
-function buildInlineMatchReason(
+function buildInlineMatchReasons(
   summary: MediaDetailMatchSummary | null,
-): string | null {
-  if (!summary) return null;
-  const pieces: string[] = [];
-  if (summary.similarTitles.length > 0) {
-    pieces.push(`You loved ${joinWithAnd(summary.similarTitles)}`);
+  mediaType: MediaType,
+): string[] {
+  if (!summary) return [];
+  const lines: string[] = [];
+  for (const group of summary.similarTitleGroups) {
+    if (group.titles.length === 1) {
+      const singular = mediaTypeNoun(mediaType, 1);
+      lines.push(
+        `You loved the ${group.facet} ${singular} ${group.titles[0]}.`,
+      );
+    } else {
+      const plural = mediaTypeNoun(mediaType, 2);
+      lines.push(
+        `You loved ${group.facet} ${plural} like ${joinWithAnd(group.titles)}.`,
+      );
+    }
   }
   if (summary.contributorReason) {
-    pieces.push(summary.contributorReason);
+    lines.push(`${summary.contributorReason}.`);
   }
-  if (pieces.length === 0) return null;
-  return pieces.join(". ") + ".";
+  return lines;
 }
 
 function joinWithAnd(items: string[]): string {
