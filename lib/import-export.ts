@@ -1,6 +1,9 @@
 import { ImportStatus, type Prisma, type PrismaClient } from "@prisma/client";
 import ExcelJS from "exceljs";
 import {
+  addImportedCredits,
+  addImportedTaxonomy,
+  mediaMutationData,
   mediaMutationDataWithUniqueTitle,
   mediaReleaseYear,
   mediaTitleKey,
@@ -606,8 +609,8 @@ export async function importMediaRowsWithSource(
 
   for (const [index, input] of rows.entries()) {
     try {
-      const media = await upsertImportedMedia(input, userId);
-      await upsertMediaRelations(media.id, input);
+      const { media, isNew } = await upsertImportedMedia(input, userId);
+      await writeImportedRelations(media.id, input, isNew);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
@@ -647,8 +650,12 @@ export async function importLetterboxdRows(
 
   for (const [index, input] of rows.entries()) {
     try {
-      const media = await upsertImportedMedia(input, userId, "fill-blanks");
-      await upsertMediaRelations(media.id, input);
+      const { media, isNew } = await upsertImportedMedia(
+        input,
+        userId,
+        "fill-blanks",
+      );
+      await writeImportedRelations(media.id, input, isNew);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
@@ -731,8 +738,8 @@ export async function importJsonExport(
         developers: jsonCreditNames(item.credits, "DEVELOPER"),
         publishers: jsonCreditNames(item.credits, "PUBLISHER"),
       });
-      const media = await upsertImportedMedia(input, userId);
-      await upsertMediaRelations(media.id, input);
+      const { media, isNew } = await upsertImportedMedia(input, userId);
+      await writeImportedRelations(media.id, input, isNew);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
@@ -797,23 +804,43 @@ function jsonCreditNames(
 
 type UserMediaStrategy = "overwrite" | "fill-blanks";
 
+/**
+ * Writes genres/tags/credits from an import row, choosing semantics based on
+ * whether the matched MediaItem already existed:
+ *   - new item: replace-all (the standard form-submit behavior)
+ *   - existing item: additive union — never delete what the user already has
+ *     on the item. This protects curated data when a re-import (e.g. a fresh
+ *     Letterboxd CSV) carries no genre / tag / credit data.
+ */
+async function writeImportedRelations(
+  mediaId: string,
+  input: MediaFormInput,
+  isNew: boolean,
+) {
+  if (isNew) {
+    await upsertMediaRelations(mediaId, input);
+    return;
+  }
+  await addImportedTaxonomy(mediaId, input.genres, input.tags, input.mediaType);
+  await addImportedCredits(mediaId, input.credits ?? []);
+}
+
 async function upsertImportedMedia(
   input: MediaFormInput,
   userId: string,
   userMediaStrategy: UserMediaStrategy = "overwrite",
-) {
+): Promise<{ media: { id: string }; isNew: boolean }> {
   return prisma.$transaction(async (tx) => {
     const existing = await findExistingImportedMedia(tx, input);
 
     if (existing) {
-      const data = await mediaMutationDataWithUniqueTitle(
-        tx,
-        input,
-        existing.id,
-      );
+      const current = await tx.mediaItem.findUnique({
+        where: { id: existing.id },
+      });
+      const merged = mergeMediaScalarsForImport(input, current);
       const updated = await tx.mediaItem.update({
         where: { id: existing.id },
-        data,
+        data: merged,
       });
       await upsertUserMediaWithStrategy(
         tx,
@@ -822,7 +849,7 @@ async function upsertImportedMedia(
         input,
         userMediaStrategy,
       );
-      return updated;
+      return { media: updated, isNew: false };
     }
 
     const data = await mediaMutationDataWithUniqueTitle(tx, input);
@@ -834,8 +861,66 @@ async function upsertImportedMedia(
       input,
       userMediaStrategy,
     );
-    return created;
+    return { media: created, isNew: true };
   });
+}
+
+/**
+ * Returns scalar `MediaItem` fields for an import that matched an existing
+ * row. We only fill in values that are blank on the existing item — a
+ * re-import (e.g. a fresh Letterboxd CSV with no description) must never
+ * overwrite curation the user already entered.
+ *
+ * `metadataJson` is shallow-merged at the top level so each source's
+ * namespace (e.g. `letterboxd`, `tmdb`) is preserved or updated independently.
+ */
+function mergeMediaScalarsForImport(
+  input: MediaFormInput,
+  existing: { [k: string]: unknown } | null,
+) {
+  const base = mediaMutationData(input);
+  if (!existing) return base;
+  const keep = <T>(existingValue: T, incoming: T) =>
+    existingValue == null || existingValue === "" ? incoming : existingValue;
+  return {
+    ...base,
+    originalTitle: keep(
+      existing.originalTitle as string | null,
+      base.originalTitle,
+    ),
+    description: keep(existing.description as string | null, base.description),
+    externalUrl: keep(existing.externalUrl as string | null, base.externalUrl),
+    releaseDate: (existing.releaseDate as Date | null) ?? base.releaseDate,
+    metadataJson: mergeMetadataJson(
+      existing.metadataJson as string | null,
+      base.metadataJson,
+    ),
+  };
+}
+
+function mergeMetadataJson(
+  existing: string | null,
+  incoming: string | null | undefined,
+) {
+  if (!incoming) return existing ?? null;
+  if (!existing) return incoming;
+  try {
+    const a = JSON.parse(existing);
+    const b = JSON.parse(incoming);
+    if (
+      a &&
+      b &&
+      typeof a === "object" &&
+      typeof b === "object" &&
+      !Array.isArray(a) &&
+      !Array.isArray(b)
+    ) {
+      return JSON.stringify({ ...a, ...b });
+    }
+  } catch {
+    // fall through
+  }
+  return existing;
 }
 
 async function upsertUserMediaWithStrategy(

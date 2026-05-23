@@ -4,7 +4,12 @@ import type {
   Prisma,
   PrismaClient,
 } from "@prisma/client";
-import { replaceMediaCredits, type CreditDTO } from "@/lib/credits";
+import {
+  contributorKey,
+  normalizeContributorName,
+  replaceMediaCredits,
+  type CreditDTO,
+} from "@/lib/credits";
 import { manualRatingsForMediaType } from "@/lib/external-ratings";
 import { prisma } from "@/lib/prisma";
 import {
@@ -222,6 +227,177 @@ export async function upsertMediaRelations(
 ) {
   await upsertTaxonomy(mediaId, input.genres, input.tags, input.mediaType);
   await replaceMediaCredits(prisma, mediaId, input.credits ?? []);
+}
+
+/**
+ * Additive taxonomy upsert for re-imports against an existing MediaItem.
+ * Unions the provided genres/tags into the item without deleting any that
+ * are already attached — so a Letterboxd re-import (which carries no genre
+ * or tag data) cannot wipe data the user already curated.
+ */
+export async function addImportedTaxonomy(
+  mediaId: string,
+  genres: string[],
+  tags: string[],
+  mediaType?: MediaType,
+) {
+  for (const name of [...new Set(genres)].filter(Boolean)) {
+    const genre = await prisma.genre.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    });
+    await prisma.mediaGenre.upsert({
+      where: { mediaId_genreId: { mediaId, genreId: genre.id } },
+      update: {},
+      create: { mediaId, genreId: genre.id },
+    });
+  }
+
+  const normalizedTags = [
+    ...new Map(
+      tags
+        .map((rawName) => normalizeTagName(rawName))
+        .filter(Boolean)
+        .map((name) => [normalizeTagKey(name), name]),
+    ).values(),
+  ];
+
+  for (const name of normalizedTags) {
+    const normalizedName = normalizeTagKey(name);
+    const existingTag = await prisma.tag.findUnique({
+      where: { normalizedName },
+    });
+    if (existingTag?.status === "REJECTED") continue;
+
+    let tagId: string;
+    if (existingTag) {
+      if (
+        mediaType &&
+        !tagMetadataAllowsMediaType(existingTag.mediaTypesJson, mediaType)
+      ) {
+        const mediaTypes = [
+          ...new Set([
+            ...mediaTypesFromJson(existingTag.mediaTypesJson),
+            mediaType,
+          ]),
+        ];
+        await prisma.tag.update({
+          where: { id: existingTag.id },
+          data: { mediaTypesJson: JSON.stringify(mediaTypes) },
+        });
+      }
+      tagId = existingTag.id;
+    } else {
+      const metadata = canonicalTagMetadataForName(name);
+      if (
+        metadata &&
+        mediaType &&
+        !isTagApplicableForMediaType(name, mediaType)
+      ) {
+        continue;
+      }
+      const created = await prisma.tag.upsert({
+        where: { normalizedName },
+        update: metadata
+          ? {
+              category: metadata.category,
+              discoverable: metadata.discoverable,
+              mediaTypesJson: metadata.mediaTypes
+                ? JSON.stringify(metadata.mediaTypes)
+                : undefined,
+              countryCode: metadata.countryCode,
+              status: "APPROVED",
+              approvedAt: new Date(),
+            }
+          : {},
+        create: {
+          name,
+          normalizedName,
+          status: metadata ? "APPROVED" : "PENDING",
+          category: metadata?.category ?? "THEME",
+          discoverable: metadata?.discoverable ?? false,
+          mediaTypesJson: metadata?.mediaTypes
+            ? JSON.stringify(metadata.mediaTypes)
+            : mediaType
+              ? JSON.stringify([mediaType])
+              : undefined,
+          countryCode: metadata?.countryCode,
+          approvedAt: metadata ? new Date() : undefined,
+        },
+      });
+      tagId = created.id;
+    }
+
+    await prisma.mediaTag.upsert({
+      where: { mediaId_tagId: { mediaId, tagId } },
+      update: {},
+      create: { mediaId, tagId },
+    });
+  }
+}
+
+/**
+ * Additive credits upsert for re-imports. Adds any new (role, contributor)
+ * pairs from `input.credits` but leaves existing credits in place.
+ */
+export async function addImportedCredits(
+  mediaId: string,
+  credits: NonNullable<MediaFormInput["credits"]>,
+) {
+  if (!credits.length) return;
+  const existing = await prisma.mediaCredit.findMany({
+    where: { mediaId },
+    select: { role: true, contributorId: true, order: true },
+  });
+  const existingKey = new Set(
+    existing.map((entry) => `${entry.role}::${entry.contributorId}`),
+  );
+  const maxOrderByRole = new Map<string, number>();
+  for (const entry of existing) {
+    const cur = maxOrderByRole.get(entry.role) ?? -1;
+    if (entry.order > cur) maxOrderByRole.set(entry.role, entry.order);
+  }
+
+  for (const credit of credits) {
+    const uniqueNames = [
+      ...new Map(
+        credit.names
+          .map(normalizeContributorName)
+          .filter(Boolean)
+          .map((name) => [contributorKey(name), name]),
+      ).values(),
+    ];
+    for (const name of uniqueNames) {
+      const contributor = await prisma.contributor.upsert({
+        where: {
+          normalizedName_kind: {
+            normalizedName: contributorKey(name),
+            kind: credit.kind,
+          },
+        },
+        update: { name },
+        create: {
+          name,
+          normalizedName: contributorKey(name),
+          kind: credit.kind,
+        },
+      });
+      const key = `${credit.role}::${contributor.id}`;
+      if (existingKey.has(key)) continue;
+      const nextOrder = (maxOrderByRole.get(credit.role) ?? -1) + 1;
+      maxOrderByRole.set(credit.role, nextOrder);
+      await prisma.mediaCredit.create({
+        data: {
+          mediaId,
+          contributorId: contributor.id,
+          role: credit.role,
+          order: nextOrder,
+        },
+      });
+      existingKey.add(key);
+    }
+  }
 }
 
 /**
