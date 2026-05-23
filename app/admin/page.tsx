@@ -21,6 +21,7 @@ import MovieFilterIcon from "@mui/icons-material/MovieFilter";
 import LibraryAddIcon from "@mui/icons-material/LibraryAdd";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import EditIcon from "@mui/icons-material/Edit";
+import InsightsIcon from "@mui/icons-material/Insights";
 import { ReleaseCandidateStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/user";
@@ -286,6 +287,37 @@ export default async function AdminPage() {
           pendingCount={pendingTagCount}
           title="Tag Moderation"
         />
+      </Stack>
+
+      <Stack spacing={2}>
+        <Typography variant="eyebrow">Diagnostics</Typography>
+        <Card variant="outlined">
+          <Link
+            href="/admin/recommendations"
+            style={{ textDecoration: "none", color: "inherit" }}
+          >
+            <CardActionArea>
+              <CardContent>
+                <Stack
+                  direction="row"
+                  spacing={2}
+                  sx={{ alignItems: "center" }}
+                >
+                  <InsightsIcon color="primary" />
+                  <Stack sx={{ flex: 1 }}>
+                    <Typography sx={{ fontWeight: 600 }}>
+                      Recommendation Debugger
+                    </Typography>
+                    <Typography color="text.secondary" variant="body2">
+                      Pick a user and inspect their Tonight&apos;s pick / Up next
+                      with the signals and match % behind each result.
+                    </Typography>
+                  </Stack>
+                </Stack>
+              </CardContent>
+            </CardActionArea>
+          </Link>
+        </Card>
       </Stack>
     </Stack>
   );
