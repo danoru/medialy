@@ -1,5 +1,10 @@
 import { MediaType, PrismaClient } from "@prisma/client";
 import "dotenv/config";
+import {
+  stripTitleSubtitle,
+  stripTitleYearSuffix,
+  titleEqualsSubtitleAware,
+} from "../lib/text-normalization";
 
 type MediaItemRow = {
   id: string;
@@ -215,33 +220,61 @@ async function posterFromTmdb(item: MediaItemRow): Promise<PosterMatch | null> {
     }
   }
 
-  let candidate: unknown = null;
+  const yearHint = effectiveReleaseYear(item);
+  let candidates: unknown[] = [];
+  let allResults: unknown[] = [];
   for (const query of titleSearchQueries(item.title)) {
     const search = new URL(`https://api.themoviedb.org/3/search/${endpoint}`);
     search.searchParams.set("query", query);
     search.searchParams.set("language", "en-US");
     search.searchParams.set("include_adult", "false");
-    if (item.releaseDate) {
-      const year = item.releaseDate.getUTCFullYear();
-      if (Number.isFinite(year)) {
-        if (endpoint === "movie") {
-          search.searchParams.set("year", String(year));
-        } else {
-          search.searchParams.set("first_air_date_year", String(year));
-        }
+    if (yearHint != null) {
+      if (endpoint === "movie") {
+        search.searchParams.set("year", String(yearHint));
+      } else {
+        search.searchParams.set("first_air_date_year", String(yearHint));
       }
     }
 
     const json = await tmdbFetch(search.toString());
-    candidate = arrayValue(json.results).find(
-      (entry) =>
-        normalizeTitle(
-          stringValue(recordValue(entry).title ?? recordValue(entry).name) ??
-            "",
-        ) === normalizeTitle(item.title),
+    const results = arrayValue(json.results);
+    if (allResults.length === 0) allResults = results;
+    candidates = results.filter((entry) =>
+      titleEqualsSubtitleAware(
+        item.title,
+        stringValue(recordValue(entry).title ?? recordValue(entry).name) ?? "",
+      ),
     );
-    if (candidate) break;
+    if (candidates.length > 0) break;
   }
+
+  // Fallback: when no title-matched candidate exists but TMDB returned exactly
+  // one result whose year equals ours, trust it. TMDB's text search already
+  // resolves alternative titles internally, so a single same-year hit is
+  // almost always the right film (e.g., "I Spit on Your Grave" → TMDB's
+  // canonical "Day of the Woman" (1978)).
+  if (candidates.length === 0 && yearHint != null && allResults.length > 0) {
+    const sameYear = allResults.filter((entry) => {
+      const dateString = stringValue(
+        recordValue(entry).release_date ?? recordValue(entry).first_air_date,
+      );
+      return parseYearFromIsoDate(dateString) === yearHint;
+    });
+    if (sameYear.length === 1) {
+      candidates = sameYear;
+      console.warn(
+        `[posters] same-year fallback for "${item.title}" → "${stringValue(
+          recordValue(sameYear[0]).title ?? recordValue(sameYear[0]).name,
+        )}"`,
+      );
+    }
+  }
+
+  const candidate = pickByYear(candidates, yearHint, (entry) => {
+    const record = recordValue(entry);
+    const dateString = stringValue(record.release_date ?? record.first_air_date);
+    return parseYearFromIsoDate(dateString);
+  });
   const posterPath = candidate
     ? stringValue(recordValue(candidate).poster_path)
     : null;
@@ -252,7 +285,6 @@ async function posterFromTmdb(item: MediaItemRow): Promise<PosterMatch | null> {
 async function posterFromTvmaze(
   item: MediaItemRow,
 ): Promise<PosterMatch | null> {
-  const normalizedTitle = normalizeTitle(item.title);
   let matches: unknown[] = [];
   for (const query of titleSearchQueries(item.title)) {
     const response = await fetch(
@@ -267,16 +299,20 @@ async function posterFromTvmaze(
         (show) =>
           show &&
           typeof show === "object" &&
-          normalizeTitle(
+          titleEqualsSubtitleAware(
+            item.title,
             stringValue((show as Record<string, unknown>).name ?? "") ?? "",
-          ) === normalizedTitle,
+          ),
       );
     if (matches.length > 0) break;
   }
 
-  if (matches.length !== 1) return null;
-  const show = matches[0] as Record<string, unknown>;
-  const image = show.image;
+  const show = pickByYear(matches, effectiveReleaseYear(item), (entry) =>
+    parseYearFromIsoDate(stringValue(recordValue(entry).premiered)),
+  );
+  if (!show) return null;
+  const showRecord = recordValue(show);
+  const image = showRecord.image;
   if (!image || typeof image !== "object") return null;
   const original = cleanUrl((image as Record<string, unknown>).original);
   const medium = cleanUrl((image as Record<string, unknown>).medium);
@@ -287,7 +323,6 @@ async function posterFromTvmaze(
 async function posterFromRawg(item: MediaItemRow): Promise<PosterMatch | null> {
   if (!process.env.RAWG_API_KEY) return null;
 
-  const normalizedTitle = normalizeTitle(item.title);
   let matches: unknown[] = [];
   for (const query of titleSearchQueries(item.title)) {
     const url = new URL("https://api.rawg.io/api/games");
@@ -306,15 +341,19 @@ async function posterFromRawg(item: MediaItemRow): Promise<PosterMatch | null> {
         (game) =>
           game &&
           typeof game === "object" &&
-          normalizeTitle(
+          titleEqualsSubtitleAware(
+            item.title,
             stringValue((game as Record<string, unknown>).name ?? "") ?? "",
-          ) === normalizedTitle,
+          ),
       );
     if (matches.length > 0) break;
   }
 
-  if (matches.length !== 1) return null;
-  const game = matches[0] as Record<string, unknown>;
+  const match = pickByYear(matches, effectiveReleaseYear(item), (entry) =>
+    parseYearFromIsoDate(stringValue(recordValue(entry).released)),
+  );
+  if (!match) return null;
+  const game = recordValue(match);
   const posterUrl = cleanUrl(game.background_image);
   return posterUrl ? { posterUrl, source: "rawg" } : null;
 }
@@ -325,7 +364,6 @@ async function posterFromIgdb(item: MediaItemRow): Promise<PosterMatch | null> {
   }
 
   const token = await getTwitchToken();
-  const normalizedTitle = normalizeTitle(item.title);
   let matches: unknown[] = [];
   for (const query of titleSearchQueries(item.title)) {
     const title = query.replaceAll('"', '\\"');
@@ -341,14 +379,19 @@ async function posterFromIgdb(item: MediaItemRow): Promise<PosterMatch | null> {
         game &&
         typeof game === "object" &&
         recordValue((game as Record<string, unknown>).cover).url &&
-        normalizeTitle(
+        titleEqualsSubtitleAware(
+          item.title,
           stringValue((game as Record<string, unknown>).name ?? "") ?? "",
-        ) === normalizedTitle,
+        ),
     );
     if (matches.length > 0) break;
   }
 
-  const match = bestDatedMatch(matches, item.releaseDate);
+  const match = pickByYear(matches, effectiveReleaseYear(item), (entry) => {
+    const seconds = Number(recordValue(entry).first_release_date);
+    if (!Number.isFinite(seconds)) return null;
+    return new Date(seconds * 1000).getUTCFullYear();
+  });
   if (!match) return null;
 
   const cover = recordValue(recordValue(match).cover);
@@ -411,19 +454,30 @@ function tmdbIdFromUrl(url: URL | null) {
   return parts[index + 1];
 }
 
-function normalizeTitle(value: string) {
-  return foldDiacritics(value)
-    .toLowerCase()
-    .replaceAll("&", "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+function searchTitle(value: string) {
+  return stripTitleYearSuffix(value).title;
+}
+
+function effectiveReleaseYear(item: MediaItemRow) {
+  if (item.releaseDate) {
+    const year = item.releaseDate.getUTCFullYear();
+    if (Number.isFinite(year)) return year;
+  }
+  return stripTitleYearSuffix(item.title).year;
 }
 
 function titleSearchQueries(value: string) {
-  const folded = foldDiacritics(value);
-  return [...new Set([value, folded].map((entry) => entry.trim()))].filter(
-    Boolean,
-  );
+  const clean = searchTitle(value);
+  const subtitleStripped = stripTitleSubtitle(clean);
+  const folded = foldDiacritics(clean);
+  const foldedStripped = foldDiacritics(subtitleStripped);
+  return [
+    ...new Set(
+      [clean, folded, subtitleStripped, foldedStripped].map((entry) =>
+        entry.trim(),
+      ),
+    ),
+  ].filter(Boolean);
 }
 
 function foldDiacritics(value: string) {
@@ -486,21 +540,43 @@ function recordValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function bestDatedMatch(
-  matches: unknown[],
-  releaseDate: Date | null,
-): Record<string, unknown> | null {
+function pickByYear<T>(
+  matches: T[],
+  targetYear: number | null,
+  getYear: (match: T) => number | null,
+): T | null {
   if (matches.length === 0) return null;
-  if (!releaseDate) return recordValue(matches[0]);
+  if (matches.length === 1) return matches[0] ?? null;
+  if (targetYear == null || !Number.isFinite(targetYear)) {
+    console.warn(
+      `pickByYear: ${matches.length} matches but no release year on item; falling back to first match.`,
+    );
+    return matches[0] ?? null;
+  }
 
-  const releaseYear = releaseDate.getUTCFullYear();
-  const sameYear = matches.find((match) => {
-    const seconds = Number(recordValue(match).first_release_date);
-    if (!Number.isFinite(seconds)) return false;
-    return new Date(seconds * 1000).getUTCFullYear() === releaseYear;
-  });
+  let best: { match: T; distance: number } | null = null;
+  for (const match of matches) {
+    const year = getYear(match);
+    if (year == null || !Number.isFinite(year)) continue;
+    const distance = Math.abs(year - targetYear);
+    if (!best || distance < best.distance) {
+      best = { match, distance };
+    }
+  }
 
-  return recordValue(sameYear ?? matches[0]);
+  // 2-year tolerance covers festival/limited vs. wide release drift; beyond
+  // that we don't trust the match enough to assign a poster.
+  if (best && best.distance <= 2) return best.match;
+  console.warn(
+    `pickByYear: no match within 2 years of ${targetYear} (best distance ${best?.distance ?? "none"}); skipping.`,
+  );
+  return null;
+}
+
+function parseYearFromIsoDate(value: string | null) {
+  if (!value) return null;
+  const year = Number.parseInt(value.slice(0, 4), 10);
+  return Number.isFinite(year) ? year : null;
 }
 
 function parseMediaTypes(argv: string[]) {
