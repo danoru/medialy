@@ -2,7 +2,7 @@ import { Card, CardContent, Stack, Typography } from "@mui/material";
 import {
   importCsvFile,
   importJsonFile,
-  importLetterboxdCsvFile,
+  importLetterboxdBundleFiles,
   importXlsxFile,
 } from "@/app/import-export/actions";
 import { ImportExportPanel } from "@/components/import-export/ImportExportPanel";
@@ -23,7 +23,7 @@ export default async function ImportExportPage() {
       <ImportExportPanel
         importCsvFile={importCsvFile}
         importJsonFile={importJsonFile}
-        importLetterboxdCsvFile={importLetterboxdCsvFile}
+        importLetterboxdBundleFiles={importLetterboxdBundleFiles}
         importXlsxFile={importXlsxFile}
       />
       <Card variant="outlined">

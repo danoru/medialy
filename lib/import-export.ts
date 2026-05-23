@@ -27,6 +27,7 @@ import {
   mediaFormInputFromCsvRow,
   sanitizeExternalUrl,
 } from "@/lib/validation";
+import { titleEqualsSubtitleAware } from "@/lib/text-normalization";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
@@ -424,6 +425,78 @@ export function mediaInputFromLetterboxdRow(
   };
 }
 
+export type LetterboxdBundleInput = {
+  watchlist?: string;
+  watched?: string;
+  ratings?: string;
+};
+
+export function parseLetterboxdBundleForImport(bundle: LetterboxdBundleInput) {
+  const errors: ImportPreview["errors"] = [];
+  const byKey = new Map<string, { input: MediaFormInput; priority: number }>();
+
+  const ingest = (
+    csv: string | undefined,
+    role: LetterboxdImportRole,
+    priority: number,
+    label: string,
+  ) => {
+    if (!csv) return;
+    const tabular = parseMediaCsvTabular(csv);
+    tabular.rows.forEach((row, index) => {
+      try {
+        const input = mediaInputFromLetterboxdRow(row, role);
+        const key = letterboxdMergeKey(input, row);
+        const existing = byKey.get(key);
+        if (!existing || priority > existing.priority) {
+          byKey.set(key, { input: mergeLetterboxdInputs(existing?.input, input), priority });
+        } else {
+          byKey.set(key, {
+            input: mergeLetterboxdInputs(existing.input, input),
+            priority: existing.priority,
+          });
+        }
+      } catch (error) {
+        errors.push({
+          row: index + 2,
+          message: `${label}: ${
+            error instanceof Error ? error.message : "Invalid row."
+          }`,
+        });
+      }
+    });
+  };
+
+  ingest(bundle.watchlist, "watchlist", 0, "watchlist.csv");
+  ingest(bundle.watched, "watched", 1, "watched.csv");
+  ingest(bundle.ratings, "watched", 2, "ratings.csv");
+
+  return { rows: Array.from(byKey.values(), (entry) => entry.input), errors };
+}
+
+function letterboxdMergeKey(input: MediaFormInput, row: Record<string, string>) {
+  const uri =
+    readLetterboxdCell(row, "Letterboxd URI") ||
+    readLetterboxdCell(row, "LetterboxdURI");
+  if (uri) return `uri:${uri.toLowerCase()}`;
+  const year = readLetterboxdCell(row, "Year");
+  return `title:${input.title.trim().toLowerCase()}|${year}`;
+}
+
+function mergeLetterboxdInputs(
+  previous: MediaFormInput | undefined,
+  next: MediaFormInput,
+): MediaFormInput {
+  if (!previous) return next;
+  return {
+    ...previous,
+    ...next,
+    personalRating: next.personalRating ?? previous.personalRating,
+    externalUrl: next.externalUrl || previous.externalUrl,
+    releaseDate: next.releaseDate ?? previous.releaseDate,
+  };
+}
+
 export async function previewLetterboxdImport(
   rows: MediaFormInput[],
   initialErrors: ImportPreview["errors"] = [],
@@ -450,7 +523,11 @@ export async function previewLetterboxdImport(
       parsed.push(input);
       if (
         (input.externalUrl && existingUrls.has(input.externalUrl)) ||
-        existing.some((item) => isCompatibleTitleMatch(input, item))
+        existing.some(
+          (item) =>
+            isCompatibleTitleMatch(input, item) ||
+            isSubtitleTolerantMatch(input, item),
+        )
       ) {
         updates += 1;
       } else {
@@ -492,7 +569,11 @@ export async function previewMediaImport(
       parsed.push(input);
       if (
         (input.externalUrl && existingUrls.has(input.externalUrl)) ||
-        existing.some((item) => isCompatibleTitleMatch(input, item))
+        existing.some(
+          (item) =>
+            isCompatibleTitleMatch(input, item) ||
+            isSubtitleTolerantMatch(input, item),
+        )
       )
         updates += 1;
       else creates += 1;
@@ -566,7 +647,7 @@ export async function importLetterboxdRows(
 
   for (const [index, input] of rows.entries()) {
     try {
-      const media = await upsertImportedMedia(input, userId);
+      const media = await upsertImportedMedia(input, userId, "fill-blanks");
       await upsertMediaRelations(media.id, input);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
@@ -714,7 +795,13 @@ function jsonCreditNames(
   );
 }
 
-async function upsertImportedMedia(input: MediaFormInput, userId: string) {
+type UserMediaStrategy = "overwrite" | "fill-blanks";
+
+async function upsertImportedMedia(
+  input: MediaFormInput,
+  userId: string,
+  userMediaStrategy: UserMediaStrategy = "overwrite",
+) {
   return prisma.$transaction(async (tx) => {
     const existing = await findExistingImportedMedia(tx, input);
 
@@ -728,15 +815,56 @@ async function upsertImportedMedia(input: MediaFormInput, userId: string) {
         where: { id: existing.id },
         data,
       });
-      await upsertUserMedia(userId, updated.id, userMediaMutationData(input), tx);
+      await upsertUserMediaWithStrategy(
+        tx,
+        userId,
+        updated.id,
+        input,
+        userMediaStrategy,
+      );
       return updated;
     }
 
     const data = await mediaMutationDataWithUniqueTitle(tx, input);
     const created = await tx.mediaItem.create({ data });
-    await upsertUserMedia(userId, created.id, userMediaMutationData(input), tx);
+    await upsertUserMediaWithStrategy(
+      tx,
+      userId,
+      created.id,
+      input,
+      userMediaStrategy,
+    );
     return created;
   });
+}
+
+async function upsertUserMediaWithStrategy(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  userId: string,
+  mediaId: string,
+  input: MediaFormInput,
+  strategy: UserMediaStrategy,
+) {
+  if (strategy === "overwrite") {
+    await upsertUserMedia(userId, mediaId, userMediaMutationData(input), tx);
+    return;
+  }
+
+  const existing = await tx.userMedia.findUnique({
+    where: { userId_mediaId: { userId, mediaId } },
+    select: { status: true, personalRating: true, isFavorite: true },
+  });
+  const incoming = userMediaMutationData(input);
+  const data = {
+    status:
+      existing && existing.status !== "UNTRACKED" ? existing.status : incoming.status,
+    personalRating:
+      existing && existing.personalRating != null
+        ? existing.personalRating
+        : incoming.personalRating,
+    isFavorite: existing ? existing.isFavorite || incoming.isFavorite : incoming.isFavorite,
+  };
+  await upsertUserMedia(userId, mediaId, data, tx);
 }
 
 async function findExistingImportedMedia(
@@ -755,13 +883,24 @@ async function findExistingImportedMedia(
   });
   const externalUrl = input.externalUrl?.trim();
 
-  return (
-    candidates.find(
-      (item) => externalUrl && item.externalUrl === externalUrl,
-    ) ??
-    candidates.find((item) => isCompatibleTitleMatch(input, item)) ??
-    null
+  const byUrl = candidates.find(
+    (item) => externalUrl && item.externalUrl === externalUrl,
   );
+  if (byUrl) return byUrl;
+
+  const strict = candidates.find((item) => isCompatibleTitleMatch(input, item));
+  if (strict) return strict;
+
+  const fuzzy = candidates.find((item) =>
+    isSubtitleTolerantMatch(input, item),
+  );
+  if (fuzzy) {
+    console.log(
+      `[import] fuzzy title match: "${input.title}" → "${fuzzy.title}" (year ${mediaReleaseYear(input.releaseDate)})`,
+    );
+    return fuzzy;
+  }
+  return null;
 }
 
 function isCompatibleTitleMatch(
@@ -782,6 +921,26 @@ function isCompatibleTitleMatch(
   const inputYear = mediaReleaseYear(input.releaseDate);
   const itemYear = mediaReleaseYear(item.releaseDate);
   return !inputYear || !itemYear || inputYear === itemYear;
+}
+
+// Tier 3 dedup: matches "Wake Up Dead Man" against "Wake Up Dead Man: A
+// Knives Out Mystery" when both sides have a year and those years are
+// identical. The subtitle-aware comparator additionally guards against
+// generic single-word merges (see lib/text-normalization).
+function isSubtitleTolerantMatch(
+  input: MediaFormInput,
+  item: {
+    title: string;
+    mediaType: string;
+    releaseDate?: Date | string | null;
+  },
+) {
+  if (String(input.mediaType) !== String(item.mediaType)) return false;
+  const inputYear = mediaReleaseYear(input.releaseDate);
+  const itemYear = mediaReleaseYear(item.releaseDate);
+  if (inputYear == null || itemYear == null) return false;
+  if (inputYear !== itemYear) return false;
+  return titleEqualsSubtitleAware(input.title, item.title);
 }
 
 function csvEscape(value: unknown) {

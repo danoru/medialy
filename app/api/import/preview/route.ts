@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import {
   mapTabularMediaRows,
+  parseLetterboxdBundleForImport,
   parseMediaCsvTabular,
-  parseLetterboxdRowsForImport,
   parseMediaXlsx,
   previewLetterboxdImport,
   previewMediaImport,
@@ -10,7 +10,6 @@ import {
 } from "@/lib/import-export";
 import { prisma } from "@/lib/prisma";
 import type {
-  LetterboxdImportRole,
   MediaImportMapping,
   MedialyExport,
   TabularMediaRows,
@@ -31,7 +30,7 @@ export async function POST(request: Request) {
   const file = formData.get("file");
   const type = String(formData.get("type") ?? "");
 
-  if (!(file instanceof File)) {
+  if (type !== "letterboxd-bundle" && !(file instanceof File)) {
     return NextResponse.json(
       { valid: false, errors: [{ message: "File is required." }] },
       { status: 400 },
@@ -39,7 +38,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    if (type === "csv" || type === "xlsx") {
+    if ((type === "csv" || type === "xlsx") && file instanceof File) {
       const tabular =
         type === "csv"
           ? parseMediaCsvTabular(await file.text())
@@ -61,10 +60,17 @@ export async function POST(request: Request) {
       });
     }
 
-    if (type === "letterboxd") {
-      const tabular = parseMediaCsvTabular(await file.text());
-      const role = parseLetterboxdRole(formData);
-      const parsed = parseLetterboxdRowsForImport(tabular, role);
+    if (type === "letterboxd-bundle") {
+      const watchlist = formData.get("watchlist");
+      const watched = formData.get("watched");
+      const ratings = formData.get("ratings");
+      const bundle = {
+        watchlist:
+          watchlist instanceof File ? await watchlist.text() : undefined,
+        watched: watched instanceof File ? await watched.text() : undefined,
+        ratings: ratings instanceof File ? await ratings.text() : undefined,
+      };
+      const parsed = parseLetterboxdBundleForImport(bundle);
       const preview = await previewLetterboxdImport(parsed.rows, parsed.errors);
 
       return NextResponse.json({
@@ -74,12 +80,10 @@ export async function POST(request: Request) {
         updates: preview.updates,
         errors: preview.errors,
         totalRows: parsed.rows.length + parsed.errors.length,
-        headers: tabular.headers,
-        samples: tabular.rows.slice(0, 3),
       });
     }
 
-    if (type === "json") {
+    if (type === "json" && file instanceof File) {
       const parsed = JSON.parse(await file.text()) as MedialyExport;
       assertExportVersion(parsed);
       const media = Array.isArray(parsed.media) ? parsed.media : [];
@@ -164,7 +168,3 @@ function parseMapping(
   return JSON.parse(raw) as MediaImportMapping;
 }
 
-function parseLetterboxdRole(formData: FormData): LetterboxdImportRole {
-  const raw = String(formData.get("letterboxdRole") ?? "watchlist");
-  return raw === "watched" ? "watched" : "watchlist";
-}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import DownloadIcon from "@mui/icons-material/Download";
+import MovieFilterIcon from "@mui/icons-material/MovieFilter";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import {
   Alert,
@@ -10,9 +11,14 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   Grid,
+  IconButton,
   InputLabel,
   MenuItem,
   Select,
@@ -20,6 +26,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
 import type { SelectChangeEvent } from "@mui/material";
 import {
   MEDIA_IMPORT_ADVANCED_FIELDS,
@@ -29,8 +36,8 @@ import {
 import type { MediaImportField, MediaImportMapping } from "@/lib/types";
 import { useToast } from "@/components/shared/Toasts";
 
-type ImportType = "csv" | "json" | "xlsx" | "letterboxd";
-type LetterboxdRole = "watchlist" | "watched";
+type ImportType = "csv" | "json" | "xlsx" | "letterboxd-bundle";
+type LetterboxdSlot = "watchlist" | "watched" | "ratings";
 
 type Preview = {
   type: ImportType;
@@ -48,30 +55,53 @@ const fieldMeta = new Map(
   MEDIA_IMPORT_FIELDS.map((field) => [field.key, field]),
 );
 
+const LETTERBOXD_SLOTS: Array<{
+  key: LetterboxdSlot;
+  label: string;
+  fileName: string;
+  description: string;
+}> = [
+  {
+    key: "watchlist",
+    label: "Watchlist",
+    fileName: "watchlist.csv",
+    description: "Films you want to watch → imported as Watchlist.",
+  },
+  {
+    key: "watched",
+    label: "Watched",
+    fileName: "watched.csv",
+    description: "All films you’ve seen → imported as Completed.",
+  },
+  {
+    key: "ratings",
+    label: "Ratings",
+    fileName: "ratings.csv",
+    description: "Star ratings (merged onto watched entries).",
+  },
+];
+
 export function ImportExportPanel({
   importCsvFile,
   importJsonFile,
-  importLetterboxdCsvFile,
+  importLetterboxdBundleFiles,
   importXlsxFile,
 }: {
   importCsvFile: (formData: FormData) => void | Promise<void>;
   importJsonFile: (formData: FormData) => void | Promise<void>;
-  importLetterboxdCsvFile: (formData: FormData) => void | Promise<void>;
+  importLetterboxdBundleFiles: (formData: FormData) => void | Promise<void>;
   importXlsxFile: (formData: FormData) => void | Promise<void>;
 }) {
   const csvFormRef = useRef<HTMLFormElement>(null);
   const jsonFormRef = useRef<HTMLFormElement>(null);
-  const letterboxdWatchlistFormRef = useRef<HTMLFormElement>(null);
-  const letterboxdWatchedFormRef = useRef<HTMLFormElement>(null);
   const xlsxFormRef = useRef<HTMLFormElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<ImportType | null>(null);
-  const [activeLetterboxdRole, setActiveLetterboxdRole] =
-    useState<LetterboxdRole>("watchlist");
   const [mapping, setMapping] = useState<MediaImportMapping>({});
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [letterboxdOpen, setLetterboxdOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const { showToast } = useToast();
   const importSubmittedRef = useRef(false);
@@ -93,10 +123,8 @@ export function ImportExportPanel({
     file: File | undefined,
     type: ImportType,
     nextMapping?: MediaImportMapping,
-    letterboxdRole: LetterboxdRole = "watchlist",
   ) {
     setActiveType(type);
-    setActiveLetterboxdRole(letterboxdRole);
     setSelectedFile(file ?? null);
     setPreview(null);
     setPreviewError(null);
@@ -107,7 +135,6 @@ export function ImportExportPanel({
     formData.set("file", file);
     formData.set("type", type);
     if (nextMapping) formData.set("mapping", JSON.stringify(nextMapping));
-    if (type === "letterboxd") formData.set("letterboxdRole", letterboxdRole);
 
     const response = await fetch("/api/import/preview", {
       method: "POST",
@@ -130,7 +157,8 @@ export function ImportExportPanel({
     field: MediaImportField,
     event: SelectChangeEvent<string>,
   ) {
-    if (!selectedFile || !activeType || activeType === "json") return;
+    if (!selectedFile || !activeType) return;
+    if (activeType !== "csv" && activeType !== "xlsx") return;
     const nextMapping = { ...mapping, [field]: event.target.value };
     setMapping(nextMapping);
     void previewFile(selectedFile, activeType, nextMapping);
@@ -143,11 +171,7 @@ export function ImportExportPanel({
         ? csvFormRef.current
         : activeType === "xlsx"
           ? xlsxFormRef.current
-          : activeType === "letterboxd" && activeLetterboxdRole === "watchlist"
-            ? letterboxdWatchlistFormRef.current
-            : activeType === "letterboxd"
-              ? letterboxdWatchedFormRef.current
-              : jsonFormRef.current;
+          : jsonFormRef.current;
     if (!form) return;
 
     importSubmittedRef.current = true;
@@ -237,26 +261,13 @@ export function ImportExportPanel({
                   mapping={mapping}
                   onFile={(file) => previewFile(file, "xlsx")}
                 />
-                <ImportFileForm
-                  accept="text/csv,.csv"
-                  action={importLetterboxdCsvFile}
-                  buttonLabel="Letterboxd watchlist"
-                  formRef={letterboxdWatchlistFormRef}
-                  letterboxdRole="watchlist"
-                  onFile={(file) =>
-                    previewFile(file, "letterboxd", undefined, "watchlist")
-                  }
-                />
-                <ImportFileForm
-                  accept="text/csv,.csv"
-                  action={importLetterboxdCsvFile}
-                  buttonLabel="Letterboxd watched"
-                  formRef={letterboxdWatchedFormRef}
-                  letterboxdRole="watched"
-                  onFile={(file) =>
-                    previewFile(file, "letterboxd", undefined, "watched")
-                  }
-                />
+                <Button
+                  onClick={() => setLetterboxdOpen(true)}
+                  startIcon={<MovieFilterIcon />}
+                  variant="outlined"
+                >
+                  Import from Letterboxd
+                </Button>
               </Stack>
               <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                 <Switch
@@ -283,6 +294,12 @@ export function ImportExportPanel({
           </CardContent>
         </Card>
       </Grid>
+
+      <LetterboxdImportDialog
+        action={importLetterboxdBundleFiles}
+        onClose={() => setLetterboxdOpen(false)}
+        open={letterboxdOpen}
+      />
     </Grid>
   );
 }
@@ -293,14 +310,12 @@ function ImportFileForm({
   buttonLabel,
   formRef,
   mapping,
-  letterboxdRole,
   onFile,
 }: {
   accept: string;
   action: (formData: FormData) => void | Promise<void>;
   buttonLabel: string;
   formRef: React.RefObject<HTMLFormElement | null>;
-  letterboxdRole?: LetterboxdRole;
   mapping?: MediaImportMapping;
   onFile: (file: File | undefined) => void;
 }) {
@@ -308,9 +323,6 @@ function ImportFileForm({
     <form action={action} ref={formRef}>
       {mapping ? (
         <input name="mapping" type="hidden" value={JSON.stringify(mapping)} />
-      ) : null}
-      {letterboxdRole ? (
-        <input name="letterboxdRole" type="hidden" value={letterboxdRole} />
       ) : null}
       <Button
         component="label"
@@ -331,6 +343,283 @@ function ImportFileForm({
   );
 }
 
+function LetterboxdImportDialog({
+  action,
+  onClose,
+  open,
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  onClose: () => void;
+  open: boolean;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const [files, setFiles] = useState<Partial<Record<LetterboxdSlot, File>>>({});
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const { showToast } = useToast();
+  const submittedRef = useRef(false);
+  const wasPendingRef = useRef(false);
+
+  function resetState() {
+    setFiles({});
+    setPreview(null);
+    setPreviewError(null);
+  }
+
+  function handleClose() {
+    resetState();
+    onClose();
+  }
+
+  useEffect(() => {
+    if (isPending) {
+      wasPendingRef.current = true;
+      return;
+    }
+    if (!wasPendingRef.current || !submittedRef.current) return;
+    wasPendingRef.current = false;
+    submittedRef.current = false;
+    showToast({ message: "Letterboxd import completed.", severity: "success" });
+    handleClose();
+  }, [isPending, showToast]);
+
+  async function refreshPreview(next: Partial<Record<LetterboxdSlot, File>>) {
+    setPreview(null);
+    setPreviewError(null);
+    if (!next.watchlist && !next.watched && !next.ratings) return;
+    setIsPreviewing(true);
+    try {
+      const formData = new FormData();
+      formData.set("type", "letterboxd-bundle");
+      if (next.watchlist) formData.set("watchlist", next.watchlist);
+      if (next.watched) formData.set("watched", next.watched);
+      if (next.ratings) formData.set("ratings", next.ratings);
+      const response = await fetch("/api/import/preview", {
+        method: "POST",
+        body: formData,
+      });
+      const body = (await response.json()) as
+        | Preview
+        | { errors?: Array<{ message: string }> };
+      if (!response.ok || !("valid" in body)) {
+        setPreviewError(body.errors?.[0]?.message ?? "Preview failed.");
+        return;
+      }
+      setPreview(body);
+    } finally {
+      setIsPreviewing(false);
+    }
+  }
+
+  function setSlot(slot: LetterboxdSlot, file: File | undefined) {
+    const next = { ...files };
+    if (file) next[slot] = file;
+    else delete next[slot];
+    setFiles(next);
+    void refreshPreview(next);
+  }
+
+  function onSubmit() {
+    if (!preview?.valid || !formRef.current) return;
+    submittedRef.current = true;
+    startTransition(() => {
+      formRef.current?.requestSubmit();
+    });
+  }
+
+  const hasAnyFile = Boolean(files.watchlist || files.watched || files.ratings);
+
+  return (
+    <Dialog fullWidth maxWidth="sm" onClose={handleClose} open={open}>
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <MovieFilterIcon fontSize="small" />
+        Import from Letterboxd
+        <IconButton
+          aria-label="Close"
+          onClick={onClose}
+          sx={{ ml: "auto" }}
+          size="small"
+        >
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Stack spacing={2}>
+          <Typography color="text.secondary" variant="body2">
+            Export your data from Letterboxd (Settings &rarr; Data &rarr; Export
+            your data), unzip it, and pick the CSVs you want to bring in. Other
+            files in the export (diary, reviews, likes, lists) are ignored.
+            Existing ratings and statuses in Medialy are preserved &mdash;
+            Letterboxd only fills in blanks.
+          </Typography>
+          <form action={action} ref={formRef}>
+            <Stack spacing={1.5}>
+              {LETTERBOXD_SLOTS.map((slot) => (
+                <LetterboxdSlotRow
+                  description={slot.description}
+                  file={files[slot.key]}
+                  fileName={slot.fileName}
+                  key={slot.key}
+                  label={slot.label}
+                  name={slot.key}
+                  onChange={(file) => setSlot(slot.key, file)}
+                />
+              ))}
+            </Stack>
+          </form>
+          {previewError ? (
+            <Alert severity="error">{previewError}</Alert>
+          ) : null}
+          {preview ? (
+            <LetterboxdPreviewSummary preview={preview} />
+          ) : isPreviewing ? (
+            <Alert severity="info">Previewing&hellip;</Alert>
+          ) : hasAnyFile ? null : (
+            <Alert severity="info">
+              Pick at least one CSV to preview the import.
+            </Alert>
+          )}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={handleClose}>Cancel</Button>
+        <Button
+          disabled={!preview?.valid || isPending}
+          onClick={onSubmit}
+          variant="contained"
+        >
+          {isPending ? "Importing…" : "Confirm import"}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function LetterboxdSlotRow({
+  description,
+  file,
+  fileName,
+  label,
+  name,
+  onChange,
+}: {
+  description: string;
+  file: File | undefined;
+  fileName: string;
+  label: string;
+  name: LetterboxdSlot;
+  onChange: (file: File | undefined) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <Box sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 1.5 }}>
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={1.5}
+        sx={{ alignItems: { sm: "center" } }}
+      >
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontWeight: 600 }} variant="body2">
+            {label}{" "}
+            <Typography
+              component="span"
+              color="text.secondary"
+              variant="caption"
+            >
+              ({fileName})
+            </Typography>
+          </Typography>
+          <Typography color="text.secondary" variant="caption">
+            {description}
+          </Typography>
+          {file ? (
+            <Typography
+              color="text.primary"
+              sx={{ display: "block" }}
+              variant="caption"
+            >
+              Selected: {file.name}
+            </Typography>
+          ) : null}
+        </Box>
+        <Stack direction="row" spacing={1}>
+          <Button component="label" size="small" variant="outlined">
+            {file ? "Replace" : "Choose"}
+            <input
+              accept="text/csv,.csv"
+              hidden
+              name={name}
+              onChange={(event) => onChange(event.currentTarget.files?.[0])}
+              ref={inputRef}
+              type="file"
+            />
+          </Button>
+          {file ? (
+            <Button
+              color="inherit"
+              onClick={() => {
+                if (inputRef.current) inputRef.current.value = "";
+                onChange(undefined);
+              }}
+              size="small"
+            >
+              Clear
+            </Button>
+          ) : null}
+        </Stack>
+      </Stack>
+    </Box>
+  );
+}
+
+function LetterboxdPreviewSummary({ preview }: { preview: Preview }) {
+  return (
+    <Box sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
+      <Stack spacing={1.5}>
+        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
+          <Chip label={`${preview.totalRows} rows`} variant="outlined" />
+          <Chip
+            color="success"
+            label={`${preview.creates} creates`}
+            variant="outlined"
+          />
+          <Chip
+            color="info"
+            label={`${preview.updates} updates`}
+            variant="outlined"
+          />
+          <Chip
+            color={preview.errors.length > 0 ? "error" : "success"}
+            label={`${preview.errors.length} errors`}
+            variant="outlined"
+          />
+        </Stack>
+        {preview.errors.length > 0 ? (
+          <Stack spacing={0.5}>
+            {preview.errors.slice(0, 5).map((error, index) => (
+              <Typography
+                color="error"
+                key={`${error.row ?? index}-${error.message}`}
+                variant="body2"
+              >
+                {error.row ? `Row ${error.row}: ` : ""}
+                {error.message}
+              </Typography>
+            ))}
+          </Stack>
+        ) : (
+          <Typography color="text.secondary" variant="body2">
+            Preview passed. Watched and rated entries will be merged by
+            Letterboxd URI.
+          </Typography>
+        )}
+      </Stack>
+    </Box>
+  );
+}
+
 function MappingWizard({
   mapping,
   onChange,
@@ -345,7 +634,7 @@ function MappingWizard({
   if (
     !preview?.headers?.length ||
     preview.type === "json" ||
-    preview.type === "letterboxd"
+    preview.type === "letterboxd-bundle"
   )
     return null;
   const headers = preview.headers;
@@ -416,11 +705,13 @@ function PreviewCard({
   if (!preview) {
     return (
       <Alert severity="info">
-        Choose a local JSON, CSV, XLSX, or Letterboxd CSV file to validate it
-        before importing.
+        Choose a local JSON, CSV, or XLSX file to validate it before importing.
+        For Letterboxd, use the dedicated wizard above.
       </Alert>
     );
   }
+
+  if (preview.type === "letterboxd-bundle") return null;
 
   return (
     <Box sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
