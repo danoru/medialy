@@ -99,7 +99,7 @@ const navItems: NavItem[] = [
     label: "Compare",
     href: "/compare",
     icon: <CompareArrowsIcon />,
-    description: "Pairwise picks that sharpen your rankings.",
+    description: "Head-to-head picks that sharpen your rankings.",
     visibility: "auth",
   },
   {
@@ -218,7 +218,7 @@ export function AppShell({
           }}
         >
           <Box
-            action="/media"
+            action="/library"
             component="form"
             method="get"
             sx={{
@@ -244,9 +244,10 @@ export function AppShell({
             }}
           >
             <SearchIcon sx={{ fontSize: 18 }} />
+            <input name="type" type="hidden" value="ALL" />
             <InputBase
               inputProps={{ "aria-label": "Search media library" }}
-              name="filter"
+              name="title"
               placeholder="Search"
               sx={{
                 color: "text.primary",

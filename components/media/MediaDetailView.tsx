@@ -287,15 +287,21 @@ export function MediaDetailView({
 
             {item.matchSummary && userId ? (
               <Box sx={matchPanelSx}>
-                <Stack spacing={0.5}>
-                  <Typography sx={kickerSx}>Medialy Match</Typography>
-                  <Typography sx={matchScoreSx}>
-                    {item.matchSummary.score}
-                    <Box component="span" sx={matchPercentSx}>
-                      %
-                    </Box>
-                  </Typography>
-                </Stack>
+                <Tooltip
+                  arrow
+                  placement="top"
+                  title="How well this matches your taste, based on the genres, tags, and items you've already rated."
+                >
+                  <Stack spacing={0.5} sx={{ cursor: "help" }}>
+                    <Typography sx={kickerSx}>Medialy Match</Typography>
+                    <Typography sx={matchScoreSx}>
+                      {item.matchSummary.score}
+                      <Box component="span" sx={matchPercentSx}>
+                        %
+                      </Box>
+                    </Typography>
+                  </Stack>
+                </Tooltip>
                 {inlineMatchReasons.length > 0 ? (
                   <>
                     <Divider flexItem orientation="vertical" sx={matchDividerSx} />
@@ -533,7 +539,7 @@ export function MediaDetailView({
 
             {eloTimeline.length >= 2 && (
               <Tooltip
-                title={`Pairwise score trajectory across ${eloTimeline.length} comparisons. Baseline = ${1000} (starting Elo).`}
+                title={`Refined score across ${eloTimeline.length} comparisons. Every item starts at 1000 and shifts with each head-to-head pick.`}
                 arrow
                 placement="top"
               >
@@ -554,13 +560,13 @@ export function MediaDetailView({
                     width={200}
                     height={40}
                     baseline={1000}
-                    ariaLabel="Pairwise score over time"
+                    ariaLabel="Refined score over time"
                   />
                   <Stack>
                     <Typography
                       sx={{ fontSize: "0.6875rem", color: "text.secondary" }}
                     >
-                      Pairwise trajectory
+                      Refined score trajectory
                     </Typography>
                     <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
                       {Math.round(eloTimeline[0])} →{" "}
@@ -588,7 +594,7 @@ export function MediaDetailView({
                   const upsetTooltip =
                     entry.expectedWinProb == null
                       ? `${entry.result} ${entry.opponent}`
-                      : `Expected win ${(entry.expectedWinProb * 100).toFixed(0)}%. ${deltaLabel ? `Pairwise moved ${deltaLabel}.` : ""}`;
+                      : `Expected win ${(entry.expectedWinProb * 100).toFixed(0)}%. ${deltaLabel ? `Refined score moved ${deltaLabel}.` : ""}`;
                   return (
                     <Box key={entry.id} sx={comparisonRowSx}>
                       <Typography sx={comparisonOpponentSx}>
@@ -1107,7 +1113,7 @@ function refinedTooltip(
   comparisonCount: number,
 ) {
   if (computedPersonalScore == null) {
-    return "Rate this item or run pairwise comparisons to refine a score.";
+    return "Rate this item or run head-to-head comparisons to refine a score.";
   }
   const comparisonsLabel = `${comparisonCount} ${comparisonCount === 1 ? "comparison" : "comparisons"}`;
   if (personalRating == null) {

@@ -65,7 +65,7 @@ export function InsightsClient({ insightsByType }: InsightsClientProps) {
     return (
       <InsightsShell>
         <EmptyPanel
-          label="No visible media exists yet. Add media and scores to unlock insights."
+          label="No tracked media yet. Add items to your library and rate them to unlock insights."
           sx={{ minHeight: 260 }}
         />
       </InsightsShell>

@@ -216,7 +216,7 @@ export default async function MediaPage({
           .
         </Typography>
         <Typography color="text.secondary" sx={{ mt: 0.75 }} variant="body2">
-          Filter, rate inline, and re-sort by personal or consensus signal.
+          Filter, rate inline, and sort by your personal score or the overall consensus.
         </Typography>
       </Box>
       <Card
@@ -358,7 +358,7 @@ export default async function MediaPage({
             >
               <MenuItem value="title">Title</MenuItem>
               <MenuItem value="releaseDate">Release date</MenuItem>
-              <MenuItem value="pairwiseScore">Pairwise score</MenuItem>
+              <MenuItem value="pairwiseScore">Refined score</MenuItem>
               <MenuItem value="computedPersonalScore">Personal score</MenuItem>
               <MenuItem value="computedConsensusScore">
                 Consensus score

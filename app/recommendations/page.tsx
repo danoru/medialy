@@ -8,6 +8,7 @@ import {
   Stack,
   Tab,
   Tabs,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import Link from "next/link";
@@ -142,24 +143,38 @@ export default async function RecommendationsPage({
                   </Stack>
                 </Box>
                 <Box sx={{ minWidth: 220 }}>
-                  <Typography
-                    align="right"
-                    color="text.secondary"
-                    variant="body2"
+                  <Tooltip
+                    arrow
+                    placement="top"
+                    title="How well we predict this matches your taste, based on the genres, tags, and items you've rated."
                   >
-                    Medialy Match {Math.round(recommendation.score)}%
-                  </Typography>
+                    <Typography
+                      align="right"
+                      color="text.secondary"
+                      sx={{ cursor: "help" }}
+                      variant="body2"
+                    >
+                      Medialy Match {Math.round(recommendation.score)}%
+                    </Typography>
+                  </Tooltip>
                   <LinearProgress
                     value={recommendation.score}
                     variant="determinate"
                   />
-                  <Typography
-                    align="right"
-                    color="text.secondary"
-                    variant="caption"
+                  <Tooltip
+                    arrow
+                    placement="bottom"
+                    title="How much of your library data backs this match. Higher means we've seen enough of your ratings to be sure."
                   >
-                    Confidence {Math.round(recommendation.confidence * 100)}%
-                  </Typography>
+                    <Typography
+                      align="right"
+                      color="text.secondary"
+                      sx={{ cursor: "help" }}
+                      variant="caption"
+                    >
+                      Confidence {Math.round(recommendation.confidence * 100)}%
+                    </Typography>
+                  </Tooltip>
                 </Box>
               </Stack>
             </CardContent>

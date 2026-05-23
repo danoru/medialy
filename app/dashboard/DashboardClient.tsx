@@ -236,7 +236,7 @@ export function DashboardClient({
             {data.userName ? `Welcome back, ${data.userName}` : "Welcome to Medialy"}
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-            Recommendations, watchlist, and library signals at a glance.
+            Your recommendations, watchlist, and library at a glance.
           </Typography>
         </Box>
         <Stack
@@ -435,7 +435,7 @@ export function DashboardClient({
                 Open watchlist
               </Button>
             }
-            title="Watchlist signals"
+            title="Watchlist highlights"
           >
             <Stack spacing={1} sx={{ flex: 1, mt: 0.5 }}>
               {data.watchlistItems.slice(0, 5).map((item) => {
@@ -1415,7 +1415,7 @@ function MediaSignalRow({
 function pickReason(item: MediaItemDTO) {
   const genre = item.genres[0];
   if (genre) {
-    return `Because your library points toward ${genre.toLowerCase()} with strong local signals.`;
+    return `Because you've rated ${genre.toLowerCase()} highly in your library.`;
   }
-  return "Because your ratings, rankings, and local signals make this stand out tonight.";
+  return "Because your ratings and rankings make this stand out tonight.";
 }

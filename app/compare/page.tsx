@@ -542,7 +542,7 @@ export default async function ComparePage({
                 Recent Comparisons
               </Typography>
               <Typography color="text.secondary" variant="body2">
-                Latest pairwise choices that are shaping your rankings.
+                Your latest head-to-head picks that are shaping your rankings.
               </Typography>
             </Box>
             <Stack
