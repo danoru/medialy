@@ -49,7 +49,12 @@ export function getDashboardTopRecommendationsByMediaType(
  * per dashboard fetch in `getDashboardData` and threaded into the Top 10 picker.
  */
 export type CommunityRatingEvidence = {
-  /** Avg of personalRating across non-archived users who rated this item. */
+  /**
+   * Avg of `computedPersonalScore` (Refined) across non-archived users who
+   * gave this item an explicit personal rating. Pairwise comparisons made
+   * without a personal rating don't contribute — a pure-Elo opinion isn't a
+   * grounded enough signal to feed the community average.
+   */
   average: number;
   /** How many users contributed. Drives shrinkage strength. */
   voters: number;
@@ -70,8 +75,9 @@ export type OverallTopRankingContext = {
 /**
  * The Overall Top 10 is intentionally objective: same ranking for every
  * viewer, signed-in or not. It blends external consensus with the average
- * `personalRating` across ALL users — no viewer-specific score, no archive
- * state, no affinity. Per-user signals belong on Tonight's Pick / Up Next.
+ * `computedPersonalScore` (Refined) across users who gave the item an
+ * explicit rating — no viewer-specific score, no archive state, no affinity.
+ * Per-user signals belong on Tonight's Pick / Up Next.
  *
  * Both sub-scores are Bayesian-shrunk toward their global priors. An item
  * with one 10/10 rating and no critic sources gets pulled toward the mean;
@@ -294,8 +300,8 @@ export async function getDashboardData() {
     prisma.userMedia.groupBy({
       by: ["mediaId"],
       where: { isArchived: false, personalRating: { not: null } },
-      _avg: { personalRating: true },
-      _count: { personalRating: true },
+      _avg: { computedPersonalScore: true },
+      _count: { computedPersonalScore: true },
     }),
     prisma.externalRating.groupBy({
       by: ["mediaId"],
@@ -305,7 +311,7 @@ export async function getDashboardData() {
     // values change slowly enough that we don't bother caching.
     prisma.userMedia.aggregate({
       where: { isArchived: false, personalRating: { not: null } },
-      _avg: { personalRating: true },
+      _avg: { computedPersonalScore: true },
     }),
     prisma.mediaItem.aggregate({
       where: { computedConsensusScore: { not: null } },
@@ -315,10 +321,10 @@ export async function getDashboardData() {
 
   const communityByMediaId = new Map<string, CommunityRatingEvidence>();
   for (const row of overallCommunityRatings) {
-    if (row._avg.personalRating != null) {
+    if (row._avg.computedPersonalScore != null) {
       communityByMediaId.set(row.mediaId, {
-        average: row._avg.personalRating,
-        voters: row._count.personalRating,
+        average: row._avg.computedPersonalScore,
+        voters: row._count.computedPersonalScore,
       });
     }
   }
@@ -327,7 +333,8 @@ export async function getDashboardData() {
     consensusByMediaId.set(row.mediaId, { sources: row._count._all });
   }
   const globalCommunityMean =
-    globalCommunityAggregate._avg.personalRating ?? TOP_RANKING.fallbackPrior;
+    globalCommunityAggregate._avg.computedPersonalScore ??
+    TOP_RANKING.fallbackPrior;
   const globalConsensusMean =
     globalConsensusAggregate._avg.computedConsensusScore ??
     TOP_RANKING.fallbackPrior;

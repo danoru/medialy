@@ -1,239 +1,28 @@
 import type { MediaType } from "@prisma/client";
 
-export const SCREEN_MEDIA_GENRES = [
-  "Action",
-  "Adventure",
-  "Comedy",
-  "Crime",
-  "Documentary",
-  "Drama",
-  "Family",
-  "Fantasy",
-  "Horror",
-  "Musical",
-  "Mystery",
-  "Reality",
-  "Romance",
-  "Science Fiction",
-  "Sports",
-  "Thriller",
-  "War",
-  "Western",
-] as const;
+import {
+  DISCOVER_SUBGENRES,
+  GAME_GENRES,
+  MAX_GENRES_PER_ITEM,
+  SCREEN_MEDIA_GENRES,
+  type CanonicalTagDefinition,
+  type CanonicalTagMetadata,
+} from "@/lib/data/genre";
 
-export type ScreenMediaGenre = (typeof SCREEN_MEDIA_GENRES)[number];
-
-export const GAME_GENRES = [
-  "Action",
-  "Adventure",
-  "Casual",
-  "Fighting",
-  "Horror",
-  "Platformer",
-  "Puzzle",
-  "Racing",
-  "Rhythm",
-  "RPG",
-  "Shooter",
-  "Simulation",
-  "Sports",
-  "Strategy",
-  "Survival",
-  "Visual Novel",
-] as const;
-
-export type GameGenre = (typeof GAME_GENRES)[number];
-
-export const MAX_GENRES_PER_ITEM = 3;
-
-export const TAG_CATEGORIES = [
-  "SUBGENRE",
-  "COUNTRY",
-  "THEME",
-  "MECHANIC",
-  "MOOD",
-  "FORMAT",
-] as const;
-
-export type TagCategory = (typeof TAG_CATEGORIES)[number];
-
-export type CanonicalTagMetadata = {
-  category: TagCategory;
-  discoverable: boolean;
-  mediaTypes?: MediaType[];
-  countryCode?: string;
-};
-
-export type CanonicalTagDefinition = CanonicalTagMetadata & {
-  name: string;
-  normalizedName: string;
-};
-
-type DiscoverSubgenreMap = Partial<
-  Record<MediaType, Record<string, readonly string[]>>
->;
-
-export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
-  MOVIE: {
-    Action: ["Disaster", "Martial Arts"],
-    Adventure: ["Quest", "Urban Adventure"],
-    Animation: [
-      "Anime",
-      "Computer Animation",
-      "Rotoscope",
-      "Stop Motion",
-      "Traditional Animation",
-    ],
-    Comedy: [
-      "Absurdist Comedy",
-      "Buddy Comedy",
-      "Dark Comedy",
-      "Romantic Comedy",
-      "Parody",
-      "Quirky Comedy",
-      "Satire",
-      "Screwball Comedy",
-      "Slapstick",
-    ],
-    Crime: ["Caper", "Detective", "Gangster", "Police"],
-    Documentary: ["Docudrama"],
-    Drama: [
-      "Docudrama",
-      "Legal Drama",
-      "Historical Drama",
-      "Period Drama",
-      "Tragedy",
-    ],
-    Family: [],
-    Fantasy: [
-      "Dark Fantasy",
-      "Fairy Tail",
-      "High Fantasy",
-      "Superhero",
-      "Sword & Sorcery",
-      "Steampunk",
-      "Urban Fantasy",
-    ],
-    Horror: [
-      "Body Horror",
-      "Folk Horror",
-      "Found Footage",
-      "Monster Horror",
-      "Psychological Horror",
-      "Slasher",
-    ],
-    Musical: ["Jukebox Musical"],
-    Mystery: ["Whodunit"],
-    Romance: ["Romantic Comedy", "Tragic Romance"],
-    "Science Fiction": [
-      "Alternate History",
-      "Cyberpunk",
-      "Dystopian",
-      "Kaiju",
-      "Post Apocalyptic",
-      "Space Opera",
-    ],
-    Sports: ["Baseball", "Football", "Motorsports", "Table Tennis"],
-    Thriller: ["Conspiracy Thriller", "Psychological Thriller"],
-    War: [],
-    Western: [],
-  },
-  TV_SHOW: {
-    Action: ["Disaster", "Martial Arts"],
-    Adventure: ["Quest", "Urban Adventure"],
-    Animation: [
-      "Anime",
-      "Computer Animation",
-      "Rotoscope",
-      "Stop Motion",
-      "Traditional Animation",
-    ],
-    Comedy: [
-      "Absurdist Comedy",
-      "Buddy Comedy",
-      "Dark Comedy",
-      "Romantic Comedy",
-      "Parody",
-      "Quirky Comedy",
-      "Satire",
-      "Situational Comedy",
-      "Slapstick",
-      "Workplace Comedy",
-    ],
-    Crime: ["Caper", "Detective", "Gangster", "Police", "True Crime"],
-    Documentary: ["Biography"],
-    Drama: [
-      "Docudrama",
-      "Legal Drama",
-      "Historical Drama",
-      "Period Drama",
-      "Workplace Drama",
-    ],
-    Family: [],
-    Fantasy: [
-      "Dark Fantasy",
-      "Fairy Tail",
-      "High Fantasy",
-      "Superhero",
-      "Sword & Sorcery",
-      "Steampunk",
-      "Urban Fantasy",
-    ],
-    Horror: [
-      "Body Horror",
-      "Folk Horror",
-      "Found Footage",
-      "Monster Horror",
-      "Psychological Horror",
-      "Slasher",
-    ],
-    Musical: ["Jukebox Musical"],
-    Mystery: [],
-    Reality: ["Reality Competition"],
-    Romance: ["Romantic Comedy", "Tragic Romance"],
-    "Science Fiction": [
-      "Alternate History",
-      "Cyberpunk",
-      "Dystopian",
-      "Post Apocalyptic",
-      "Space Opera",
-    ],
-    Sports: ["Baseball", "Football", "Motorsports", "Table Tennis"],
-    Thriller: ["Psychological Thriller"],
-    War: [],
-    Western: [],
-  },
-  VIDEO_GAME: {
-    Action: ["Beat-Em Up", "Hack and Slash", "Stealth", "Stylish Action"],
-    Adventure: ["Metroidvania", "Open World"],
-    Casual: ["Arcade", "Party"],
-    Fighting: ["Brawler"],
-    Horror: ["Survival Horror"],
-    Platformer: ["Metroidvania"],
-    Puzzle: [],
-    Racing: ["Kart", "Simulation"],
-    Rhythm: ["Music"],
-    RPG: ["Action RPG", "Roguelike", "Soulslike", "Turn-Based RPG"],
-    Shooter: [
-      "First Person Shooter",
-      "Looter Shooter",
-      "Tactical Shooter",
-      "Third Person Shooter",
-    ],
-    Simulation: [],
-    Sports: [],
-    Strategy: [
-      "4X",
-      "Auto Battler",
-      "Deckbuilder",
-      "Card Battler",
-      "Real-Time Strategy",
-      "Tactics",
-    ],
-    Survival: ["Crafting", "Survival Horror"],
-    "Visual Novel": [],
-  },
-};
+export {
+  DISCOVER_SUBGENRES,
+  GAME_GENRES,
+  MAX_GENRES_PER_ITEM,
+  SCREEN_MEDIA_GENRES,
+  TAG_CATEGORIES,
+} from "@/lib/data/genre";
+export type {
+  CanonicalTagDefinition,
+  CanonicalTagMetadata,
+  GameGenre,
+  ScreenMediaGenre,
+  TagCategory,
+} from "@/lib/data/genre";
 
 const screenMediaTypes = new Set<MediaType>(["MOVIE", "TV_SHOW"]);
 const gameMediaTypes = new Set<MediaType>(["VIDEO_GAME"]);
@@ -287,6 +76,7 @@ const tagAliases = new Map<string, string>([
   ["scifi", "Sci-Fi"],
   ["science fiction", "Science Fiction"],
   ["found-family", "Found Family"],
+  ["found footage horror", "Found Footage"],
   ["souls like", "Soulslike"],
   ["soul like", "Soulslike"],
   ["rogue like", "Roguelike"],
@@ -294,11 +84,19 @@ const tagAliases = new Map<string, string>([
 
 const countryTagsByKey = new Map<string, { name: string; countryCode: string }>(
   [
+    ["brazil", { name: "Brazil", countryCode: "BR" }],
+    ["canada", { name: "Canada", countryCode: "CA" }],
+    ["china", { name: "China", countryCode: "CN" }],
     ["france", { name: "France", countryCode: "FR" }],
-    ["japan", { name: "Japan", countryCode: "JP" }],
+    ["germany", { name: "Germany", countryCode: "DE" }],
     ["indonesia", { name: "Indonesia", countryCode: "ID" }],
+    ["italy", { name: "Italy", countryCode: "IT" }],
+    ["japan", { name: "Japan", countryCode: "JP" }],
     ["newzealand", { name: "New Zealand", countryCode: "NZ" }],
+    ["russia", { name: "Russia", countryCode: "RU" }],
     ["southkorea", { name: "South Korea", countryCode: "KR" }],
+    ["sweden", { name: "Sweden", countryCode: "SE" }],
+    ["taiwan", { name: "Taiwan", countryCode: "TW" }],
     ["unitedkingdom", { name: "United Kingdom", countryCode: "GB" }],
     ["unitedstates", { name: "United States", countryCode: "US" }],
   ],

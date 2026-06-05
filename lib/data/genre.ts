@@ -1,0 +1,311 @@
+import type { MediaType } from "@prisma/client";
+
+export const SCREEN_MEDIA_GENRES = [
+  "Action",
+  "Adventure",
+  "Comedy",
+  "Crime",
+  "Documentary",
+  "Drama",
+  "Family",
+  "Fantasy",
+  "Horror",
+  "Musical",
+  "Mystery",
+  "Reality",
+  "Romance",
+  "Science Fiction",
+  "Sports",
+  "Thriller",
+  "War",
+  "Western",
+] as const;
+
+export type ScreenMediaGenre = (typeof SCREEN_MEDIA_GENRES)[number];
+
+export const GAME_GENRES = [
+  "Action",
+  "Adventure",
+  "Casual",
+  "Fighting",
+  "Horror",
+  "Platformer",
+  "Puzzle",
+  "Racing",
+  "Rhythm",
+  "RPG",
+  "Shooter",
+  "Simulation",
+  "Sports",
+  "Strategy",
+  "Survival",
+  "Visual Novel",
+] as const;
+
+export type GameGenre = (typeof GAME_GENRES)[number];
+
+export const MAX_GENRES_PER_ITEM = 3;
+
+export const TAG_CATEGORIES = [
+  "SUBGENRE",
+  "COUNTRY",
+  "THEME",
+  "MECHANIC",
+  "MOOD",
+  "FORMAT",
+] as const;
+
+export type TagCategory = (typeof TAG_CATEGORIES)[number];
+
+export type CanonicalTagMetadata = {
+  category: TagCategory;
+  discoverable: boolean;
+  mediaTypes?: MediaType[];
+  countryCode?: string;
+};
+
+export type CanonicalTagDefinition = CanonicalTagMetadata & {
+  name: string;
+  normalizedName: string;
+};
+
+type DiscoverSubgenreMap = Partial<
+  Record<MediaType, Record<string, readonly string[]>>
+>;
+export const DISCOVER_SUBGENRES: DiscoverSubgenreMap = {
+  MOVIE: {
+    Action: ["Disaster", "Martial Arts"],
+    Adventure: [
+      "Desert Adventure",
+      "Globetrotting Adventure",
+      "Quest",
+      "Road Trip",
+      "Urban Adventure",
+    ],
+    Animation: [
+      "Anime",
+      "Computer Animation",
+      "Rotoscope",
+      "Stop Motion",
+      "Traditional Animation",
+    ],
+    Comedy: [
+      "Absurdist Comedy",
+      "Buddy Comedy",
+      "Dark Comedy",
+      "Mockumentary",
+      "Parody",
+      "Quirky Comedy",
+      "Raunchy Comedy",
+      "Romantic Comedy",
+      "Satire",
+      "Screwball Comedy",
+      "Slapstick",
+      "Surreal Comedy",
+    ],
+    Crime: ["Caper", "Detective", "Drug Crime", "Gangster", "Noir", "Police"],
+    Documentary: ["Docudrama"],
+    Drama: [
+      "Coming Of Age",
+      "Docudrama",
+      "Financial Drama",
+      "Historical Drama",
+      "Legal Drama",
+      "Period Drama",
+      "Political Drama",
+      "Psychological Drama",
+      "Showbiz Drama",
+      "Tragedy",
+    ],
+    Family: [],
+    Fantasy: [
+      "Dark Fantasy",
+      "Fairy Tale",
+      "High Fantasy",
+      "Steampunk",
+      "Superhero",
+      "Supernatural Fantasy",
+      "Sword & Sorcery",
+      "Urban Fantasy",
+    ],
+    Horror: [
+      "Body Horror",
+      "Folk Horror",
+      "Found Footage",
+      "Liminal Horror",
+      "Monster Horror",
+      "Psychological Horror",
+      "Slasher",
+      "Supernatural Horror",
+      "Zombies",
+    ],
+    Musical: ["Jukebox Musical"],
+    Mystery: ["Whodunit"],
+    Romance: [
+      "Dark Romance",
+      "Romantic Comedy",
+      "Shōjo",
+      "Steamy Romance",
+      "Tragic Romance",
+    ],
+    "Science Fiction": [
+      "Alternate History",
+      "Cyberpunk",
+      "Dystopian",
+      "Kaiju",
+      "Post Apocalyptic",
+      "Space Opera",
+      "Time Travel",
+    ],
+    Sports: ["Baseball", "Boxing", "Football", "Motorsports", "Table Tennis"],
+    Thriller: [
+      "Conspiracy Thriller",
+      "Erotic Thriller",
+      "Political Thriller",
+      "Psychological Thriller",
+      "Suspense",
+    ],
+    War: [],
+    Western: ["Contemporary Western"],
+  },
+  TV_SHOW: {
+    Action: ["Disaster", "Martial Arts"],
+    Adventure: [
+      "Desert Adventure",
+      "Globetrotting Adventure",
+      "Quest",
+      "Road Trip",
+      "Urban Adventure",
+    ],
+    Animation: [
+      "Anime",
+      "Computer Animation",
+      "Rotoscope",
+      "Stop Motion",
+      "Traditional Animation",
+    ],
+    Comedy: [
+      "Absurdist Comedy",
+      "Buddy Comedy",
+      "Dark Comedy",
+      "Mockumentary",
+      "Parody",
+      "Quirky Comedy",
+      "Raunchy Comedy",
+      "Romantic Comedy",
+      "Satire",
+      "Situational Comedy",
+      "Slapstick",
+      "Surreal Comedy",
+      "Workplace Comedy",
+    ],
+    Crime: [
+      "Caper",
+      "Detective",
+      "Drug Crime",
+      "Gangster",
+      "Noir",
+      "Police",
+      "True Crime",
+    ],
+    Documentary: ["Biography"],
+    Drama: [
+      "Coming Of Age",
+      "Docudrama",
+      "Financial Drama",
+      "Historical Drama",
+      "Legal Drama",
+      "Period Drama",
+      "Political Drama",
+      "Psychological Drama",
+      "Showbiz Drama",
+      "Workplace Drama",
+    ],
+    Family: [],
+    Fantasy: [
+      "Dark Fantasy",
+      "Fairy Tale",
+      "High Fantasy",
+      "Steampunk",
+      "Superhero",
+      "Supernatural Fantasy",
+      "Sword & Sorcery",
+      "Urban Fantasy",
+    ],
+    Horror: [
+      "Body Horror",
+      "Folk Horror",
+      "Found Footage",
+      "Liminal Horror",
+      "Monster Horror",
+      "Psychological Horror",
+      "Slasher",
+      "Supernatural Horror",
+      "Zombies",
+    ],
+    Musical: ["Jukebox Musical"],
+    Mystery: [],
+    Reality: ["Reality Competition"],
+    Romance: [
+      "Dark Romance",
+      "Romantic Comedy",
+      "Shōjo",
+      "Steamy Romance",
+      "Tragic Romance",
+    ],
+    "Science Fiction": [
+      "Alternate History",
+      "Cyberpunk",
+      "Dystopian",
+      "Post Apocalyptic",
+      "Space Opera",
+      "Time Travel",
+    ],
+    Sports: ["Baseball", "Boxing", "Football", "Motorsports", "Table Tennis"],
+    Thriller: [
+      "Erotic Thriller",
+      "Political Thriller",
+      "Psychological Thriller",
+      "Suspense",
+    ],
+    War: [],
+    Western: ["Contemporary Western"],
+  },
+  VIDEO_GAME: {
+    Action: ["Beat-Em Up", "Hack and Slash", "Stealth", "Stylish Action"],
+    Adventure: ["Action Adventure", "Metroidvania", "Open World"],
+    Casual: ["Arcade", "Party"],
+    Fighting: ["Brawler"],
+    Horror: ["Survival Horror", "Zombies"],
+    Platformer: ["2D Platformer", "3D Platformer", "Metroidvania"],
+    Puzzle: [],
+    Racing: ["Kart", "Simulation"],
+    Rhythm: ["Music"],
+    RPG: [
+      "Action RPG",
+      "Party Based RPG",
+      "Roguelike",
+      "Soulslike",
+      "Tactical RPG",
+      "Turn-Based RPG",
+    ],
+    Shooter: [
+      "First Person Shooter",
+      "Looter Shooter",
+      "Tactical Shooter",
+      "Third Person Shooter",
+    ],
+    Simulation: [],
+    Sports: ["Boxing"],
+    Strategy: [
+      "4X",
+      "Auto Battler",
+      "Deckbuilder",
+      "Card Battler",
+      "Real-Time Strategy",
+      "Tactics",
+    ],
+    Survival: ["Crafting", "Survival Horror"],
+    "Visual Novel": [],
+  },
+};
