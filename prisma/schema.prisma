@@ -37,10 +37,57 @@ model MediaItem {
   externalRatings ExternalRating[]
   userMedia       UserMedia[]
   editSuggestions MediaEditSuggestion[]
+  relationsFrom   MediaRelation[]      @relation("RelationFrom")
+  relationsTo     MediaRelation[]      @relation("RelationTo")
+  releaseEvents   MediaReleaseEvent[]
 
   @@unique([title, mediaType])
   @@index([mediaType])
   @@index([computedConsensusScore])
+}
+
+/// Directed link between two *separate* `MediaItem`s — used when each side is
+/// its own scoring entity (remakes, sequels, adaptations, spin-offs). Same-
+/// entity re-releases (remasters/ports) are NOT relations; they live in
+/// `MediaReleaseEvent`. Each `kind` renders a forward label on the `from` side
+/// and an inverse label on the `to` side (see `lib/media-relations.ts`); for
+/// symmetric kinds the two labels match. Sequel/prequel are a single `FOLLOWS`
+/// edge ("from follows to" = "from is a sequel of to"), linking only directly
+/// adjacent entries — the chain orders a whole series without an N² web.
+model MediaRelation {
+  id        String       @id @default(cuid())
+  fromId    String
+  toId      String
+  kind      RelationKind
+  createdAt DateTime     @default(now())
+
+  from MediaItem @relation("RelationFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to   MediaItem @relation("RelationTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@unique([fromId, toId, kind])
+  @@index([fromId])
+  @@index([toId])
+}
+
+/// An additional dated release of an existing `MediaItem` — remaster, port,
+/// re-release, or named DLC. The item's own `releaseDate` stays the *first*
+/// release (the scoring anchor); these events carry the later dates. Future
+/// events surface on the Upcoming calendar alongside brand-new items; the full
+/// list (past + future) is the item's re-release history on the detail page.
+/// `title` holds this release's distinct name ("Tales of Graces f Remastered",
+/// "Ascension"), falling back to the item title when null.
+model MediaReleaseEvent {
+  id        String      @id @default(cuid())
+  mediaId   String
+  date      DateTime
+  kind      ReleaseKind
+  title     String?
+  createdAt DateTime    @default(now())
+
+  media MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@index([mediaId])
+  @@index([date])
 }
 
 /// Per-user state for a `MediaItem`. One row per `(userId, mediaId)` — created
@@ -414,6 +461,21 @@ enum MediaStatus {
   COMPLETED
   DROPPED
   PAUSED
+  NOT_INTERESTED
+}
+
+enum RelationKind {
+  FOLLOWS
+  SPINOFF_OF
+  REMAKE_OF
+  ADAPTED_FROM
+}
+
+enum ReleaseKind {
+  REMASTER
+  PORT
+  RERELEASE
+  DLC
 }
 
 enum ComparisonContext {
