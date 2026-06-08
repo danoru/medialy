@@ -2,7 +2,13 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { MediaStatus, Prisma } from "@prisma/client";
+import {
+  MediaStatus,
+  type MediaType,
+  Prisma,
+  RelationKind,
+  ReleaseKind,
+} from "@prisma/client";
 import {
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
@@ -347,4 +353,104 @@ function isUniqueMediaTitleError(error: unknown) {
 
 function isMediaStatus(value: string): value is MediaStatus {
   return Object.values(MediaStatus).includes(value as MediaStatus);
+}
+
+function isRelationKind(value: string): value is RelationKind {
+  return Object.values(RelationKind).includes(value as RelationKind);
+}
+
+function isReleaseKind(value: string): value is ReleaseKind {
+  return Object.values(ReleaseKind).includes(value as ReleaseKind);
+}
+
+/** Title search backing the relation-target picker on the detail page. */
+export async function searchMediaItemsForRelation(
+  excludeId: string,
+  query: string,
+): Promise<{ id: string; title: string; mediaType: MediaType }[]> {
+  await requireUserId();
+  const q = query.trim();
+  if (q.length < 2) return [];
+  return prisma.mediaItem.findMany({
+    where: {
+      id: { not: excludeId },
+      title: { contains: q, mode: "insensitive" },
+    },
+    select: { id: true, title: true, mediaType: true },
+    orderBy: { title: "asc" },
+    take: 10,
+  });
+}
+
+/** Link this item to another as a remake/sequel/spin-off/adaptation. The edge
+ *  is stored once (`fromId -> toId`); the detail page renders it from both
+ *  ends via the forward/inverse labels in `lib/media-relations.ts`. */
+export async function addMediaRelation(fromId: string, formData: FormData) {
+  await requireUserId();
+  const toId = String(formData.get("toId") ?? "");
+  const kind = String(formData.get("kind") ?? "");
+  if (!toId || !isRelationKind(kind)) {
+    await queueToast("Pick a title and a relationship.", "error");
+    return;
+  }
+  if (toId === fromId) {
+    await queueToast("An item can't link to itself.", "error");
+    return;
+  }
+  try {
+    await prisma.mediaRelation.create({ data: { fromId, toId, kind } });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      await queueToast("That link already exists.", "error");
+      return;
+    }
+    throw error;
+  }
+  revalidatePath(`/media/${fromId}`);
+  revalidatePath(`/media/${toId}`);
+  await queueToast("Link added.");
+}
+
+export async function removeMediaRelation(fromId: string, relationId: string) {
+  await requireUserId();
+  const relation = await prisma.mediaRelation.findUnique({
+    where: { id: relationId },
+    select: { toId: true },
+  });
+  await prisma.mediaRelation.deleteMany({ where: { id: relationId } });
+  revalidatePath(`/media/${fromId}`);
+  if (relation) revalidatePath(`/media/${relation.toId}`);
+  await queueToast("Link removed.");
+}
+
+/** Record a remaster/port/re-release/DLC of an existing item. The item's own
+ *  `releaseDate` (first release) is left untouched; future events surface on
+ *  the Upcoming calendar. */
+export async function addReleaseEvent(mediaId: string, formData: FormData) {
+  await requireUserId();
+  const kind = String(formData.get("kind") ?? "");
+  const dateStr = String(formData.get("date") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  const date = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date(NaN);
+  if (!isReleaseKind(kind) || Number.isNaN(date.getTime())) {
+    await queueToast("Pick a type and a valid date.", "error");
+    return;
+  }
+  await prisma.mediaReleaseEvent.create({
+    data: { mediaId, kind, date, title: title || null },
+  });
+  revalidatePath(`/media/${mediaId}`);
+  revalidatePath("/upcoming");
+  await queueToast("Re-release added.");
+}
+
+export async function removeReleaseEvent(mediaId: string, eventId: string) {
+  await requireUserId();
+  await prisma.mediaReleaseEvent.deleteMany({ where: { id: eventId } });
+  revalidatePath(`/media/${mediaId}`);
+  revalidatePath("/upcoming");
+  await queueToast("Re-release removed.");
 }

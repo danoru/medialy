@@ -109,9 +109,14 @@ export type MediaDetailViewItem = UserMediaFields & {
 export function MediaDetailView({
   item,
   userId,
+  connections,
 }: {
   item: MediaDetailViewItem;
   userId: string | null;
+  /** Relations + re-release history section, rendered as the last block.
+   *  Supplied by the server page (a client component) so this view stays
+   *  agnostic to how that data is loaded. */
+  connections?: ReactNode;
 }) {
   const comparisons = [
     ...item.comparisonsWon.map((entry) => ({
@@ -679,6 +684,9 @@ export function MediaDetailView({
             </Button>
           </Box>
         ) : null}
+
+        {/* RELATIONS + RE-RELEASES -------------------------------------- */}
+        {connections}
       </Stack>
     </Box>
   );

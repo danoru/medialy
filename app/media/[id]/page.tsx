@@ -10,6 +10,17 @@ import {
   MediaDetailView,
   type MediaDetailViewItem,
 } from "@/components/media/MediaDetailView";
+import {
+  MediaConnectionsPanel,
+  type RelationView,
+} from "@/components/media/MediaConnectionsPanel";
+import {
+  addMediaRelation,
+  addReleaseEvent,
+  removeMediaRelation,
+  removeReleaseEvent,
+  searchMediaItemsForRelation,
+} from "@/app/media/actions";
 
 /**
  * Server shell for the media detail page. All UI lives in
@@ -94,6 +105,47 @@ export default async function MediaDetailPage({
 
   const matchSummary = await getMediaItemMatch(rawItem.id, userId);
 
+  // Relations (both directions) + re-release history for the connections panel.
+  const otherSelect = { id: true, title: true, mediaType: true } as const;
+  const [relationsFrom, relationsTo, releaseEvents] = await Promise.all([
+    prisma.mediaRelation.findMany({
+      where: { fromId: rawItem.id },
+      include: { to: { select: otherSelect } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.mediaRelation.findMany({
+      where: { toId: rawItem.id },
+      include: { from: { select: otherSelect } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.mediaReleaseEvent.findMany({
+      where: { mediaId: rawItem.id },
+      orderBy: { date: "asc" },
+    }),
+  ]);
+
+  const relations: RelationView[] = [
+    ...relationsFrom.map((relation) => ({
+      id: relation.id,
+      kind: relation.kind,
+      direction: "forward" as const,
+      other: relation.to,
+    })),
+    ...relationsTo.map((relation) => ({
+      id: relation.id,
+      kind: relation.kind,
+      direction: "inverse" as const,
+      other: relation.from,
+    })),
+  ];
+
+  const events = releaseEvents.map((event) => ({
+    id: event.id,
+    kind: event.kind,
+    date: event.date.toISOString(),
+    title: event.title,
+  }));
+
   const merged = mergeUserMedia(rawItem);
   const item = {
     ...merged,
@@ -104,5 +156,23 @@ export default async function MediaDetailPage({
     matchSummary,
   } as unknown as MediaDetailViewItem;
 
-  return <MediaDetailView item={item} userId={userId} />;
+  return (
+    <MediaDetailView
+      connections={
+        <MediaConnectionsPanel
+          addEventAction={addReleaseEvent.bind(null, rawItem.id)}
+          addRelationAction={addMediaRelation.bind(null, rawItem.id)}
+          canEdit={Boolean(userId)}
+          events={events}
+          fallbackTitle={rawItem.title}
+          relations={relations}
+          removeEventAction={removeReleaseEvent.bind(null, rawItem.id)}
+          removeRelationAction={removeMediaRelation.bind(null, rawItem.id)}
+          searchAction={searchMediaItemsForRelation.bind(null, rawItem.id)}
+        />
+      }
+      item={item}
+      userId={userId}
+    />
+  );
 }

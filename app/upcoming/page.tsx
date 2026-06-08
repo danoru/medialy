@@ -12,10 +12,11 @@ import {
   Typography,
 } from "@mui/material";
 import Link from "next/link";
-import type { MediaStatus, MediaType } from "@prisma/client";
+import type { MediaStatus, MediaType, ReleaseKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatMediaType } from "@/lib/format";
 import { statusLabel } from "@/lib/status-labels";
+import { RELEASE_KIND_LABEL } from "@/lib/media-relations";
 import {
   isVisibleMediaType,
   VISIBLE_MEDIA_TYPES,
@@ -42,6 +43,23 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Upcoming" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+/**
+ * A unified calendar row — either a brand-new item (its own `releaseDate`) or a
+ * re-release event of an existing item (`releaseKind` set). Both link to a
+ * `MediaItem` via `id`; `rowKey` keeps React keys unique when an item and its
+ * event share that id.
+ */
+type ReleaseEntry = {
+  rowKey: string;
+  id: string;
+  title: string;
+  mediaType: MediaType;
+  status: MediaStatus;
+  releaseDate: Date;
+  genres: string[];
+  releaseKind?: ReleaseKind;
+};
 
 export default async function UpcomingPage({
   searchParams,
@@ -82,20 +100,65 @@ export default async function UpcomingPage({
     orderBy: [{ releaseDate: "asc" }, { title: "asc" }],
   });
 
-  const items = sortUpcomingItems(
-    rawItems
-      .map(mergeUserMedia)
-      .filter((item) => item.releaseDate != null),
-  );
+  // Second source: re-releases (remaster/port/DLC) of *existing* items. These
+  // hang off `MediaReleaseEvent` because the parent item's own `releaseDate` is
+  // the first release (often in the past) and must not move. We surface the
+  // event's future date here, linking back to the existing item.
+  const rawEvents = await prisma.mediaReleaseEvent.findMany({
+    where: {
+      date: { gte: today },
+      media: { mediaType: selectedType, ...archivedFilter },
+    },
+    include: {
+      media: {
+        include: {
+          genres: { include: { genre: true } },
+          ...userMediaInclude(userId),
+        },
+      },
+    },
+    orderBy: [{ date: "asc" }],
+  });
 
-  const calendarReleases: CalendarRelease[] = items.map((item) => ({
-    id: item.id,
-    title: item.title,
-    date: isoDate(item.releaseDate!),
+  const baseEntries: ReleaseEntry[] = rawItems
+    .map(mergeUserMedia)
+    .filter((item) => item.releaseDate != null)
+    .map((item) => ({
+      rowKey: `item-${item.id}`,
+      id: item.id,
+      title: item.title,
+      mediaType: item.mediaType,
+      status: item.status,
+      releaseDate: item.releaseDate!,
+      genres: item.genres.map((entry) => entry.genre.name),
+    }));
+
+  const eventEntries: ReleaseEntry[] = rawEvents.map((event) => {
+    const media = mergeUserMedia(event.media);
+    return {
+      rowKey: `event-${event.id}`,
+      id: media.id,
+      title: event.title ?? media.title,
+      mediaType: media.mediaType,
+      status: media.status,
+      releaseDate: event.date,
+      genres: media.genres.map((entry) => entry.genre.name),
+      releaseKind: event.kind,
+    };
+  });
+
+  const entries = sortUpcomingItems([...baseEntries, ...eventEntries]);
+
+  const calendarReleases: CalendarRelease[] = entries.map((entry) => ({
+    id: entry.id,
+    title: entry.releaseKind
+      ? `${entry.title} (${RELEASE_KIND_LABEL[entry.releaseKind]})`
+      : entry.title,
+    date: isoDate(entry.releaseDate),
   }));
 
-  const initialMonth = items[0]?.releaseDate
-    ? monthKey(items[0].releaseDate)
+  const initialMonth = entries[0]?.releaseDate
+    ? monthKey(entries[0].releaseDate)
     : monthKey(now);
 
   return (
@@ -148,21 +211,22 @@ export default async function UpcomingPage({
             <Typography sx={{ flex: 1, fontWeight: 650 }} variant="h6">
               Releases
             </Typography>
-            <Chip label={items.length} size="small" />
+            <Chip label={entries.length} size="small" />
           </Stack>
-          {items.length > 0 ? (
+          {entries.length > 0 ? (
             <Stack spacing={1.25}>
-              {items.map((item) => (
+              {entries.map((entry) => (
                 <ReleaseRow
-                  genres={item.genres.map((entry) => entry.genre.name)}
-                  id={item.id}
+                  genres={entry.genres}
+                  id={entry.id}
                   isSignedIn={isSignedIn}
-                  key={item.id}
-                  mediaType={item.mediaType}
+                  key={entry.rowKey}
+                  mediaType={entry.mediaType}
                   now={now}
-                  releaseDate={item.releaseDate!}
-                  status={item.status}
-                  title={item.title}
+                  releaseDate={entry.releaseDate}
+                  releaseKind={entry.releaseKind}
+                  status={entry.status}
+                  title={entry.title}
                 />
               ))}
             </Stack>
@@ -184,6 +248,7 @@ function ReleaseRow({
   status,
   title,
   releaseDate,
+  releaseKind,
 }: {
   genres: string[];
   id: string;
@@ -193,6 +258,7 @@ function ReleaseRow({
   status: MediaStatus;
   title: string;
   releaseDate: Date;
+  releaseKind?: ReleaseKind;
 }) {
   return (
     <Stack
@@ -221,6 +287,13 @@ function ReleaseRow({
           </Link>
           <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.6, mt: 0.6 }}>
             <Chip label={formatMediaType(mediaType)} size="small" />
+            {releaseKind ? (
+              <Chip
+                color="secondary"
+                label={RELEASE_KIND_LABEL[releaseKind]}
+                size="small"
+              />
+            ) : null}
             <Chip
               label={statusLabel(status, mediaType)}
               size="small"
