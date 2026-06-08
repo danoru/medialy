@@ -19,6 +19,7 @@ export type EligibilityReason =
   | "already_completed"
   | "in_progress"
   | "dropped"
+  | "not_interested"
   | "archived"
   | "not_yet_released"
   | "medium_hidden"
@@ -58,6 +59,7 @@ export const DEFAULT_EXCLUDED_STATUSES: MediaStatus[] = [
   "IN_PROGRESS",
   "COMPLETED",
   "DROPPED",
+  "NOT_INTERESTED",
 ];
 
 export function isEligibleForRecommendation(
@@ -88,6 +90,11 @@ export function isEligibleForRecommendation(
   }
   if (item.status === "DROPPED" && !options.includeDropped) {
     return { eligible: false, reason: "dropped" };
+  }
+  // Always excluded — there's no `include` escape hatch. "Not interested" is an
+  // explicit, durable signal that this should never be recommended.
+  if (item.status === "NOT_INTERESTED") {
+    return { eligible: false, reason: "not_interested" };
   }
 
   if (
@@ -181,6 +188,7 @@ const PERSONAL_SCORE_TRUST_BY_STATUS: Record<MediaStatus, number> = {
   WATCHLIST: 0,
   BACKLOG: 0,
   UNTRACKED: 0,
+  NOT_INTERESTED: 0,
 };
 
 export function personalScoreTrustForStatus(
@@ -204,6 +212,8 @@ export function eligibilityReasonLabel(reason: EligibilityReason): string {
       return "Currently in progress";
     case "dropped":
       return "You dropped this";
+    case "not_interested":
+      return "You're not interested in this";
     case "archived":
       return "Archived";
     case "not_yet_released":

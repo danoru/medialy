@@ -48,6 +48,7 @@ const GENERIC_LABELS: Record<MediaStatus, string> = {
   COMPLETED: "Completed",
   DROPPED: "Dropped",
   PAUSED: "Paused",
+  NOT_INTERESTED: "Not interested",
 };
 
 /**
@@ -79,6 +80,7 @@ const ALL_STATUSES: MediaStatus[] = [
   "COMPLETED",
   "PAUSED",
   "DROPPED",
+  "NOT_INTERESTED",
 ];
 
 /**
@@ -86,10 +88,11 @@ const ALL_STATUSES: MediaStatus[] = [
  * for things you typically *own* but haven't started — meaningful for games,
  * not for streamed/borrowed media. `IN_PROGRESS` / `PAUSED` are dropped from
  * single-sitting types. Types not yet tuned (books, board games, music,
- * musicals) fall through to the full list.
+ * musicals) fall through to the full list. `NOT_INTERESTED` is offered on every
+ * tuned type — it's how a user suppresses something from recommendations.
  */
 const STATUSES_BY_TYPE: Partial<Record<MediaType, MediaStatus[]>> = {
-  MOVIE: ["UNTRACKED", "WATCHLIST", "COMPLETED", "DROPPED"],
+  MOVIE: ["UNTRACKED", "WATCHLIST", "COMPLETED", "DROPPED", "NOT_INTERESTED"],
   TV_SHOW: [
     "UNTRACKED",
     "WATCHLIST",
@@ -97,6 +100,7 @@ const STATUSES_BY_TYPE: Partial<Record<MediaType, MediaStatus[]>> = {
     "COMPLETED",
     "PAUSED",
     "DROPPED",
+    "NOT_INTERESTED",
   ],
   VIDEO_GAME: [
     "UNTRACKED",
@@ -106,6 +110,7 @@ const STATUSES_BY_TYPE: Partial<Record<MediaType, MediaStatus[]>> = {
     "COMPLETED",
     "PAUSED",
     "DROPPED",
+    "NOT_INTERESTED",
   ],
 };
 
