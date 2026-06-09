@@ -6,7 +6,6 @@ import {
   Box,
   Button,
   Chip,
-  Divider,
   IconButton,
   MenuItem,
   Stack,
@@ -15,7 +14,7 @@ import {
 } from "@mui/material";
 import Link from "next/link";
 import type { MediaType, RelationKind, ReleaseKind } from "@prisma/client";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { formatMediaType } from "@/lib/format";
 import {
   RELATION_FORWARD_LABEL,
@@ -73,7 +72,6 @@ export function MediaConnectionsPanel({
 
   return (
     <Box>
-      <Divider sx={{ mb: 2 }} />
       <Stack spacing={2.5}>
         <RelationsSection
           addAction={addRelationAction}
@@ -192,9 +190,9 @@ function AddRelationForm({
   disabled: boolean;
   searchAction: (query: string) => Promise<SearchOption[]>;
 }) {
-  const [kind, setKind] = useState<RelationKind>(
-    RELATION_KIND_OPTIONS[0].value,
-  );
+  // Start blank so a relationship is a deliberate choice — never defaults to a
+  // kind the user didn't pick.
+  const [kind, setKind] = useState<RelationKind | "">("");
   const [target, setTarget] = useState<SearchOption | null>(null);
   const [options, setOptions] = useState<SearchOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -216,11 +214,12 @@ function AddRelationForm({
   return (
     <Box
       action={(formData: FormData) => {
-        if (!target) return;
+        if (!target || !kind) return;
         formData.set("kind", kind);
         formData.set("toId", target.id);
         addAction(formData);
         setTarget(null);
+        setKind("");
         setOptions([]);
       }}
       component="form"
@@ -239,6 +238,9 @@ function AddRelationForm({
           sx={{ minWidth: 160 }}
           value={kind}
         >
+          <MenuItem value="">
+            <em>Select relationship…</em>
+          </MenuItem>
           {RELATION_KIND_OPTIONS.map((option) => (
             <MenuItem key={option.value} value={option.value}>
               {option.label}
@@ -263,7 +265,7 @@ function AddRelationForm({
           value={target}
         />
         <Button
-          disabled={disabled || !target}
+          disabled={disabled || !target || !kind}
           size="medium"
           type="submit"
           variant="contained"
@@ -345,10 +347,22 @@ function AddReleaseEventForm({
   addAction: BoundFormAction;
   disabled: boolean;
 }) {
-  const [kind, setKind] = useState<ReleaseKind>(RELEASE_KIND_OPTIONS[0].value);
+  const formRef = useRef<HTMLFormElement>(null);
+  // Blank by default — the type must be chosen explicitly before this can save.
+  const [kind, setKind] = useState<ReleaseKind | "">("");
 
   return (
-    <Box action={addAction} component="form" sx={{ mt: 0.5 }}>
+    <Box
+      action={(formData: FormData) => {
+        if (!kind) return;
+        addAction(formData);
+        formRef.current?.reset();
+        setKind("");
+      }}
+      component="form"
+      ref={formRef}
+      sx={{ mt: 0.5 }}
+    >
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={1}
@@ -363,6 +377,9 @@ function AddReleaseEventForm({
           sx={{ minWidth: 130 }}
           value={kind}
         >
+          <MenuItem value="">
+            <em>Select type…</em>
+          </MenuItem>
           {RELEASE_KIND_OPTIONS.map((option) => (
             <MenuItem key={option.value} value={option.value}>
               {option.label}
@@ -384,7 +401,12 @@ function AddReleaseEventForm({
           slotProps={{ inputLabel: { shrink: true } }}
           type="date"
         />
-        <Button disabled={disabled} size="medium" type="submit" variant="contained">
+        <Button
+          disabled={disabled || !kind}
+          size="medium"
+          type="submit"
+          variant="contained"
+        >
           Add
         </Button>
       </Stack>
