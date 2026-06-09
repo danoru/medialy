@@ -42,7 +42,7 @@ describe("comparison selection", () => {
     expect(pair).toBeNull();
   });
 
-  it("does not select watchlist or backlog items", () => {
+  it("only selects experienced statuses (not untracked/not-interested/watchlist/backlog)", () => {
     const watchlist = {
       ...item("watchlist", "MOVIE", ["Drama"]),
       status: "WATCHLIST" as const,
@@ -51,13 +51,41 @@ describe("comparison selection", () => {
       ...item("backlog", "MOVIE", ["Drama"]),
       status: "BACKLOG" as const,
     };
+    const untracked = {
+      ...item("untracked", "MOVIE", ["Drama"]),
+      status: "UNTRACKED" as const,
+    };
+    const notInterested = {
+      ...item("not-interested", "MOVIE", ["Drama"]),
+      status: "NOT_INTERESTED" as const,
+    };
     const completed = item("completed", "MOVIE", ["Drama"]);
 
-    const pair = selectComparisonPair([watchlist, backlog, completed], [], {
+    const pair = selectComparisonPair(
+      [watchlist, backlog, untracked, notInterested, completed],
+      [],
+      { random: () => 0 },
+    );
+
+    // Only one eligible (COMPLETED) item remains, so no pair can be formed.
+    expect(pair).toBeNull();
+  });
+
+  it("allows started-but-not-completed statuses as fallback", () => {
+    const dropped = {
+      ...item("dropped", "MOVIE", ["Drama"]),
+      status: "DROPPED" as const,
+    };
+    const inProgress = {
+      ...item("in-progress", "MOVIE", ["Drama"]),
+      status: "IN_PROGRESS" as const,
+    };
+
+    const pair = selectComparisonPair([dropped, inProgress], [], {
       random: () => 0,
     });
 
-    expect(pair).toBeNull();
+    expect(pairIds(pair)).toBe("dropped::in-progress");
   });
 
   it("does not select unreleased items", () => {

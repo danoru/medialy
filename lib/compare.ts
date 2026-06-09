@@ -41,7 +41,15 @@ type SelectionOptions = {
   random?: () => number;
 };
 
-const EXCLUDED_COMPARISON_STATUSES: MediaStatus[] = ["WATCHLIST", "BACKLOG"];
+// Only media you've actually experienced can be compared — you can't rank
+// something you have no opinion on. Anything not in this list (UNTRACKED,
+// NOT_INTERESTED, WATCHLIST, BACKLOG, or no UserMedia row at all) is excluded.
+const COMPARISON_ELIGIBLE_STATUSES: MediaStatus[] = [
+  "COMPLETED",
+  "DROPPED",
+  "PAUSED",
+  "IN_PROGRESS",
+];
 
 export async function getComparisonPair(options: ComparisonPairOptions = {}) {
   const userId = await requireUserId("/compare");
@@ -209,12 +217,26 @@ function buildPairCandidates<TItem extends ComparisonSelectionItem>(
         6 - Math.min(first.comparisonCount, second.comparisonCount),
       );
       const relevanceWeight = Math.max(1, Math.round(relevance * 10));
+      const baseWeight = lowDataWeight + relevanceWeight;
+
+      // Genre overlap is the dominant signal: pairs sharing multiple genres are
+      // weighted most heavily, a single shared genre moderately, and no overlap
+      // falls back to the base relevance/low-data weighting.
+      const genreMultiplier = sharedGenres >= 2 ? 8 : sharedGenres === 1 ? 3 : 1;
+
+      // Among eligible pairs, prefer ones we've fully consumed over those we
+      // only started, paused, or dropped.
+      const consumedCount =
+        (first.status === "COMPLETED" ? 1 : 0) +
+        (second.status === "COMPLETED" ? 1 : 0);
+      const consumedMultiplier =
+        consumedCount === 2 ? 3 : consumedCount === 1 ? 1.5 : 1;
 
       weightedPairs.push({
         first,
         second,
         sharedGenres,
-        weight: lowDataWeight + relevanceWeight,
+        weight: baseWeight * genreMultiplier * consumedMultiplier,
       });
     }
   }
@@ -236,7 +258,7 @@ export function comparisonKey(firstId: string, secondId: string) {
 }
 
 export function isComparisonEligibleStatus(status: MediaStatus) {
-  return !EXCLUDED_COMPARISON_STATUSES.includes(status);
+  return COMPARISON_ELIGIBLE_STATUSES.includes(status);
 }
 
 export function isReleasedForComparison(
@@ -253,18 +275,13 @@ export function comparisonEligibleWhere(userId: string): Prisma.MediaItemWhereIn
     AND: [
       { OR: [{ releaseDate: null }, { releaseDate: { lte: new Date() } }] },
     ],
-    OR: [
-      { userMedia: { none: { userId } } },
-      {
-        userMedia: {
-          some: {
-            userId,
-            isArchived: false,
-            status: { notIn: EXCLUDED_COMPARISON_STATUSES },
-          },
-        },
+    userMedia: {
+      some: {
+        userId,
+        isArchived: false,
+        status: { in: COMPARISON_ELIGIBLE_STATUSES },
       },
-    ],
+    },
   };
 }
 
