@@ -10,6 +10,10 @@ import {
   MediaDetailView,
   type MediaDetailViewItem,
 } from "@/components/media/MediaDetailView";
+import type {
+  RelationView,
+  ReleaseEventView,
+} from "@/components/media/MediaConnectionsPanel";
 
 /**
  * Server shell for the media detail page. All UI lives in
@@ -73,6 +77,47 @@ export default async function MediaDetailPage({
   });
   if (!rawItem) notFound();
 
+  // Relations and re-releases are public facts about the title (not per-user
+  // joins), so they're fetched unconditionally and rendered read-only here.
+  // Editing lives on the edit page via MediaConnectionsPanel.
+  const otherSelect = { id: true, title: true, mediaType: true } as const;
+  const [relationsFrom, relationsTo, releaseEventRows] = await Promise.all([
+    prisma.mediaRelation.findMany({
+      where: { fromId: rawItem.id },
+      include: { to: { select: otherSelect } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.mediaRelation.findMany({
+      where: { toId: rawItem.id },
+      include: { from: { select: otherSelect } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.mediaReleaseEvent.findMany({
+      where: { mediaId: rawItem.id },
+      orderBy: { date: "asc" },
+    }),
+  ]);
+  const relations: RelationView[] = [
+    ...relationsFrom.map((relation) => ({
+      id: relation.id,
+      kind: relation.kind,
+      direction: "forward" as const,
+      other: relation.to,
+    })),
+    ...relationsTo.map((relation) => ({
+      id: relation.id,
+      kind: relation.kind,
+      direction: "inverse" as const,
+      other: relation.from,
+    })),
+  ];
+  const releaseEvents: ReleaseEventView[] = releaseEventRows.map((event) => ({
+    id: event.id,
+    kind: event.kind,
+    date: event.date.toISOString(),
+    title: event.title,
+  }));
+
   // Community average: mean of other Medialy users' computedPersonalScore.
   // Distinct from Consensus (external sources only). Always excludes the
   // viewing user so they don't see their own score reflected back.
@@ -104,5 +149,12 @@ export default async function MediaDetailPage({
     matchSummary,
   } as unknown as MediaDetailViewItem;
 
-  return <MediaDetailView item={item} userId={userId} />;
+  return (
+    <MediaDetailView
+      item={item}
+      relations={relations}
+      releaseEvents={releaseEvents}
+      userId={userId}
+    />
+  );
 }

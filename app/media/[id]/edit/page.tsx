@@ -101,7 +101,7 @@ export default async function EditMediaPage({
 
       <Card variant="outlined">
         <CardContent>
-          <Stack spacing={2}>
+          <Stack spacing={2.5}>
             <Typography sx={{ fontWeight: 700 }} variant="h6">
               Connections
             </Typography>

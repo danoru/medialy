@@ -9,6 +9,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
 import type { CreditRole, MediaStatus, MediaType } from "@prisma/client";
 import Image from "next/image";
+import Link from "next/link";
 import type { ReactElement, ReactNode } from "react";
 import {
   Box,
@@ -39,6 +40,15 @@ import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
 import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
 import { formatMediaType, mediaTypeNoun } from "@/lib/format";
+import {
+  RELATION_FORWARD_LABEL,
+  RELATION_INVERSE_LABEL,
+  RELEASE_KIND_LABEL,
+} from "@/lib/media-relations";
+import type {
+  RelationView,
+  ReleaseEventView,
+} from "@/components/media/MediaConnectionsPanel";
 import { availableStatuses, statusLabel } from "@/lib/status-labels";
 import { useState } from "react";
 import type { UserMediaFields } from "@/lib/db/user-media";
@@ -108,9 +118,13 @@ export type MediaDetailViewItem = UserMediaFields & {
 
 export function MediaDetailView({
   item,
+  relations,
+  releaseEvents,
   userId,
 }: {
   item: MediaDetailViewItem;
+  relations: RelationView[];
+  releaseEvents: ReleaseEventView[];
   userId: string | null;
 }) {
   const comparisons = [
@@ -437,6 +451,73 @@ export function MediaDetailView({
                 />
               ))}
             </Box>
+          </Box>
+        ) : null}
+
+        {/* CONNECTIONS (read-only) -------------------------------------- */}
+        {relations.length > 0 || releaseEvents.length > 0 ? (
+          <Box sx={connectionsGridSx}>
+            {relations.length > 0 ? (
+              <Box>
+                <SectionTitle>Related titles</SectionTitle>
+                <Stack spacing={1}>
+                  {relations.map((relation) => (
+                    <Box key={relation.id} sx={connectionRowSx}>
+                      <Chip
+                        label={
+                          relation.direction === "forward"
+                            ? RELATION_FORWARD_LABEL[relation.kind]
+                            : RELATION_INVERSE_LABEL[relation.kind]
+                        }
+                        size="small"
+                        sx={connectionKindChipSx}
+                      />
+                      <Link
+                        href={`/media/${relation.other.id}`}
+                        style={{ textDecoration: "none", minWidth: 0 }}
+                      >
+                        <Typography noWrap sx={connectionLinkSx}>
+                          {relation.other.title}
+                        </Typography>
+                      </Link>
+                      <Chip
+                        label={formatMediaType(relation.other.mediaType)}
+                        size="small"
+                        sx={{ ml: "auto" }}
+                        variant="outlined"
+                      />
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            ) : null}
+            {releaseEvents.length > 0 ? (
+              <Box>
+                <SectionTitle>Re-releases &amp; editions</SectionTitle>
+                <Stack spacing={1}>
+                  {releaseEvents.map((event) => (
+                    <Box key={event.id} sx={connectionRowSx}>
+                      <Chip
+                        color="secondary"
+                        label={RELEASE_KIND_LABEL[event.kind]}
+                        size="small"
+                        sx={connectionKindChipSx}
+                      />
+                      <Typography noWrap sx={connectionTitleSx}>
+                        {event.title ?? item.title}
+                      </Typography>
+                      <Typography
+                        color="text.secondary"
+                        sx={{ ml: "auto", whiteSpace: "nowrap" }}
+                        variant="body2"
+                      >
+                        {new Date(event.date).toLocaleDateString()}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            ) : null}
           </Box>
         ) : null}
 
@@ -1520,6 +1601,39 @@ const taxonomyGridSx: SxProps<Theme> = {
   display: "grid",
   gap: 2,
   gridTemplateColumns: { xs: "1fr", md: "1fr 1.6fr" },
+};
+
+const connectionsGridSx: SxProps<Theme> = {
+  display: "grid",
+  gap: { xs: 2.5, md: 2 },
+  gridTemplateColumns: { xs: "1fr", md: "repeat(2, minmax(0, 1fr))" },
+};
+
+const connectionRowSx: SxProps<Theme> = {
+  alignItems: "center",
+  bgcolor: "surface.1",
+  border: "1px solid",
+  borderColor: "border.subtle",
+  borderRadius: 2,
+  display: "flex",
+  gap: 1,
+  px: 1.5,
+  py: 1,
+};
+
+const connectionKindChipSx: SxProps<Theme> = {
+  flexShrink: 0,
+  fontWeight: 600,
+};
+
+const connectionLinkSx: SxProps<Theme> = {
+  color: "primary.main",
+  fontWeight: 600,
+};
+
+const connectionTitleSx: SxProps<Theme> = {
+  fontWeight: 600,
+  minWidth: 0,
 };
 
 const threeColGridSx: SxProps<Theme> = {

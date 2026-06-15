@@ -6,12 +6,14 @@ import {
   Box,
   Button,
   Chip,
+  Divider,
   IconButton,
   MenuItem,
   Stack,
   TextField,
   Typography,
 } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 import Link from "next/link";
 import type { MediaType, RelationKind, ReleaseKind } from "@prisma/client";
 import { useRef, useState, useTransition } from "react";
@@ -71,32 +73,40 @@ export function MediaConnectionsPanel({
   if (!hasAny && !canEdit) return null;
 
   return (
-    <Box>
-      <Stack spacing={2.5}>
-        <RelationsSection
-          addAction={addRelationAction}
-          canEdit={canEdit}
-          relations={relations}
-          removeAction={removeRelationAction}
-          searchAction={searchAction}
-        />
-        <ReleaseEventsSection
-          addAction={addEventAction}
-          canEdit={canEdit}
-          events={events}
-          fallbackTitle={fallbackTitle}
-          removeAction={removeEventAction}
-        />
-      </Stack>
-    </Box>
+    <Stack spacing={3}>
+      <RelationsSection
+        addAction={addRelationAction}
+        canEdit={canEdit}
+        relations={relations}
+        removeAction={removeRelationAction}
+        searchAction={searchAction}
+      />
+      <Divider />
+      <ReleaseEventsSection
+        addAction={addEventAction}
+        canEdit={canEdit}
+        events={events}
+        fallbackTitle={fallbackTitle}
+        removeAction={removeEventAction}
+      />
+    </Stack>
   );
 }
 
+/** Eyebrow-style subsection label, subordinate to the card's "Connections"
+ *  title (uppercase, small, tracked — see the theme `eyebrow` variant). */
 function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <Typography variant="eyebrow">{children}</Typography>;
+}
+
+/** Compact muted placeholder shown when a subsection has no entries. */
+function EmptyRow({ children }: { children: React.ReactNode }) {
   return (
-    <Typography sx={{ fontWeight: 650 }} variant="h6">
-      {children}
-    </Typography>
+    <Box sx={emptyRowSx}>
+      <Typography color="text.secondary" variant="body2">
+        {children}
+      </Typography>
+    </Box>
   );
 }
 
@@ -116,7 +126,7 @@ function RelationsSection({
   const [isPending, startTransition] = useTransition();
 
   return (
-    <Stack spacing={1.25}>
+    <Stack spacing={1.5}>
       <SectionHeading>Related titles</SectionHeading>
       {relations.length > 0 ? (
         <Stack spacing={1}>
@@ -126,13 +136,8 @@ function RelationsSection({
                 ? RELATION_FORWARD_LABEL[relation.kind]
                 : RELATION_INVERSE_LABEL[relation.kind];
             return (
-              <Stack
-                direction="row"
-                key={relation.id}
-                spacing={1}
-                sx={{ alignItems: "center" }}
-              >
-                <Chip label={label} size="small" />
+              <Box key={relation.id} sx={rowSx}>
+                <Chip label={label} size="small" sx={{ flexShrink: 0 }} />
                 <Link
                   href={`/media/${relation.other.id}`}
                   style={{ textDecoration: "none", minWidth: 0 }}
@@ -147,6 +152,7 @@ function RelationsSection({
                 <Chip
                   label={formatMediaType(relation.other.mediaType)}
                   size="small"
+                  sx={{ flexShrink: 0, ml: canEdit ? 0 : "auto" }}
                   variant="outlined"
                 />
                 {canEdit ? (
@@ -161,14 +167,12 @@ function RelationsSection({
                     <CloseRoundedIcon fontSize="small" />
                   </IconButton>
                 ) : null}
-              </Stack>
+              </Box>
             );
           })}
         </Stack>
       ) : (
-        <Typography color="text.secondary" variant="body2">
-          No related titles yet.
-        </Typography>
+        <EmptyRow>No related titles yet.</EmptyRow>
       )}
       {canEdit ? (
         <AddRelationForm
@@ -223,12 +227,15 @@ function AddRelationForm({
         setOptions([]);
       }}
       component="form"
-      sx={{ mt: 0.5 }}
+      sx={addFormSx}
     >
+      <Typography sx={addFormCaptionSx} variant="labelMd">
+        Add a related title
+      </Typography>
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={1}
-        sx={{ alignItems: { sm: "flex-start" } }}
+        sx={{ alignItems: { sm: "center" } }}
       >
         <TextField
           label="This title is a…"
@@ -266,7 +273,7 @@ function AddRelationForm({
         />
         <Button
           disabled={disabled || !target || !kind}
-          size="medium"
+          size="small"
           type="submit"
           variant="contained"
         >
@@ -293,26 +300,26 @@ function ReleaseEventsSection({
   const [isPending, startTransition] = useTransition();
 
   return (
-    <Stack spacing={1.25}>
+    <Stack spacing={1.5}>
       <SectionHeading>Re-releases &amp; editions</SectionHeading>
       {events.length > 0 ? (
         <Stack spacing={1}>
           {events.map((event) => (
-            <Stack
-              direction="row"
-              key={event.id}
-              spacing={1}
-              sx={{ alignItems: "center" }}
-            >
+            <Box key={event.id} sx={rowSx}>
               <Chip
                 color="secondary"
                 label={RELEASE_KIND_LABEL[event.kind]}
                 size="small"
+                sx={{ flexShrink: 0 }}
               />
               <Typography sx={{ fontWeight: 600, minWidth: 0 }} noWrap>
                 {event.title ?? fallbackTitle}
               </Typography>
-              <Typography color="text.secondary" variant="body2">
+              <Typography
+                color="text.secondary"
+                sx={{ ml: "auto", whiteSpace: "nowrap" }}
+                variant="body2"
+              >
                 {new Date(event.date).toLocaleDateString()}
               </Typography>
               {canEdit ? (
@@ -320,18 +327,15 @@ function ReleaseEventsSection({
                   aria-label="Remove re-release"
                   onClick={() => startTransition(() => removeAction(event.id))}
                   size="small"
-                  sx={{ ml: "auto" }}
                 >
                   <CloseRoundedIcon fontSize="small" />
                 </IconButton>
               ) : null}
-            </Stack>
+            </Box>
           ))}
         </Stack>
       ) : (
-        <Typography color="text.secondary" variant="body2">
-          No remasters, ports, or re-releases recorded.
-        </Typography>
+        <EmptyRow>No remasters, ports, or re-releases recorded.</EmptyRow>
       )}
       {canEdit ? (
         <AddReleaseEventForm addAction={addAction} disabled={isPending} />
@@ -361,12 +365,15 @@ function AddReleaseEventForm({
       }}
       component="form"
       ref={formRef}
-      sx={{ mt: 0.5 }}
+      sx={addFormSx}
     >
+      <Typography sx={addFormCaptionSx} variant="labelMd">
+        Add a re-release
+      </Typography>
       <Stack
         direction={{ xs: "column", sm: "row" }}
         spacing={1}
-        sx={{ alignItems: { sm: "flex-start" } }}
+        sx={{ alignItems: { sm: "center" } }}
       >
         <TextField
           label="Type"
@@ -403,7 +410,7 @@ function AddReleaseEventForm({
         />
         <Button
           disabled={disabled || !kind}
-          size="medium"
+          size="small"
           type="submit"
           variant="contained"
         >
@@ -413,3 +420,38 @@ function AddReleaseEventForm({
     </Box>
   );
 }
+
+const rowSx: SxProps<Theme> = {
+  alignItems: "center",
+  bgcolor: "surface.1",
+  border: "1px solid",
+  borderColor: "border.subtle",
+  borderRadius: 2,
+  display: "flex",
+  gap: 1,
+  px: 1.5,
+  py: 1,
+};
+
+const emptyRowSx: SxProps<Theme> = {
+  bgcolor: "surface.1",
+  border: "1px solid",
+  borderColor: "border.subtle",
+  borderRadius: 2,
+  px: 1.5,
+  py: 1.25,
+};
+
+const addFormSx: SxProps<Theme> = {
+  bgcolor: "surface.1",
+  border: "1px solid",
+  borderColor: "border.subtle",
+  borderRadius: 2,
+  p: 1.5,
+};
+
+const addFormCaptionSx: SxProps<Theme> = {
+  color: "text.secondary",
+  display: "block",
+  mb: 1,
+};
