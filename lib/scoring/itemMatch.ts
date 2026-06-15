@@ -4,7 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { AFFINITY_TUNING } from "@/lib/scoring/config";
 import { saturate } from "@/lib/scoring/affinity";
 import { calculateMedialyMatch } from "@/lib/scoring/medialyMatch";
-import { getAffinityMaps, buildContributorDetail } from "@/lib/recommendations";
+import {
+  getAffinityMaps,
+  buildContributorDetail,
+  getFollowedUserRatingsByMedia,
+  getFollowerCompatibilityMap,
+  computeFriendSignal,
+} from "@/lib/recommendations";
 
 /**
  * Single-item Medialy Match summary for the media detail page. Distinct from
@@ -62,9 +68,22 @@ export async function getMediaItemMatch(
     0,
   );
 
-  // Friend signal isn't surfaced in the detail page reason, so we skip the
-  // followed-user fetch and pass 0 — the match score still reflects the
-  // taste/contributor/consensus pieces, which is what the inline copy explains.
+  // Compute the friend signal the same way `getRecommendations` does so the
+  // detail-page Medialy Match matches the dashboard/recommendations number.
+  // friendAffinity carries 30% of the weight; passing 0 here would understate
+  // the score for items rated by followed users.
+  const followedRatingsByMedia = await getFollowedUserRatingsByMedia(userId, [
+    mediaId,
+  ]);
+  const followerCompatibility = await getFollowerCompatibilityMap(
+    userId,
+    followedRatingsByMedia,
+  );
+  const friendSignal = computeFriendSignal(
+    followedRatingsByMedia.get(mediaId) ?? [],
+    followerCompatibility,
+  );
+
   const match = calculateMedialyMatch({
     genreAffinity: saturate(genreRaw, AFFINITY_TUNING.saturationK.genre),
     tagAffinity: saturate(tagRaw, AFFINITY_TUNING.saturationK.tag),
@@ -72,18 +91,19 @@ export async function getMediaItemMatch(
       contributorRaw,
       AFFINITY_TUNING.saturationK.contributor,
     ),
-    friendAffinity: 0,
+    friendAffinity: friendSignal.value,
     consensusScore: item.computedConsensusScore,
   });
 
-  const contributorReason = buildContributorDetail(
-    item.credits.map((credit) => ({
-      contributor: { id: credit.contributor.id },
-      role: credit.role,
-    })),
-    affinity,
-    item.mediaType,
-  ) ?? null;
+  const contributorReason =
+    buildContributorDetail(
+      item.credits.map((credit) => ({
+        contributor: { id: credit.contributor.id },
+        role: credit.role,
+      })),
+      affinity,
+      item.mediaType,
+    ) ?? null;
 
   const subgenreNames = item.tags
     .filter((entry) => entry.tag.category === "SUBGENRE")

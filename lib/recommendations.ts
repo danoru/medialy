@@ -400,7 +400,7 @@ type FollowerRating = {
   status: string | null;
 };
 
-async function getFollowedUserRatingsByMedia(
+export async function getFollowedUserRatingsByMedia(
   viewerId: string,
   mediaIds: string[],
 ): Promise<Map<string, FollowerRating[]>> {
@@ -436,7 +436,7 @@ async function getFollowedUserRatingsByMedia(
  * per request from overlapping rated items. Returned map is keyed by
  * followerId; missing followers default to 50 (neutral) at lookup time.
  */
-async function getFollowerCompatibilityMap(
+export async function getFollowerCompatibilityMap(
   viewerId: string,
   followedByMedia: Map<string, FollowerRating[]>,
 ): Promise<Map<string, number>> {
@@ -497,7 +497,7 @@ async function getFollowerCompatibilityMap(
   return compatibility;
 }
 
-function computeFriendSignal(
+export function computeFriendSignal(
   ratings: FollowerRating[],
   followerCompatibility: Map<string, number>,
 ): { value: number; detail?: string } {
