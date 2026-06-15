@@ -53,8 +53,8 @@ describe("pairwise scoring", () => {
 
 describe("blended Elo prior", () => {
   it("collapses to pairwise-only when no rating or consensus is present", () => {
-    const rating = effectiveRating({ pairwiseScore: 1100 });
-    // 1100 normalizes between 850-1350 to 50/100 → 5/10. Then weight 0.25 of 0.25.
+    const rating = effectiveRating({ pairwiseScore: 1000 });
+    // 1000 (neutral) normalizes between 750-1250 to 50/100 → 5/10.
     expect(rating).toBeCloseTo(5, 1);
   });
 

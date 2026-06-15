@@ -37,9 +37,11 @@ export const PAIRWISE = {
     { atLeast: 8, value: 1 },
   ],
   /**
-   * Range used when collapsing Elo (~850–1350) into a 0–100 / 0–10 UI value.
+   * Range used when collapsing Elo into a 0–100 / 0–10 UI value. Centered on
+   * the 1000 starting score so a never-compared / break-even item maps to a
+   * neutral 5.0, not a deflated 3.0.
    */
-  uiRange: { min: 850, max: 1350 },
+  uiRange: { min: 750, max: 1250 },
   /**
    * When computing "expected" outcome of a comparison, we blend the item's
    * explicit rating, its consensus, and its pairwise score into one effective

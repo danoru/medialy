@@ -20,7 +20,7 @@ These three feed into:
 For each user/item pair we resolve a single `computedPersonalScore` from up to three inputs:
 
 1. **Explicit rating** (0–10) — the user's own number, if they've given one.
-2. **Pairwise rating** — Elo score (0–100 scale) collapsed back to 0–10 using `PAIRWISE.uiRange`.
+2. **Pairwise rating** — Elo score collapsed back to 0–10 using `PAIRWISE.uiRange` (750–1250 → 0–10; neutral 1000 → 5.0).
 3. **Pairwise confidence** — grows with `comparisonCount` (see `PAIRWISE.confidenceBuckets`).
 
 Blend:
@@ -48,7 +48,7 @@ Classic Elo with two twists:
 
 2. **Prior-blended expected outcome.** Instead of pure Elo-vs-Elo expectation, we blend each item's effective strength from `personalRating + consensus + pairwise` (weights in `PAIRWISE.priorBlend`). This means upsets — a low-rated item beating a high-rated one — register as real signal rather than noise. Each 1.0 difference on the 0–10 effective scale becomes `PAIRWISE.priorSpreadPerRatingPoint` (60) Elo points.
 
-Initial Elo: 1000. UI range: 850–1350 collapses to 0–10.
+Initial Elo: 1000. UI range: 750–1250 collapses to 0–10, centered so the 1000 starting score (a never-compared / break-even item) maps to a neutral 5.0.
 
 ---
 

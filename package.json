@@ -19,7 +19,7 @@
     "posters:backfill": "tsx scripts/backfill-posters.ts",
     "metadata:backfill": "tsx scripts/backfill-metadata.ts",
     "ratings:fetch": "node scripts/enrich-ratings.mjs",
-    "ratings:recompute": "node scripts/recompute-ratings.mjs",
+    "ratings:recompute": "tsx scripts/recompute-ratings.ts",
     "tags:cleanup:dry-run": "tsx scripts/cleanup-tags.ts",
     "tags:cleanup": "tsx scripts/cleanup-tags.ts --apply",
     "candidates:fetch": "tsx scripts/fetch-upcoming.ts",
