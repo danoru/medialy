@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatUpcomingRelativeLabel,
+  recentlyReleasedSince,
   sortUpcomingItems,
   startOfToday,
 } from "@/lib/upcoming";
@@ -45,5 +46,19 @@ describe("upcoming labels", () => {
 
   it("returns local midnight for start of today", () => {
     expect(startOfToday(now)).toEqual(new Date("2026-05-13T00:00:00"));
+  });
+});
+
+describe("recentlyReleasedSince", () => {
+  const now = new Date("2026-05-13T15:30:00");
+
+  it("looks back the default 90-day window from the start of today", () => {
+    expect(recentlyReleasedSince(now)).toEqual(new Date("2026-02-12T00:00:00"));
+  });
+
+  it("respects a custom window length", () => {
+    expect(recentlyReleasedSince(now, 30)).toEqual(
+      new Date("2026-04-13T00:00:00"),
+    );
   });
 });

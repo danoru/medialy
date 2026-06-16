@@ -9,6 +9,27 @@ export function startOfToday(now = new Date()) {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
+/** How far back the "Just Released" view looks. */
+export const RECENTLY_RELEASED_WINDOW_DAYS = 90;
+
+/**
+ * Inclusive lower bound for the "Just Released" window: items whose release
+ * date falls between this and today (exclusive) count as recently released.
+ */
+export function recentlyReleasedSince(
+  now = new Date(),
+  windowDays = RECENTLY_RELEASED_WINDOW_DAYS,
+) {
+  // Calendar-date math (not `DAY_MS`) so the result lands on local midnight
+  // even when the window spans a daylight-saving transition.
+  const today = startOfToday(now);
+  return new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate() - windowDays,
+  );
+}
+
 export function daysFromToday(date: Date | string, now = new Date()) {
   const today = startOfToday(now);
   const target = startOfToday(new Date(date));

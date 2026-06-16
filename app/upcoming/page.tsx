@@ -27,6 +27,7 @@ import {
 } from "@/lib/media-ui-helpers";
 import {
   formatUpcomingRelativeLabel,
+  recentlyReleasedSince,
   sortUpcomingItems,
   startOfToday,
 } from "@/lib/upcoming";
@@ -58,6 +59,7 @@ type ReleaseEntry = {
   status: MediaStatus;
   releaseDate: Date;
   genres: string[];
+  posterUrl: string | null;
   releaseKind?: ReleaseKind;
 };
 
@@ -71,8 +73,15 @@ export default async function UpcomingPage({
   const selectedType = isVisibleMediaType(requestedType)
     ? requestedType
     : VISIBLE_MEDIA_TYPES[0];
+  const mode = stringParam(params.mode) === "released" ? "released" : "upcoming";
   const now = new Date();
   const today = startOfToday(now);
+  // "Just Released" looks back over a recent window; "Upcoming" looks forward.
+  const dateFilter =
+    mode === "released"
+      ? { gte: recentlyReleasedSince(now), lt: today }
+      : { gte: today };
+  const releaseOrder = mode === "released" ? "desc" : "asc";
   const user = await getCurrentUser();
   const userId = user?.id ?? null;
   const isSignedIn = Boolean(userId);
@@ -89,7 +98,7 @@ export default async function UpcomingPage({
   const rawItems = await prisma.mediaItem.findMany({
     where: {
       mediaType: selectedType,
-      releaseDate: { gte: today },
+      releaseDate: dateFilter,
       ...archivedFilter,
     },
     include: {
@@ -97,7 +106,7 @@ export default async function UpcomingPage({
       tags: { include: { tag: true } },
       ...userMediaInclude(userId),
     },
-    orderBy: [{ releaseDate: "asc" }, { title: "asc" }],
+    orderBy: [{ releaseDate: releaseOrder }, { title: "asc" }],
   });
 
   // Second source: re-releases (remaster/port/DLC) of *existing* items. These
@@ -106,7 +115,7 @@ export default async function UpcomingPage({
   // event's future date here, linking back to the existing item.
   const rawEvents = await prisma.mediaReleaseEvent.findMany({
     where: {
-      date: { gte: today },
+      date: dateFilter,
       media: { mediaType: selectedType, ...archivedFilter },
     },
     include: {
@@ -117,7 +126,7 @@ export default async function UpcomingPage({
         },
       },
     },
-    orderBy: [{ date: "asc" }],
+    orderBy: [{ date: releaseOrder }],
   });
 
   const baseEntries: ReleaseEntry[] = rawItems
@@ -131,6 +140,7 @@ export default async function UpcomingPage({
       status: item.status,
       releaseDate: item.releaseDate!,
       genres: item.genres.map((entry) => entry.genre.name),
+      posterUrl: item.posterUrl,
     }));
 
   const eventEntries: ReleaseEntry[] = rawEvents.map((event) => {
@@ -143,18 +153,26 @@ export default async function UpcomingPage({
       status: media.status,
       releaseDate: event.date,
       genres: media.genres.map((entry) => entry.genre.name),
+      posterUrl: media.posterUrl,
       releaseKind: event.kind,
     };
   });
 
-  const entries = sortUpcomingItems([...baseEntries, ...eventEntries]);
+  const sortedEntries = sortUpcomingItems([...baseEntries, ...eventEntries]);
+  // Released view shows newest-first; upcoming shows soonest-first.
+  const entries =
+    mode === "released" ? sortedEntries.reverse() : sortedEntries;
 
   const calendarReleases: CalendarRelease[] = entries.map((entry) => ({
     id: entry.id,
-    title: entry.releaseKind
-      ? `${entry.title} (${RELEASE_KIND_LABEL[entry.releaseKind]})`
-      : entry.title,
+    title: entry.title,
     date: isoDate(entry.releaseDate),
+    mediaType: entry.mediaType,
+    posterUrl: entry.posterUrl,
+    genres: entry.genres,
+    status: entry.status,
+    relativeLabel: formatUpcomingRelativeLabel(entry.releaseDate, now),
+    releaseKind: entry.releaseKind,
   }));
 
   const initialMonth = entries[0]?.releaseDate
@@ -166,6 +184,28 @@ export default async function UpcomingPage({
       <PageAccentBackground mediaType={selectedType} />
       <Card variant="outlined">
         <CardContent>
+          <Tabs
+            sx={{ mb: 1.5 }}
+            slotProps={{
+              indicator: {
+                sx: { backgroundColor: mediaTypeTabIndicatorColor(selectedType) },
+              },
+            }}
+            value={mode}
+          >
+            <Tab
+              component="a"
+              href={`/upcoming?type=${selectedType}`}
+              label="Upcoming"
+              value="upcoming"
+            />
+            <Tab
+              component="a"
+              href={`/upcoming?type=${selectedType}&mode=released`}
+              label="Just Released"
+              value="released"
+            />
+          </Tabs>
           <Tabs
             allowScrollButtonsMobile
             scrollButtons="auto"
@@ -181,7 +221,7 @@ export default async function UpcomingPage({
             {VISIBLE_MEDIA_TYPES.map((type) => (
               <Tab
                 component="a"
-                href={`/upcoming?type=${type}`}
+                href={modeHref(type, mode)}
                 key={type}
                 label={formatMediaType(type)}
                 sx={mediaTypeTabSx(type)}
@@ -209,7 +249,7 @@ export default async function UpcomingPage({
             sx={{ alignItems: { sm: "center" }, mb: 1.5 }}
           >
             <Typography sx={{ flex: 1, fontWeight: 650 }} variant="h6">
-              Releases
+              {mode === "released" ? "Just Released" : "Releases"}
             </Typography>
             <Chip label={entries.length} size="small" />
           </Stack>
@@ -231,7 +271,7 @@ export default async function UpcomingPage({
               ))}
             </Stack>
           ) : (
-            <EmptyState />
+            <EmptyState mode={mode} />
           )}
         </CardContent>
       </Card>
@@ -347,7 +387,17 @@ function ReleaseRow({
   );
 }
 
-function EmptyState() {
+function EmptyState({ mode }: { mode: "upcoming" | "released" }) {
+  if (mode === "released") {
+    return (
+      <StatePanel
+        action={{ href: "/upcoming", label: "See upcoming" }}
+        description="Items released in the last few months will appear here once their release dates are set."
+        icon={<CalendarMonthIcon />}
+        title="Nothing released recently"
+      />
+    );
+  }
   return (
     <StatePanel
       action={{ href: "/media/new", label: "Add one" }}
@@ -356,6 +406,12 @@ function EmptyState() {
       title="No upcoming releases"
     />
   );
+}
+
+function modeHref(type: MediaType, mode: "upcoming" | "released") {
+  return mode === "released"
+    ? `/upcoming?type=${type}&mode=released`
+    : `/upcoming?type=${type}`;
 }
 
 function isoDate(value: Date | string) {

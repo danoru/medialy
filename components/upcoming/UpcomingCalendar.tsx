@@ -3,19 +3,33 @@
 import { useMemo, useState } from "react";
 import {
   Box,
+  Chip,
   IconButton,
   Stack,
   Tooltip,
   Typography,
   useTheme,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import type { MediaStatus, MediaType, ReleaseKind } from "@prisma/client";
+import { PosterImage } from "@/components/media/PosterCard";
+import { mediaAccent } from "@/lib/media-ui-helpers";
+import { formatMediaType } from "@/lib/format";
+import { statusLabel } from "@/lib/status-labels";
+import { RELEASE_KIND_LABEL } from "@/lib/media-relations";
 
 export type CalendarRelease = {
   id: string;
   title: string;
   date: string; // YYYY-MM-DD
+  mediaType: MediaType;
+  posterUrl: string | null;
+  genres: string[];
+  status: MediaStatus;
+  relativeLabel: string;
+  releaseKind?: ReleaseKind;
 };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -78,7 +92,7 @@ export function UpcomingCalendar({
         sx={{
           display: "grid",
           gridTemplateColumns: "repeat(7, 1fr)",
-          gap: 0.5,
+          gap: 0.75,
         }}
       >
         {WEEKDAYS.map((label) => (
@@ -86,10 +100,10 @@ export function UpcomingCalendar({
             color="text.secondary"
             key={label}
             sx={{
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: 0.4,
-              py: 0.5,
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 0.6,
+              pb: 0.75,
               textAlign: "center",
               textTransform: "uppercase",
             }}
@@ -104,6 +118,9 @@ export function UpcomingCalendar({
           const hasReleases = dayReleases.length > 0;
           const isToday = key === todayKey;
           const isOtherMonth = cell.date.getMonth() !== cursor.getMonth();
+          const accent = hasReleases
+            ? mediaAccent(dayReleases[0].mediaType)
+            : undefined;
 
           const content = (
             <Box
@@ -111,58 +128,46 @@ export function UpcomingCalendar({
               href={hasReleases ? `#date-${key}` : undefined}
               sx={{
                 alignItems: "center",
-                borderRadius: 1,
+                bgcolor: hasReleases ? alpha(accent!, 0.05) : "transparent",
+                border: "1px solid",
+                borderColor: isToday
+                  ? theme.palette.primary.main
+                  : hasReleases
+                    ? alpha(accent!, 0.18)
+                    : "transparent",
+                borderRadius: 2,
                 color: "inherit",
                 cursor: hasReleases ? "pointer" : "default",
                 display: "flex",
                 flexDirection: "column",
-                gap: 0.25,
-                justifyContent: "flex-start",
-                minHeight: 56,
-                opacity: isOtherMonth ? 0.35 : 1,
-                outline: isToday
-                  ? `1px solid ${theme.palette.primary.main}`
-                  : "1px solid transparent",
-                px: 0.5,
-                py: 0.5,
+                gap: 0.75,
+                minHeight: { xs: 92, sm: 124, md: 144 },
+                opacity: isOtherMonth ? 0.4 : 1,
+                p: 1,
                 textDecoration: "none",
-                transition: "background-color 120ms ease",
+                transition: "background-color 140ms ease, border-color 140ms ease",
                 "&:hover": hasReleases
-                  ? { backgroundColor: "action.hover" }
+                  ? {
+                      backgroundColor: alpha(accent!, 0.12),
+                      borderColor: alpha(accent!, 0.4),
+                    }
                   : undefined,
               }}
             >
               <Typography
                 sx={{
-                  fontSize: 12,
-                  fontWeight: isToday ? 700 : 500,
+                  alignSelf: "flex-start",
+                  color: isToday ? "primary.main" : "text.secondary",
+                  fontSize: 14,
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: isToday ? 800 : 600,
+                  lineHeight: 1,
                 }}
               >
                 {cell.date.getDate()}
               </Typography>
               {hasReleases ? (
-                <Stack
-                  direction="row"
-                  spacing={0.25}
-                  sx={{ alignItems: "center" }}
-                >
-                  <Box
-                    sx={{
-                      backgroundColor: "primary.main",
-                      borderRadius: "50%",
-                      height: 6,
-                      width: 6,
-                    }}
-                  />
-                  {dayReleases.length > 1 ? (
-                    <Typography
-                      color="primary"
-                      sx={{ fontSize: 10, fontWeight: 700 }}
-                    >
-                      {dayReleases.length}
-                    </Typography>
-                  ) : null}
-                </Stack>
+                <DayPoster accent={accent!} releases={dayReleases} />
               ) : null}
             </Box>
           );
@@ -173,23 +178,21 @@ export function UpcomingCalendar({
             <Tooltip
               arrow
               key={key}
-              title={
-                <Box>
-                  {dayReleases.slice(0, 6).map((release) => (
-                    <Typography
-                      key={release.id}
-                      sx={{ fontSize: 12 }}
-                    >
-                      {release.title}
-                    </Typography>
-                  ))}
-                  {dayReleases.length > 6 ? (
-                    <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
-                      +{dayReleases.length - 6} more
-                    </Typography>
-                  ) : null}
-                </Box>
-              }
+              slotProps={{
+                tooltip: {
+                  sx: {
+                    bgcolor: "background.paper",
+                    border: "1px solid",
+                    borderColor: "divider",
+                    boxShadow: 6,
+                    color: "text.primary",
+                    maxWidth: 380,
+                    p: 1.25,
+                  },
+                },
+                arrow: { sx: { color: "background.paper" } },
+              }}
+              title={<ReleaseCard releases={dayReleases} />}
             >
               {content}
             </Tooltip>
@@ -197,6 +200,137 @@ export function UpcomingCalendar({
         })}
       </Box>
     </Box>
+  );
+}
+
+/** The day's lead poster, scaled to fill the cell, with a "+N" badge. */
+function DayPoster({
+  accent,
+  releases,
+}: {
+  accent: string;
+  releases: CalendarRelease[];
+}) {
+  const [first] = releases;
+  const extra = releases.length - 1;
+  return (
+    <Box
+      sx={{
+        mt: "auto",
+        position: "relative",
+        width: { xs: 48, sm: 64, md: 80 },
+      }}
+    >
+      <PosterImage
+        elevated
+        item={{
+          mediaType: first.mediaType,
+          posterUrl: first.posterUrl,
+          title: first.title,
+        }}
+        sx={{ borderRadius: 1.5 }}
+      />
+      {extra > 0 ? (
+        <Box
+          sx={{
+            alignItems: "center",
+            backgroundColor: alpha(accent, 0.95),
+            borderRadius: 1,
+            bottom: 4,
+            color: "#fff",
+            display: "flex",
+            fontSize: 11,
+            fontWeight: 800,
+            justifyContent: "center",
+            minWidth: 20,
+            position: "absolute",
+            px: 0.5,
+            py: 0.25,
+            right: 4,
+          }}
+        >
+          +{extra}
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+function ReleaseCard({ releases }: { releases: CalendarRelease[] }) {
+  const shown = releases.slice(0, 5);
+  const extra = releases.length - shown.length;
+  return (
+    <Stack spacing={1}>
+      {shown.map((release) => (
+        <Stack
+          direction="row"
+          key={release.id}
+          spacing={1}
+          sx={{ alignItems: "flex-start" }}
+        >
+          <Box sx={{ flexShrink: 0, width: 48 }}>
+            <PosterImage
+              item={{
+                mediaType: release.mediaType,
+                posterUrl: release.posterUrl,
+                title: release.title,
+              }}
+              sx={{ borderRadius: 1 }}
+            />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 700, lineHeight: 1.25 }} variant="body2">
+              {release.title}
+            </Typography>
+            <Stack
+              direction="row"
+              sx={{ flexWrap: "wrap", gap: 0.5, mt: 0.5 }}
+            >
+              <Chip
+                label={formatMediaType(release.mediaType)}
+                size="small"
+                sx={{ height: 18, "& .MuiChip-label": { px: 0.75 } }}
+              />
+              {release.releaseKind ? (
+                <Chip
+                  color="secondary"
+                  label={RELEASE_KIND_LABEL[release.releaseKind]}
+                  size="small"
+                  sx={{ height: 18, "& .MuiChip-label": { px: 0.75 } }}
+                />
+              ) : (
+                <Chip
+                  label={statusLabel(release.status, release.mediaType)}
+                  size="small"
+                  sx={{ height: 18, "& .MuiChip-label": { px: 0.75 } }}
+                  variant="outlined"
+                />
+              )}
+              <Chip
+                label={release.relativeLabel}
+                size="small"
+                sx={{ height: 18, "& .MuiChip-label": { px: 0.75 } }}
+                variant="outlined"
+              />
+            </Stack>
+            {release.genres.length > 0 ? (
+              <Typography
+                color="text.secondary"
+                sx={{ display: "block", mt: 0.5 }}
+                variant="caption"
+              >
+                {release.genres.slice(0, 3).join(" · ")}
+              </Typography>
+            ) : null}
+          </Box>
+        </Stack>
+      ))}
+      {extra > 0 ? (
+        <Typography color="text.secondary" variant="caption">
+          +{extra} more
+        </Typography>
+      ) : null}
+    </Stack>
   );
 }
 
