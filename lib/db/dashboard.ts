@@ -123,9 +123,74 @@ export function dashboardQualityScore(
   return { score, evidence: totalEvidence };
 }
 
+/**
+ * Runs the cross-user aggregation queries (community averages, external-source
+ * counts, and the two global priors) and assembles the {@link
+ * OverallTopRankingContext} that drives the objective Top rankings. Shared by
+ * the dashboard's Overall Top 10 and the Discover "Top Lists" charts so both
+ * surfaces rank items identically.
+ */
+export async function buildOverallTopRankingContext(): Promise<OverallTopRankingContext> {
+  const [
+    overallCommunityRatings,
+    overallConsensusSourceCounts,
+    globalCommunityAggregate,
+    globalConsensusAggregate,
+  ] = await Promise.all([
+    prisma.userMedia.groupBy({
+      by: ["mediaId"],
+      where: { isArchived: false, personalRating: { not: null } },
+      _avg: { computedPersonalScore: true },
+      _count: { computedPersonalScore: true },
+    }),
+    prisma.externalRating.groupBy({
+      by: ["mediaId"],
+      _count: { _all: true },
+    }),
+    // Globals used as Bayesian priors. Cheap (single AVG queries) and the
+    // values change slowly enough that we don't bother caching.
+    prisma.userMedia.aggregate({
+      where: { isArchived: false, personalRating: { not: null } },
+      _avg: { computedPersonalScore: true },
+    }),
+    prisma.mediaItem.aggregate({
+      where: { computedConsensusScore: { not: null } },
+      _avg: { computedConsensusScore: true },
+    }),
+  ]);
+
+  const communityByMediaId = new Map<string, CommunityRatingEvidence>();
+  for (const row of overallCommunityRatings) {
+    if (row._avg.computedPersonalScore != null) {
+      communityByMediaId.set(row.mediaId, {
+        average: row._avg.computedPersonalScore,
+        voters: row._count.computedPersonalScore,
+      });
+    }
+  }
+  const consensusByMediaId = new Map<string, ConsensusEvidence>();
+  for (const row of overallConsensusSourceCounts) {
+    consensusByMediaId.set(row.mediaId, { sources: row._count._all });
+  }
+  const globalCommunityMean =
+    globalCommunityAggregate._avg.computedPersonalScore ??
+    TOP_RANKING.fallbackPrior;
+  const globalConsensusMean =
+    globalConsensusAggregate._avg.computedConsensusScore ??
+    TOP_RANKING.fallbackPrior;
+
+  return {
+    communityByMediaId,
+    consensusByMediaId,
+    globalCommunityMean,
+    globalConsensusMean,
+  };
+}
+
 export function getDashboardOverallTopItemsByMediaType(
   items: MediaItemDTO[],
   context: OverallTopRankingContext,
+  limit = 10,
 ) {
   return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
     mediaType,
@@ -150,7 +215,7 @@ export function getDashboardOverallTopItemsByMediaType(
         if (evidenceDelta !== 0) return evidenceDelta;
         return first.media.title.localeCompare(second.media.title);
       })
-      .slice(0, 10),
+      .slice(0, limit),
   }));
 }
 
@@ -212,10 +277,7 @@ export async function getDashboardData() {
     personalTopItemsByMediaType,
     upcomingItemsByMediaType,
     overallTopItems,
-    overallCommunityRatings,
-    overallConsensusSourceCounts,
-    globalCommunityAggregate,
-    globalConsensusAggregate,
+    topRankingContext,
   ] = await Promise.all([
     prisma.mediaItem.count({
       where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
@@ -297,47 +359,8 @@ export async function getDashboardData() {
       where: { mediaType: visibleMediaTypeFilter() },
       include: withUserAndTaxonomy,
     }),
-    prisma.userMedia.groupBy({
-      by: ["mediaId"],
-      where: { isArchived: false, personalRating: { not: null } },
-      _avg: { computedPersonalScore: true },
-      _count: { computedPersonalScore: true },
-    }),
-    prisma.externalRating.groupBy({
-      by: ["mediaId"],
-      _count: { _all: true },
-    }),
-    // Globals used as Bayesian priors. Cheap (single AVG queries) and the
-    // values change slowly enough that we don't bother caching.
-    prisma.userMedia.aggregate({
-      where: { isArchived: false, personalRating: { not: null } },
-      _avg: { computedPersonalScore: true },
-    }),
-    prisma.mediaItem.aggregate({
-      where: { computedConsensusScore: { not: null } },
-      _avg: { computedConsensusScore: true },
-    }),
+    buildOverallTopRankingContext(),
   ]);
-
-  const communityByMediaId = new Map<string, CommunityRatingEvidence>();
-  for (const row of overallCommunityRatings) {
-    if (row._avg.computedPersonalScore != null) {
-      communityByMediaId.set(row.mediaId, {
-        average: row._avg.computedPersonalScore,
-        voters: row._count.computedPersonalScore,
-      });
-    }
-  }
-  const consensusByMediaId = new Map<string, ConsensusEvidence>();
-  for (const row of overallConsensusSourceCounts) {
-    consensusByMediaId.set(row.mediaId, { sources: row._count._all });
-  }
-  const globalCommunityMean =
-    globalCommunityAggregate._avg.computedPersonalScore ??
-    TOP_RANKING.fallbackPrior;
-  const globalConsensusMean =
-    globalConsensusAggregate._avg.computedConsensusScore ??
-    TOP_RANKING.fallbackPrior;
 
   // Sort the rows we couldn't sort in SQL (because the score columns live on
   // the joined UserMedia row) by their merged values.
@@ -387,12 +410,7 @@ export async function getDashboardData() {
 
   const topItemsByMediaType = getDashboardOverallTopItemsByMediaType(
     mergedOverallTopItems.map(toMediaItemDTO),
-    {
-      communityByMediaId,
-      consensusByMediaId,
-      globalCommunityMean,
-      globalConsensusMean,
-    },
+    topRankingContext,
   );
   const tonightPicksByMediaType =
     getDashboardTonightPicksByMediaType(recommendations);

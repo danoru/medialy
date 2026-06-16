@@ -19,6 +19,7 @@ import PersonIcon from "@mui/icons-material/Person";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import SearchIcon from "@mui/icons-material/Search";
 import SettingsIcon from "@mui/icons-material/Settings";
+import WorkspacePremiumIcon from "@mui/icons-material/WorkspacePremium";
 import { useState } from "react";
 import {
   AppBar,
@@ -75,10 +76,17 @@ const navItems: NavItem[] = [
     activePrefixes: ["/media"],
   },
   {
+    label: "Canon",
+    href: "/canon",
+    icon: <WorkspacePremiumIcon />,
+    description: "The definitive ranked lists by medium and genre.",
+    visibility: "public",
+  },
+  {
     label: "Discover",
     href: "/discover",
     icon: <FavoriteIcon />,
-    description: "Top items by score, type, genre, and confidence.",
+    description: "Explore essentials, gateways, and hidden gems by genre.",
     visibility: "public",
   },
   {

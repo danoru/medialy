@@ -339,8 +339,12 @@ export function DashboardClient({
         <Box sx={{ gridArea: "top", minWidth: 0 }}>
           <DashboardSection
             action={
-              <Button href="/discover" size="small" sx={panelActionSx}>
-                Open lists
+              <Button
+                href={`/canon?type=${topMediaType}`}
+                size="small"
+                sx={panelActionSx}
+              >
+                Open Canon
               </Button>
             }
             title="Overall top 10"

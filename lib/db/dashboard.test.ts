@@ -235,6 +235,28 @@ describe("dashboard overall top 10", () => {
       grouped.find((entry) => entry.mediaType === "VIDEO_GAME")?.items,
     ).toHaveLength(1);
   });
+
+  it("honors an explicit limit and preserves descending score order", () => {
+    const grouped = getDashboardOverallTopItemsByMediaType(
+      Array.from({ length: 12 }, (_, index) =>
+        media(`movie-${index}`, "MOVIE", "WATCHLIST", {
+          computedConsensusScore: 10 - index * 0.1,
+        }),
+      ),
+      rankingContext(),
+      5,
+    );
+
+    const movies = grouped.find((entry) => entry.mediaType === "MOVIE")?.items;
+    expect(movies).toHaveLength(5);
+    expect(movies?.map((entry) => entry.media.id)).toEqual([
+      "movie-0",
+      "movie-1",
+      "movie-2",
+      "movie-3",
+      "movie-4",
+    ]);
+  });
 });
 
 describe("dashboard tonight picks", () => {
