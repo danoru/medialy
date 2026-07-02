@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Button, Card, CardContent, Stack, Typography } from "@mui/material";
 import { CollectionForm } from "@/app/discover/collections/CollectionForm";
@@ -42,7 +41,7 @@ export default async function EditCollectionPage({
           Edit collection
         </Typography>
         <Button
-          component={Link}
+          component="a"
           href={`/discover/collections/${collection.id}`}
           size="small"
           variant="outlined"

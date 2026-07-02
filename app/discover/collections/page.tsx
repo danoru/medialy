@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   Box,
   Button,
@@ -36,7 +35,7 @@ export default async function CollectionsIndexPage() {
           </Box>
           {user.isAdmin ? (
             <Button
-              component={Link}
+              component="a"
               href="/discover/collections/new"
               variant="contained"
             >
@@ -63,7 +62,7 @@ export default async function CollectionsIndexPage() {
           >
             {collections.map((collection) => (
               <Box
-                component={Link}
+                component="a"
                 href={`/discover/collections/${collection.id}`}
                 key={collection.id}
                 sx={{

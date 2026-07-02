@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { PosterTile } from "@/components/media/PosterCard";
@@ -81,7 +80,7 @@ export default async function CollectionViewPage({
               </Stack>
               {isAdmin ? (
                 <Button
-                  component={Link}
+                  component="a"
                   href={`/discover/collections/${collection.id}/edit`}
                   size="small"
                   variant="outlined"

@@ -20,7 +20,6 @@ import {
 } from "@/lib/media-ui-helpers";
 import { PosterImage, PosterTile } from "@/components/media/PosterCard";
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
-import Link from "next/link";
 import {
   getFeaturedCollection,
   listCollections,
@@ -894,7 +893,7 @@ function FeaturedCollectionPanel({
   return (
     <DiscoveryPanel accent={accent}>
       <Box
-        component={Link}
+        component="a"
         href={`/discover/collections/${collection.id}`}
         sx={{ color: "inherit", display: "block", textDecoration: "none" }}
       >
@@ -970,7 +969,7 @@ function CuratedCollections({
           Curated collections
         </Typography>
         <Box
-          component={Link}
+          component="a"
           href="/discover/collections"
           sx={{ color: accent, fontSize: "0.8rem", textDecoration: "none" }}
         >
@@ -982,7 +981,7 @@ function CuratedCollections({
           No collections yet.{" "}
           {isAdmin ? (
             <Box
-              component={Link}
+              component="a"
               href="/discover/collections/new"
               sx={{ color: accent, textDecoration: "none" }}
             >
@@ -1001,7 +1000,7 @@ function CuratedCollections({
       >
         {collections.slice(0, 8).map((collection) => (
           <Box
-            component={Link}
+            component="a"
             href={`/discover/collections/${collection.id}`}
             key={collection.id}
             sx={{
