@@ -42,6 +42,8 @@ import {
 } from "@/lib/media-ui-helpers";
 import { PosterTile } from "@/components/media/PosterCard";
 import { ScoreBadge as PosterScoreBadge } from "@/components/media/ScoreDisplay";
+import CollectionsBookmarkIcon from "@mui/icons-material/CollectionsBookmark";
+import type { CollectionSummary } from "@/lib/db/collections";
 
 type DashboardData = {
   userName: string | null;
@@ -120,10 +122,12 @@ const panelActionSx: SxProps<Theme> = {
 };
 
 export function DashboardClient({
+  collections,
   data,
   isAuthenticated,
   isAdmin,
 }: {
+  collections: CollectionSummary[];
   data: DashboardData;
   isAuthenticated: boolean;
   isAdmin: boolean;
@@ -141,7 +145,6 @@ export function DashboardClient({
       ),
     ) ?? "MOVIE";
   const [topMediaType, setTopMediaType] = useState<MediaType>("MOVIE");
-  const [genreMediaType, setGenreMediaType] = useState<MediaType>("MOVIE");
   const [tonightPickType, setTonightPickType] = useState<MediaType>(
     initialTonightPickType,
   );
@@ -163,13 +166,6 @@ export function DashboardClient({
         (entry) => entry.mediaType === upcomingMediaType,
       )?.items ?? [],
     [data.upcomingItemsByMediaType, upcomingMediaType],
-  );
-
-  const genreInsightsForType = useMemo(
-    () =>
-      data.genreInsights.find((entry) => entry.mediaType === genreMediaType)
-        ?.genres ?? [],
-    [data.genreInsights, genreMediaType],
   );
 
   const watchlistMatchByMediaId = useMemo(() => {
@@ -404,30 +400,17 @@ export function DashboardClient({
         <Box sx={{ gridArea: "genre", minWidth: 0 }}>
           <DashboardSection
             action={
-              <Button href="/insights" size="small" sx={panelActionSx}>
-                View insights
+              <Button
+                href="/discover/collections"
+                size="small"
+                sx={panelActionSx}
+              >
+                Browse all
               </Button>
             }
-            title="Media breakdown"
+            title="Featured collections"
           >
-            <MediaTypeTabs
-              counts={data.mediaTypeCounts}
-              onChange={setGenreMediaType}
-              showCounts={false}
-              value={genreMediaType}
-            />
-            {genreInsightsForType.some((genre) => genre.ratedCount > 0) ? (
-              <GenreBarChart
-                genres={genreInsightsForType
-                  .filter((genre) => genre.ratedCount > 0)
-                  .slice(0, 7)}
-              />
-            ) : (
-              <EmptyPanel
-                icon={<InfoOutlinedIcon />}
-                label={`No rated ${formatMediaType(genreMediaType).toLowerCase()} genres yet.`}
-              />
-            )}
+            <FeaturedCollectionsPanel collections={collections} />
           </DashboardSection>
         </Box>
 
@@ -923,77 +906,121 @@ function OnDarkChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function GenreBarChart({
-  genres,
+function FeaturedCollectionsPanel({
+  collections,
 }: {
-  genres: Array<{
-    averageScore: number;
-    count: number;
-    name: string;
-    ratedCount: number;
-    share: number;
-  }>;
+  collections: CollectionSummary[];
 }) {
-  const maxScore = Math.max(10, ...genres.map((genre) => genre.averageScore));
+  if (collections.length === 0) {
+    return (
+      <EmptyPanel
+        icon={<CollectionsBookmarkIcon />}
+        label="No published collections yet."
+      />
+    );
+  }
 
+  const single = collections.length === 1;
   return (
     <Box
       sx={{
-        alignItems: "end",
-        bgcolor: "surface.1",
+        display: "flex",
+        flex: 1,
+        gap: 1.5,
+        mt: 0.5,
+        overflowX: single ? "visible" : "auto",
+        pb: single ? 0 : 0.5,
+        scrollbarWidth: "thin",
+      }}
+    >
+      {collections.map((collection) => (
+        <CollectionCoverCard
+          collection={collection}
+          key={collection.id}
+          single={single}
+        />
+      ))}
+    </Box>
+  );
+}
+
+function CollectionCoverCard({
+  collection,
+  single,
+}: {
+  collection: CollectionSummary;
+  single: boolean;
+}) {
+  const blurb = collection.description ?? collection.subtitle;
+  return (
+    <Box
+      component={Link}
+      href={`/discover/collections/${collection.id}`}
+      sx={{
+        backgroundColor: "surface.2",
+        backgroundImage: collection.coverUrl
+          ? `linear-gradient(180deg, rgba(8,8,11,0.15) 0%, rgba(8,8,11,0.55) 55%, rgba(8,8,11,0.92) 100%), url(${collection.coverUrl})`
+          : "linear-gradient(140deg, rgba(90,120,200,0.35), rgba(8,8,11,0.92))",
+        backgroundPosition: "center",
+        backgroundSize: "cover",
         border: "1px solid",
         borderColor: "border.subtle",
         borderRadius: 2,
-        display: "grid",
-        flex: 1,
-        gap: 1,
-        gridTemplateColumns: `repeat(${Math.max(genres.length, 1)}, minmax(0, 1fr))`,
-        minHeight: 188,
-        mt: 1.5,
+        color: "#FFFFFF",
+        display: "flex",
+        flex: single ? "1 1 auto" : "0 0 auto",
+        flexDirection: "column",
+        justifyContent: "flex-end",
+        minHeight: 176,
         overflow: "hidden",
-        px: 1.5,
-        pt: 1.5,
+        p: 1.5,
+        position: "relative",
+        textDecoration: "none",
+        transition: "border-color 160ms ease, transform 160ms ease",
+        width: single ? "100%" : 240,
+        "&:hover": {
+          borderColor: "border.strong",
+          transform: "translateY(-2px)",
+        },
       }}
     >
-      {genres.map((genre) => {
-        const height = Math.max(
-          16,
-          Math.round((genre.averageScore / maxScore) * 128),
-        );
-
-        return (
-          <Stack
-            key={genre.name}
-            spacing={0.5}
-            sx={{ alignItems: "center", justifyContent: "end", minWidth: 0 }}
-          >
-            <Typography
-              sx={{ fontSize: "0.625rem", fontWeight: 600 }}
-            >
-              {genre.averageScore.toFixed(1)}
-            </Typography>
-            <Box
-              sx={{
-                bgcolor: "primary.main",
-                borderRadius: "4px 4px 0 0",
-                height,
-                width: "56%",
-              }}
-            />
-            <Typography
-              noWrap
-              color="text.secondary"
-              sx={{ fontSize: "0.625rem", maxWidth: "100%" }}
-              title={genre.name}
-            >
-              {genre.name}
-            </Typography>
-            <Typography color="text.secondary" sx={{ fontSize: "0.5625rem" }}>
-              {genre.ratedCount}
-            </Typography>
-          </Stack>
-        );
-      })}
+      {collection.featuredMonth ? (
+        <Chip
+          color="secondary"
+          label={`Featured · ${collection.featuredMonth}`}
+          size="small"
+          sx={{ alignSelf: "flex-start", mb: "auto" }}
+        />
+      ) : null}
+      <Typography
+        sx={{
+          fontFamily: (t) => t.typography.h5.fontFamily,
+          fontSize: "1.05rem",
+          fontWeight: 700,
+          letterSpacing: "-0.015em",
+          lineHeight: 1.2,
+          textShadow: "0 2px 12px rgba(0,0,0,0.6)",
+        }}
+      >
+        {collection.name}
+      </Typography>
+      {blurb ? (
+        <Typography
+          sx={{
+            color: "rgba(255,255,255,0.82)",
+            display: "-webkit-box",
+            fontSize: "0.8rem",
+            lineHeight: 1.35,
+            mt: 0.5,
+            overflow: "hidden",
+            textShadow: "0 1px 8px rgba(0,0,0,0.6)",
+            WebkitBoxOrient: "vertical",
+            WebkitLineClamp: 3,
+          }}
+        >
+          {blurb}
+        </Typography>
+      ) : null}
     </Box>
   );
 }

@@ -31,6 +31,7 @@ export type CollectionSummary = {
   id: string;
   name: string;
   subtitle: string | null;
+  description: string | null;
   coverUrl: string | null;
   isPublished: boolean;
   featuredMonth: string | null;
@@ -111,6 +112,7 @@ export async function listCollections({
       id: true,
       name: true,
       subtitle: true,
+      description: true,
       coverUrl: true,
       isPublished: true,
       featuredMonth: true,
@@ -121,6 +123,7 @@ export async function listCollections({
     id: row.id,
     name: row.name,
     subtitle: row.subtitle,
+    description: row.description,
     coverUrl: row.coverUrl,
     isPublished: row.isPublished,
     featuredMonth: row.featuredMonth,
