@@ -1,6 +1,8 @@
 "use client";
 
 import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import {
   Autocomplete,
   Box,
@@ -27,6 +29,8 @@ import {
   addSection,
   clearFeaturedMonth,
   deleteSection,
+  moveCollectionItem,
+  moveSection,
   removeCollectionItem,
   searchMediaForCollection,
   setFeaturedMonth,
@@ -142,7 +146,7 @@ function SectionsManager({
       <SectionHeading>Sub-categories</SectionHeading>
       {sections.length > 0 ? (
         <Stack spacing={1}>
-          {sections.map((section) => (
+          {sections.map((section, index) => (
             <Box
               action={updateSection.bind(null, section.id, listId)}
               component="form"
@@ -154,6 +158,14 @@ function SectionsManager({
                 spacing={1}
                 sx={{ alignItems: { sm: "center" } }}
               >
+                <MoveButtons
+                  canMoveDown={index < sections.length - 1}
+                  canMoveUp={index > 0}
+                  label="sub-category"
+                  onMove={(direction) =>
+                    moveSection(section.id, listId, direction)
+                  }
+                />
                 <TextField
                   defaultValue={section.title}
                   label="Title"
@@ -377,8 +389,10 @@ function ItemGroup({
       <Typography sx={{ fontWeight: 700 }} variant="subtitle2">
         {title}
       </Typography>
-      {items.map((item) => (
+      {items.map((item, index) => (
         <ItemRow
+          canMoveDown={index < items.length - 1}
+          canMoveUp={index > 0}
           item={item}
           key={item.id}
           listId={listId}
@@ -390,10 +404,14 @@ function ItemGroup({
 }
 
 function ItemRow({
+  canMoveDown,
+  canMoveUp,
   item,
   listId,
   sections,
 }: {
+  canMoveDown: boolean;
+  canMoveUp: boolean;
   item: CollectionItem;
   listId: string;
   sections: CollectionSection[];
@@ -410,6 +428,14 @@ function ItemRow({
         spacing={1}
         sx={{ alignItems: { md: "center" } }}
       >
+        <MoveButtons
+          canMoveDown={canMoveDown}
+          canMoveUp={canMoveUp}
+          label="item"
+          onMove={(direction) =>
+            moveCollectionItem(item.id, listId, direction)
+          }
+        />
         <PosterThumb item={item.media} />
         <Typography sx={{ fontWeight: 600, minWidth: 120 }} noWrap>
           {item.media.title}
@@ -450,6 +476,40 @@ function ItemRow({
         </IconButton>
       </Stack>
     </Box>
+  );
+}
+
+function MoveButtons({
+  canMoveDown,
+  canMoveUp,
+  label,
+  onMove,
+}: {
+  canMoveDown: boolean;
+  canMoveUp: boolean;
+  label: string;
+  onMove: (direction: "up" | "down") => Promise<void>;
+}) {
+  const [isPending, startTransition] = useTransition();
+  return (
+    <Stack direction="row" sx={{ alignItems: "center" }}>
+      <IconButton
+        aria-label={`Move ${label} up`}
+        disabled={isPending || !canMoveUp}
+        onClick={() => startTransition(() => onMove("up"))}
+        size="small"
+      >
+        <KeyboardArrowUpIcon fontSize="small" />
+      </IconButton>
+      <IconButton
+        aria-label={`Move ${label} down`}
+        disabled={isPending || !canMoveDown}
+        onClick={() => startTransition(() => onMove("down"))}
+        size="small"
+      >
+        <KeyboardArrowDownIcon fontSize="small" />
+      </IconButton>
+    </Stack>
   );
 }
 

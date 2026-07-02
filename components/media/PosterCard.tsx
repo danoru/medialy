@@ -100,10 +100,12 @@ export function PosterThumb({
 export function PosterTile({
   item,
   meta,
+  overlay,
   scoreBadge,
 }: {
   item: PosterMedia & { id: string; title: string };
   meta?: string[];
+  overlay?: ReactNode;
   scoreBadge?: ReactNode;
 }) {
   return (
@@ -128,6 +130,7 @@ export function PosterTile({
             borderLeftColor: mediaAccent(item.mediaType),
             transform: "translateY(-3px)",
             "& .tile-poster": { transform: "scale(1.06)" },
+            "& .tile-overlay": { opacity: 1 },
           },
         }}
       >
@@ -212,6 +215,26 @@ export function PosterTile({
             </Typography>
           ) : null}
         </Box>
+        {overlay ? (
+          <Box
+            className="tile-overlay"
+            sx={{
+              alignItems: "center",
+              background:
+                "linear-gradient(180deg, rgba(8,8,11,0.92) 0%, rgba(8,8,11,0.96) 100%)",
+              display: "flex",
+              inset: 0,
+              opacity: 0,
+              overflowY: "auto",
+              p: 1.25,
+              position: "absolute",
+              transition: "opacity 200ms ease",
+              zIndex: 4,
+            }}
+          >
+            {overlay}
+          </Box>
+        ) : null}
       </Box>
     </Link>
   );

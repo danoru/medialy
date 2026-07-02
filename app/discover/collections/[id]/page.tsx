@@ -153,25 +153,29 @@ function ItemGrid({ items }: { items: CollectionItem[] }) {
       }}
     >
       {items.map((item) => (
-        <Stack key={item.id} spacing={0.75}>
-          <PosterTile
-            item={{
-              id: item.media.id,
-              title: item.media.title,
-              mediaType: item.media.mediaType,
-              posterUrl: item.media.posterUrl,
-            }}
-          />
-          {item.note ? (
-            <Typography
-              color="text.secondary"
-              sx={{ whiteSpace: "pre-line" }}
-              variant="caption"
-            >
-              {item.note}
-            </Typography>
-          ) : null}
-        </Stack>
+        <PosterTile
+          item={{
+            id: item.media.id,
+            title: item.media.title,
+            mediaType: item.media.mediaType,
+            posterUrl: item.media.posterUrl,
+          }}
+          key={item.id}
+          overlay={
+            item.note ? (
+              <Typography
+                sx={{
+                  color: "rgba(255,255,255,0.92)",
+                  fontSize: "0.8125rem",
+                  lineHeight: 1.4,
+                  whiteSpace: "pre-line",
+                }}
+              >
+                {item.note}
+              </Typography>
+            ) : undefined
+          }
+        />
       ))}
     </Box>
   );

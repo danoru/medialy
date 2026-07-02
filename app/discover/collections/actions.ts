@@ -217,6 +217,40 @@ export async function deleteSection(sectionId: string, listId: string) {
   await queueToast("Section removed.");
 }
 
+/**
+ * Move a sub-category one slot up or down. Reads the current order, swaps the
+ * target with its neighbour, then rewrites every `position` to a contiguous
+ * 0..n sequence so ordering stays stable even if positions had drifted.
+ */
+export async function moveSection(
+  sectionId: string,
+  listId: string,
+  direction: "up" | "down",
+) {
+  await requireAdmin();
+  const sections = await prisma.listSection.findMany({
+    where: { listId },
+    orderBy: { position: "asc" },
+    select: { id: true },
+  });
+  const index = sections.findIndex((section) => section.id === sectionId);
+  if (index === -1) return;
+  const swapWith = direction === "up" ? index - 1 : index + 1;
+  if (swapWith < 0 || swapWith >= sections.length) return;
+
+  const reordered = [...sections];
+  [reordered[index], reordered[swapWith]] = [
+    reordered[swapWith],
+    reordered[index],
+  ];
+  await prisma.$transaction(
+    reordered.map((section, position) =>
+      prisma.listSection.update({ where: { id: section.id }, data: { position } }),
+    ),
+  );
+  revalidateCollections(listId);
+}
+
 // ---------------------------------------------------------------------------
 // Items
 // ---------------------------------------------------------------------------
@@ -282,6 +316,48 @@ export async function removeCollectionItem(listId: string, itemId: string) {
   await prisma.listItem.deleteMany({ where: { id: itemId, listId } });
   revalidateCollections(listId);
   await queueToast("Removed from collection.");
+}
+
+/**
+ * Move an item one slot up or down within its own sub-category (or the
+ * ungrouped bucket). Ordering only matters relative to siblings in the same
+ * section, so we reindex just that group's `rank` values to a contiguous
+ * sequence — cross-section rank collisions are harmless since display groups by
+ * section first.
+ */
+export async function moveCollectionItem(
+  itemId: string,
+  listId: string,
+  direction: "up" | "down",
+) {
+  await requireAdmin();
+  const item = await prisma.listItem.findFirst({
+    where: { id: itemId, listId },
+    select: { sectionId: true },
+  });
+  if (!item) return;
+
+  const siblings = await prisma.listItem.findMany({
+    where: { listId, sectionId: item.sectionId },
+    orderBy: [{ rank: "asc" }, { createdAt: "asc" }],
+    select: { id: true },
+  });
+  const index = siblings.findIndex((sibling) => sibling.id === itemId);
+  if (index === -1) return;
+  const swapWith = direction === "up" ? index - 1 : index + 1;
+  if (swapWith < 0 || swapWith >= siblings.length) return;
+
+  const reordered = [...siblings];
+  [reordered[index], reordered[swapWith]] = [
+    reordered[swapWith],
+    reordered[index],
+  ];
+  await prisma.$transaction(
+    reordered.map((sibling, rank) =>
+      prisma.listItem.update({ where: { id: sibling.id }, data: { rank } }),
+    ),
+  );
+  revalidateCollections(listId);
 }
 
 /** Title search backing the collection item picker. */
