@@ -178,7 +178,7 @@ export async function buildJsonExport(): Promise<MedialyExport> {
     prisma.note.findMany({ where: { userId } }),
     prisma.customList.findMany({
       where: { userId },
-      include: { items: true },
+      include: { items: true, sections: true },
     }),
   ]);
 

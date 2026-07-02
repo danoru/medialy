@@ -18,8 +18,15 @@ import {
   mediaTypeTabSx,
   posterFallback,
 } from "@/lib/media-ui-helpers";
-import { PosterImage } from "@/components/media/PosterCard";
+import { PosterImage, PosterTile } from "@/components/media/PosterCard";
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
+import Link from "next/link";
+import {
+  getFeaturedCollection,
+  listCollections,
+  type CollectionDetail,
+  type CollectionSummary,
+} from "@/lib/db/collections";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import { prisma } from "@/lib/prisma";
 import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
@@ -187,7 +194,10 @@ export default async function TopListsPage({
   const startHere = getStartHere(activeItems, discoverPrior);
   const hiddenGems = getHiddenGems(activeItems);
   const relationshipChains = getRelationshipChains(activeItems);
-  const collections = getCollections(selectedWorld, genreWorlds, selectedType);
+  const [featuredCollection, collections] = await Promise.all([
+    getFeaturedCollection(),
+    listCollections({ includeDrafts: false }),
+  ]);
   const copy = discoveryCopy[selectedType] ?? discoveryCopy.MOVIE!;
   const heroTitle = selectedWorld
     ? `${selectedWorld.name} Essentials`
@@ -257,6 +267,13 @@ export default async function TopListsPage({
           title={heroTitleNode}
         />
 
+        {featuredCollection ? (
+          <FeaturedCollectionPanel
+            accent={accentColor}
+            collection={featuredCollection}
+          />
+        ) : null}
+
         <GenreRail
           accent={accentColor}
           genres={genreWorlds}
@@ -321,17 +338,14 @@ export default async function TopListsPage({
                 chains={relationshipChains}
               />
             </Box>
-
-            <CuratedCollections
-              accent={accentColor}
-              collections={collections}
-              country={requestedCountry}
-              selectedType={selectedType}
-            />
           </>
         ) : (
           <EmptyDiscoveryState mediaType={selectedType} />
         )}
+
+        {collections.length > 0 ? (
+          <CuratedCollections accent={accentColor} collections={collections} />
+        ) : null}
       </Stack>
     </Box>
   );
@@ -859,22 +873,102 @@ function IfYouLikedPanel({
   );
 }
 
+function FeaturedCollectionPanel({
+  accent,
+  collection,
+}: {
+  accent: string;
+  collection: CollectionDetail;
+}) {
+  const items = [
+    ...collection.ungrouped,
+    ...collection.sectionGroups.flatMap((group) => group.items),
+  ].slice(0, 6);
+
+  return (
+    <DiscoveryPanel accent={accent}>
+      <Box
+        component={Link}
+        href={`/discover/collections/${collection.id}`}
+        sx={{ color: "inherit", display: "block", textDecoration: "none" }}
+      >
+        <Typography variant="eyebrow" sx={{ color: accent }}>
+          Featured collection
+        </Typography>
+        <Typography
+          sx={{
+            fontFamily:
+              'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif',
+            fontSize: "1.35rem",
+            fontWeight: 700,
+            letterSpacing: "-0.015em",
+            mt: 0.5,
+          }}
+        >
+          {collection.name}
+        </Typography>
+        {collection.subtitle ? (
+          <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
+            {collection.subtitle}
+          </Typography>
+        ) : null}
+      </Box>
+      {items.length > 0 ? (
+        <Box
+          sx={{
+            display: "grid",
+            gap: 1,
+            gridTemplateColumns: {
+              xs: "repeat(3, 1fr)",
+              sm: "repeat(6, 1fr)",
+            },
+            mt: 1.5,
+          }}
+        >
+          {items.map((item) => (
+            <PosterTile
+              item={{
+                id: item.media.id,
+                title: item.media.title,
+                mediaType: item.media.mediaType,
+                posterUrl: item.media.posterUrl,
+              }}
+              key={item.id}
+            />
+          ))}
+        </Box>
+      ) : null}
+    </DiscoveryPanel>
+  );
+}
+
 function CuratedCollections({
   accent,
   collections,
-  country,
-  selectedType,
 }: {
   accent: string;
-  collections: Array<{ title: string; description: string; genre: string }>;
-  country?: string | null;
-  selectedType: MediaType;
+  collections: CollectionSummary[];
 }) {
   return (
     <DiscoveryPanel accent={accent}>
-      <Typography variant="eyebrow" sx={{ color: accent }}>
-        Curated collections
-      </Typography>
+      <Box
+        sx={{
+          alignItems: "baseline",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <Typography variant="eyebrow" sx={{ color: accent }}>
+          Curated collections
+        </Typography>
+        <Box
+          component={Link}
+          href="/discover/collections"
+          sx={{ color: accent, fontSize: "0.8rem", textDecoration: "none" }}
+        >
+          View all collections
+        </Box>
+      </Box>
       <Box
         sx={{
           display: "grid",
@@ -883,11 +977,11 @@ function CuratedCollections({
           mt: 1,
         }}
       >
-        {collections.map((collection) => (
+        {collections.slice(0, 8).map((collection) => (
           <Box
-            component="a"
-            href={topListsHref(selectedType, collection.genre, null, country)}
-            key={collection.title}
+            component={Link}
+            href={`/discover/collections/${collection.id}`}
+            key={collection.id}
             sx={{
               bgcolor: "surface.1",
               border: "1px solid",
@@ -907,9 +1001,11 @@ function CuratedCollections({
               },
             }}
           >
-            <Typography variant="eyebrow" sx={{ color: accent }}>
-              {collection.genre}
-            </Typography>
+            {collection.featuredMonth ? (
+              <Typography variant="eyebrow" sx={{ color: accent }}>
+                Featured · {collection.featuredMonth}
+              </Typography>
+            ) : null}
             <Typography
               sx={{
                 fontFamily:
@@ -920,10 +1016,24 @@ function CuratedCollections({
                 mt: 1.5,
               }}
             >
-              {collection.title}
+              {collection.name}
             </Typography>
-            <Typography color="text.secondary" sx={{ mt: 0.6 }} variant="body2">
-              {collection.description}
+            {collection.subtitle ? (
+              <Typography
+                color="text.secondary"
+                sx={{ mt: 0.6 }}
+                variant="body2"
+              >
+                {collection.subtitle}
+              </Typography>
+            ) : null}
+            <Typography
+              color="text.secondary"
+              sx={{ mt: "auto", pt: 1 }}
+              variant="caption"
+            >
+              {collection.itemCount} title
+              {collection.itemCount === 1 ? "" : "s"}
             </Typography>
           </Box>
         ))}
@@ -1174,49 +1284,6 @@ function getRelationshipChains(items: DiscoveryItem[]) {
   }
 
   return chains;
-}
-
-function getCollections(
-  selectedWorld: GenreWorld | null,
-  genreWorlds: GenreWorld[],
-  mediaType: MediaType,
-) {
-  const fallbackGenres = genreWorlds.slice(0, 4).map((world) => world.name);
-  const primary = selectedWorld?.name ?? fallbackGenres[0] ?? "Essentials";
-  const secondary =
-    fallbackGenres.find((genre) => genre !== primary) ?? primary;
-  const tertiary =
-    fallbackGenres.find((genre) => genre !== primary && genre !== secondary) ??
-    primary;
-  const noun =
-    mediaType === "VIDEO_GAME"
-      ? "Games"
-      : mediaType === "TV_SHOW"
-        ? "Series"
-        : "Movies";
-
-  return [
-    {
-      genre: primary,
-      title: `Best First ${primary} ${noun}`,
-      description: "Approachable entries that make the genre click quickly.",
-    },
-    {
-      genre: primary,
-      title: `Essential ${primary} Canon`,
-      description: "The definitive works that anchor the whole conversation.",
-    },
-    {
-      genre: secondary,
-      title: `Deep ${secondary} Cuts`,
-      description: "Strong picks beyond the obvious first shelf.",
-    },
-    {
-      genre: tertiary,
-      title: `${tertiary} Worlds Worth Entering`,
-      description: "A focused path into another high-performing lane.",
-    },
-  ];
 }
 
 function sortByScore(items: DiscoveryItem[], prior: number) {

@@ -274,31 +274,61 @@ model PairwiseComparison {
 }
 
 model CustomList {
-  id          String     @id @default(cuid())
-  userId      String
-  name        String
-  kind        ListKind
-  description String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items       ListItem[]
+  id            String        @id @default(cuid())
+  userId        String
+  name          String
+  kind          ListKind
+  /// Reused as the intro/lede for COLLECTION lists (plain text, line breaks preserved).
+  description   String?
+  /// Short dek/eyebrow shown under the title on COLLECTION lists.
+  subtitle      String?
+  /// Optional cover image (external URL, same shape as MediaItem.posterUrl).
+  coverUrl      String?
+  /// Draft vs. live to signed-in users (COLLECTION lists).
+  isPublished   Boolean       @default(false)
+  /// "YYYY-MM"; set on at most one COLLECTION per month (the featured monthly theme).
+  featuredMonth String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items         ListItem[]
+  sections      ListSection[]
 
   @@unique([userId, name])
+  @@unique([featuredMonth])
   @@index([userId])
+  @@index([kind])
+  @@index([isPublished])
+}
+
+/// A sub-category within a COLLECTION list, grouping its items under a heading.
+model ListSection {
+  id          String     @id @default(cuid())
+  listId      String
+  title       String
+  description String?
+  position    Int        @default(0)
+  createdAt   DateTime   @default(now())
+  list        CustomList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  items       ListItem[]
+
+  @@index([listId])
 }
 
 model ListItem {
-  id        String     @id @default(cuid())
+  id        String       @id @default(cuid())
   listId    String
+  sectionId String?
   mediaId   String
   rank      Int?
   note      String?
-  createdAt DateTime   @default(now())
-  list      CustomList @relation(fields: [listId], references: [id], onDelete: Cascade)
-  media     MediaItem  @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  list      CustomList   @relation(fields: [listId], references: [id], onDelete: Cascade)
+  section   ListSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  media     MediaItem    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
   @@unique([listId, mediaId])
+  @@index([sectionId])
 }
 
 /// The owning account. Auth is handled by Auth.js (NextAuth v5) with the Prisma
@@ -494,6 +524,7 @@ enum ListKind {
   FAVORITES
   TOP_LIST
   CUSTOM
+  COLLECTION
 }
 
 enum ExternalReleaseSource {
