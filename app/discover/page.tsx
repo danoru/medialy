@@ -36,7 +36,7 @@ import {
   getPromotedDiscoverTagsForMediaType,
   isDiscoverSubgenreForGenre,
 } from "@/lib/taxonomy";
-import { getCurrentUserId } from "@/lib/user";
+import { getCurrentUser } from "@/lib/user";
 import { DEFAULT_USER_MEDIA, userMediaInclude } from "@/lib/db/user-media";
 import type { UserMedia } from "@prisma/client";
 
@@ -132,7 +132,9 @@ export default async function TopListsPage({
   const requestedSubgenre = stringParam(params.subgenre);
   const requestedCountry = stringParam(params.country)?.toUpperCase();
 
-  const userId = await getCurrentUserId();
+  const currentUser = await getCurrentUser();
+  const userId = currentUser?.id ?? null;
+  const isAdmin = currentUser?.isAdmin ?? false;
   const archivedFilter =
     userId == null
       ? {}
@@ -343,8 +345,12 @@ export default async function TopListsPage({
           <EmptyDiscoveryState mediaType={selectedType} />
         )}
 
-        {collections.length > 0 ? (
-          <CuratedCollections accent={accentColor} collections={collections} />
+        {collections.length > 0 || isAdmin ? (
+          <CuratedCollections
+            accent={accentColor}
+            collections={collections}
+            isAdmin={isAdmin}
+          />
         ) : null}
       </Stack>
     </Box>
@@ -945,9 +951,11 @@ function FeaturedCollectionPanel({
 function CuratedCollections({
   accent,
   collections,
+  isAdmin,
 }: {
   accent: string;
   collections: CollectionSummary[];
+  isAdmin: boolean;
 }) {
   return (
     <DiscoveryPanel accent={accent}>
@@ -966,9 +974,23 @@ function CuratedCollections({
           href="/discover/collections"
           sx={{ color: accent, fontSize: "0.8rem", textDecoration: "none" }}
         >
-          View all collections
+          {collections.length > 0 ? "View all collections" : "Manage collections"}
         </Box>
       </Box>
+      {collections.length === 0 ? (
+        <Typography color="text.secondary" sx={{ mt: 1 }} variant="body2">
+          No collections yet.{" "}
+          {isAdmin ? (
+            <Box
+              component={Link}
+              href="/discover/collections/new"
+              sx={{ color: accent, textDecoration: "none" }}
+            >
+              Create the first one.
+            </Box>
+          ) : null}
+        </Typography>
+      ) : null}
       <Box
         sx={{
           display: "grid",
