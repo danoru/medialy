@@ -7,7 +7,13 @@ import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { calculateCommunityAverage } from "@/lib/scoring/communityAverage";
 import { calculateConsensusScore } from "@/lib/scoring/consensus";
 import { getMediaItemMatch } from "@/lib/scoring/itemMatch";
-import { getWatchProviders, tmdbIdFromUrl, tmdbMediaKind } from "@/lib/tmdb";
+import {
+  getWatchProviders,
+  resolveTmdbId,
+  tmdbIdFromUrl,
+  tmdbMediaKind,
+  type TmdbMediaKind,
+} from "@/lib/tmdb";
 import {
   MediaDetailView,
   type MediaDetailViewItem,
@@ -156,13 +162,26 @@ export default async function MediaDetailPage({
   // "Where to watch" for movies/TV is fetched live (availability changes over
   // time) and cached by lib/tmdb. Game platforms are static, so they are read
   // from the persisted `platformsJson` column populated by metadata:backfill.
-  const isWatchable =
-    rawItem.mediaType === MediaType.MOVIE ||
-    rawItem.mediaType === MediaType.TV_SHOW;
-  const watchProviders = isWatchable
+  const watchableKind: TmdbMediaKind | null =
+    rawItem.mediaType === MediaType.MOVIE
+      ? "movie"
+      : rawItem.mediaType === MediaType.TV_SHOW
+        ? "tv"
+        : null;
+  const watchProviders = watchableKind
     ? await getWatchProviders(
-        tmdbIdFromUrl(rawItem.externalUrl),
-        tmdbMediaKind(rawItem.externalUrl),
+        // `externalUrl` isn't always a TMDB link — items imported from
+        // Letterboxd, RAWG, etc. store *their* source's URL there instead, so
+        // a TMDB id is never recoverable from it for those items. Fall back
+        // to a live, read-only title search (writes nothing to the DB) so
+        // "Where to watch" still works for them.
+        tmdbIdFromUrl(rawItem.externalUrl) ??
+          (await resolveTmdbId(
+            rawItem.title,
+            rawItem.releaseDate?.getUTCFullYear() ?? null,
+            watchableKind,
+          )),
+        tmdbMediaKind(rawItem.externalUrl) ?? watchableKind,
       )
     : null;
   const platforms =

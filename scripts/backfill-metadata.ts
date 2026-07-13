@@ -6,6 +6,10 @@ type Args = {
   dryRun: boolean;
   limit: number | null;
   types: Set<MediaType>;
+  /** Exact title match, for testing a single item. Bypasses the normal
+   * "needs update" filter so the item is force-processed even if every field
+   * is already populated — per-field writes still only happen when blank. */
+  title: string | null;
 };
 
 type MediaItemRow = {
@@ -63,18 +67,27 @@ async function main() {
   const items = await prisma.mediaItem.findMany({
     where: {
       mediaType: { in: [...args.types] },
-      OR: [
-        { description: null },
-        { releaseDate: null },
-        { posterUrl: null },
-        { externalUrl: null },
-        { metadataJson: null },
-        { genres: { none: {} } },
-        { tags: { none: {} } },
-        { credits: { none: {} } },
-        // Games that are otherwise complete but predate the platforms field.
-        { AND: [{ mediaType: MediaType.VIDEO_GAME }, { platformsJson: null }] },
-      ],
+      ...(args.title
+        ? { title: args.title }
+        : {
+            OR: [
+              { description: null },
+              { releaseDate: null },
+              { posterUrl: null },
+              { externalUrl: null },
+              { metadataJson: null },
+              { genres: { none: {} } },
+              { tags: { none: {} } },
+              { credits: { none: {} } },
+              // Games that are otherwise complete but predate the platforms field.
+              {
+                AND: [
+                  { mediaType: MediaType.VIDEO_GAME },
+                  { platformsJson: null },
+                ],
+              },
+            ],
+          }),
     },
     include: {
       genres: { include: { genre: true } },
@@ -652,6 +665,7 @@ function parseArgs(argv: string[]): Args {
     dryRun: argv.includes("--dry-run"),
     limit,
     types,
+    title: valueFor(argv, "--title") ?? null,
   };
 }
 

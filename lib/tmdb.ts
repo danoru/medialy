@@ -16,6 +16,8 @@ const TMDB_LOGO_BASE = "https://image.tmdb.org/t/p/original";
 
 /** How long a title's watch-provider response is cached (seconds). */
 const WATCH_PROVIDERS_TTL = 60 * 60 * 24; // 24h
+/** A title's TMDB id is effectively permanent, so cache search hits longer. */
+const SEARCH_TTL = 60 * 60 * 24 * 30; // 30d
 
 export type TmdbMediaKind = "movie" | "tv";
 
@@ -76,6 +78,77 @@ export function tmdbMediaKind(
   if (parts.includes("movie")) return "movie";
   if (parts.includes("tv")) return "tv";
   return null;
+}
+
+function normalizeSearchTitle(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Look up a TMDB id by title when `externalUrl` isn't a TMDB link — e.g. items
+ * imported from Letterboxd, RAWG, or elsewhere store their own source's URL in
+ * that column, so it never becomes a `themoviedb.org` link even after a TMDB
+ * match exists. This is a read-only lookup: it queries TMDB's search endpoint
+ * and returns an id for this render only. It never writes to the database, so
+ * it can't affect (or lose) any stored data. Returns `null` on no match, a
+ * missing token, or a request failure — callers render nothing in that case.
+ */
+export async function resolveTmdbId(
+  title: string | null | undefined,
+  year: number | null,
+  kind: TmdbMediaKind,
+): Promise<string | null> {
+  const token = process.env.TMDB_BEARER_TOKEN;
+  if (!token || !title) return null;
+
+  const url = new URL(`${TMDB_API_BASE}/search/${kind}`);
+  url.searchParams.set("query", title);
+  url.searchParams.set("include_adult", "false");
+  url.searchParams.set("language", "en-US");
+  if (year) {
+    url.searchParams.set(
+      kind === "movie" ? "year" : "first_air_date_year",
+      String(year),
+    );
+  }
+
+  let json: unknown;
+  try {
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${token}` },
+      next: { revalidate: SEARCH_TTL },
+    });
+    if (!response.ok) return null;
+    json = await response.json();
+  } catch {
+    return null;
+  }
+
+  const results = (json as { results?: unknown[] } | null)?.results;
+  if (!Array.isArray(results) || results.length === 0) return null;
+
+  // Prefer an exact (normalized) title match over TMDB's raw relevance
+  // ranking, since a popular unrelated title can otherwise outrank a low-
+  // profile exact match.
+  const normalizedTarget = normalizeSearchTitle(title);
+  const exact = results.filter((raw) => {
+    const record = raw as Record<string, unknown>;
+    const candidateTitle = (
+      kind === "movie" ? record.title : record.name
+    ) as string | undefined;
+    return candidateTitle
+      ? normalizeSearchTitle(candidateTitle) === normalizedTarget
+      : false;
+  });
+  const best = (exact.length > 0 ? exact : results)[0] as
+    | Record<string, unknown>
+    | undefined;
+  const id = best?.id;
+  return typeof id === "number" ? String(id) : null;
 }
 
 type ProviderEntry = {

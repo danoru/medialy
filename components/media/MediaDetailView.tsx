@@ -1242,14 +1242,63 @@ function AvailabilitySection({ item }: { item: MediaDetailViewItem }) {
 }
 
 /** Map a platform name to a representative MUI icon by family. */
+/**
+ * Small monogram badge for a platform family. MUI ships only generic icons
+ * (no console/service brand marks), so recognized families get a compact,
+ * brand-colored initial instead — distinguishable at a glance without
+ * reproducing trademarked logo artwork. Unrecognized platforms fall back to
+ * a generic icon.
+ */
+function platformBadge(label: string, bg: string): ReactElement {
+  return (
+    <Box
+      component="span"
+      sx={{
+        width: 16,
+        height: 16,
+        borderRadius: "4px",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        bgcolor: bg,
+        color: "#fff",
+        fontSize: 9,
+        fontWeight: 800,
+        letterSpacing: "-0.2px",
+        lineHeight: 1,
+      }}
+    >
+      {label}
+    </Box>
+  );
+}
+
 function platformIcon(name: string): ReactElement {
   const value = name.toLowerCase();
+  if (value.includes("playstation") || /(^|[^a-z])ps\d?([^a-z]|$)/.test(value)) {
+    return platformBadge("PS", "#0072CE");
+  }
+  if (value.includes("xbox")) {
+    return platformBadge("X", "#107C10");
+  }
+  if (
+    value.includes("nintendo") ||
+    value.includes("switch") ||
+    value.includes("wii")
+  ) {
+    return platformBadge("N", "#E60012");
+  }
+  if (value.includes("steam")) {
+    return platformBadge("S", "#1B2838");
+  }
+  if (value.includes("sega")) {
+    return <SportsEsportsRoundedIcon />;
+  }
   if (
     value.includes("pc") ||
     value.includes("windows") ||
     value.includes("mac") ||
-    value.includes("linux") ||
-    value.includes("steam")
+    value.includes("linux")
   ) {
     return <ComputerRoundedIcon />;
   }
@@ -1260,17 +1309,6 @@ function platformIcon(name: string): ReactElement {
     value.includes("phone")
   ) {
     return <PhoneAndroidRoundedIcon />;
-  }
-  if (
-    value.includes("playstation") ||
-    value.includes("ps") ||
-    value.includes("xbox") ||
-    value.includes("nintendo") ||
-    value.includes("switch") ||
-    value.includes("wii") ||
-    value.includes("sega")
-  ) {
-    return <SportsEsportsRoundedIcon />;
   }
   if (value.includes("web") || value.includes("browser") || value.includes("tv")) {
     return <TvRoundedIcon />;
