@@ -4,9 +4,14 @@ import ArchiveRoundedIcon from "@mui/icons-material/ArchiveRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
 import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
+import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
+import DevicesOtherRoundedIcon from "@mui/icons-material/DevicesOtherRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import PhoneAndroidRoundedIcon from "@mui/icons-material/PhoneAndroidRounded";
+import SportsEsportsRoundedIcon from "@mui/icons-material/SportsEsportsRounded";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
+import TvRoundedIcon from "@mui/icons-material/TvRounded";
 import type { CreditRole, MediaStatus, MediaType } from "@prisma/client";
 import Image from "next/image";
 import Link from "next/link";
@@ -52,6 +57,7 @@ import type {
 import { availableStatuses, statusLabel } from "@/lib/status-labels";
 import { useState } from "react";
 import type { UserMediaFields } from "@/lib/db/user-media";
+import type { WatchAvailability } from "@/lib/tmdb";
 
 /**
  * Client-side view for the media detail page. Lives in a client component so
@@ -114,6 +120,10 @@ export type MediaDetailViewItem = UserMediaFields & {
   communityScore: number | null;
   communityRaterCount: number;
   matchSummary: MediaDetailMatchSummary | null;
+  /** Streaming availability for movies/TV (US, free + subscription). */
+  watchProviders?: WatchAvailability | null;
+  /** Playable platforms for video games (e.g. "PlayStation 5", "PC"). */
+  platforms?: string[];
 };
 
 export function MediaDetailView({
@@ -453,6 +463,9 @@ export function MediaDetailView({
             </Box>
           </Box>
         ) : null}
+
+        {/* WHERE TO WATCH (movies/TV) / PLATFORMS (games) --------------- */}
+        <AvailabilitySection item={item} />
 
         {/* CONNECTIONS (read-only) -------------------------------------- */}
         {relations.length > 0 || releaseEvents.length > 0 ? (
@@ -1154,6 +1167,117 @@ function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * "Where to watch" for movies/TV (live TMDB/JustWatch streaming availability)
+ * and "Platforms" for games (stored console/platform list). Renders nothing
+ * when there's no data, so titles without availability stay clean.
+ */
+function AvailabilitySection({ item }: { item: MediaDetailViewItem }) {
+  const isWatchable =
+    item.mediaType === "MOVIE" || item.mediaType === "TV_SHOW";
+
+  if (isWatchable) {
+    const providers = item.watchProviders?.stream ?? [];
+    if (providers.length === 0) return null;
+    const link = item.watchProviders?.link ?? null;
+    return (
+      <Box>
+        <SectionTitle>Where to watch</SectionTitle>
+        <Box sx={providerRowSx}>
+          {providers.map((provider) => {
+            const logo = (
+              <Box
+                component="img"
+                alt={provider.name}
+                src={provider.logoUrl}
+                title={provider.name}
+                sx={providerLogoSx}
+              />
+            );
+            return link ? (
+              <a
+                key={provider.name}
+                href={link}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={provider.name}
+                style={{ display: "inline-flex", lineHeight: 0 }}
+              >
+                {logo}
+              </a>
+            ) : (
+              <Box key={provider.name} sx={{ display: "inline-flex" }}>
+                {logo}
+              </Box>
+            );
+          })}
+        </Box>
+        <Typography sx={availabilityAttributionSx}>
+          US streaming &amp; subscription availability from JustWatch via TMDB.
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (item.mediaType === "VIDEO_GAME") {
+    const platforms = item.platforms ?? [];
+    if (platforms.length === 0) return null;
+    return (
+      <Box>
+        <SectionTitle>Platforms</SectionTitle>
+        <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
+          {platforms.map((platform) => (
+            <GlassChip
+              key={platform}
+              icon={platformIcon(platform)}
+              label={platform}
+            />
+          ))}
+        </Stack>
+      </Box>
+    );
+  }
+
+  return null;
+}
+
+/** Map a platform name to a representative MUI icon by family. */
+function platformIcon(name: string): ReactElement {
+  const value = name.toLowerCase();
+  if (
+    value.includes("pc") ||
+    value.includes("windows") ||
+    value.includes("mac") ||
+    value.includes("linux") ||
+    value.includes("steam")
+  ) {
+    return <ComputerRoundedIcon />;
+  }
+  if (
+    value.includes("ios") ||
+    value.includes("android") ||
+    value.includes("mobile") ||
+    value.includes("phone")
+  ) {
+    return <PhoneAndroidRoundedIcon />;
+  }
+  if (
+    value.includes("playstation") ||
+    value.includes("ps") ||
+    value.includes("xbox") ||
+    value.includes("nintendo") ||
+    value.includes("switch") ||
+    value.includes("wii") ||
+    value.includes("sega")
+  ) {
+    return <SportsEsportsRoundedIcon />;
+  }
+  if (value.includes("web") || value.includes("browser") || value.includes("tv")) {
+    return <TvRoundedIcon />;
+  }
+  return <DevicesOtherRoundedIcon />;
+}
+
 function SectionHeader({ title }: { title: string }) {
   return (
     <Typography component="h2" sx={panelTitleSx}>
@@ -1377,6 +1501,28 @@ const externalRatingsRowSx: SxProps<Theme> = {
     xs: "repeat(2, minmax(0, 1fr))",
     sm: "repeat(auto-fit, minmax(160px, 1fr))",
   },
+};
+
+const providerRowSx: SxProps<Theme> = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 1.2,
+  alignItems: "center",
+};
+
+const providerLogoSx: SxProps<Theme> = {
+  width: 44,
+  height: 44,
+  borderRadius: 1.5,
+  display: "block",
+  objectFit: "cover",
+  boxShadow: (theme) => `0 0 0 1px ${alpha(theme.palette.divider, 0.6)}`,
+};
+
+const availabilityAttributionSx: SxProps<Theme> = {
+  mt: 1,
+  color: "text.secondary",
+  fontSize: 12,
 };
 
 function externalLogoSx(source: string): SxProps<Theme> {

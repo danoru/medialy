@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { MediaType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { calculateCommunityAverage } from "@/lib/scoring/communityAverage";
 import { calculateConsensusScore } from "@/lib/scoring/consensus";
 import { getMediaItemMatch } from "@/lib/scoring/itemMatch";
+import { getWatchProviders, tmdbIdFromUrl, tmdbMediaKind } from "@/lib/tmdb";
 import {
   MediaDetailView,
   type MediaDetailViewItem,
@@ -14,6 +16,18 @@ import type {
   RelationView,
   ReleaseEventView,
 } from "@/components/media/MediaConnectionsPanel";
+
+/** Parse the stored `platformsJson` (a JSON string array) into names. */
+function parsePlatforms(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Server shell for the media detail page. All UI lives in
@@ -139,6 +153,23 @@ export default async function MediaDetailPage({
 
   const matchSummary = await getMediaItemMatch(rawItem.id, userId);
 
+  // "Where to watch" for movies/TV is fetched live (availability changes over
+  // time) and cached by lib/tmdb. Game platforms are static, so they are read
+  // from the persisted `platformsJson` column populated by metadata:backfill.
+  const isWatchable =
+    rawItem.mediaType === MediaType.MOVIE ||
+    rawItem.mediaType === MediaType.TV_SHOW;
+  const watchProviders = isWatchable
+    ? await getWatchProviders(
+        tmdbIdFromUrl(rawItem.externalUrl),
+        tmdbMediaKind(rawItem.externalUrl),
+      )
+    : null;
+  const platforms =
+    rawItem.mediaType === MediaType.VIDEO_GAME
+      ? parsePlatforms(rawItem.platformsJson)
+      : [];
+
   const merged = mergeUserMedia(rawItem);
   const item = {
     ...merged,
@@ -147,6 +178,8 @@ export default async function MediaDetailPage({
     consensusAgreement: consensus.agreementConfidence,
     consensusUsedSourceCount: consensus.usedSourceCount,
     matchSummary,
+    watchProviders,
+    platforms,
   } as unknown as MediaDetailViewItem;
 
   return (

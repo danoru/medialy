@@ -17,6 +17,7 @@ type MediaItemRow = {
   posterUrl: string | null;
   externalUrl: string | null;
   metadataJson: string | null;
+  platformsJson: string | null;
   genres: Array<{ genre: { name: string } }>;
   tags: Array<{ tag: { name: string } }>;
   credits: Array<{ role: string }>;
@@ -32,6 +33,7 @@ type MetadataMatch = {
   externalUrl: string | null;
   genres: string[];
   tags: string[];
+  platforms: string[];
   credits: CreditInput[];
   metadata: Record<string, unknown>;
 };
@@ -42,6 +44,7 @@ type BackfillUpdate = {
   posterUrl?: string;
   externalUrl?: string;
   metadataJson?: string;
+  platformsJson?: string;
 };
 
 const prisma = new PrismaClient();
@@ -69,6 +72,8 @@ async function main() {
         { genres: { none: {} } },
         { tags: { none: {} } },
         { credits: { none: {} } },
+        // Games that are otherwise complete but predate the platforms field.
+        { AND: [{ mediaType: MediaType.VIDEO_GAME }, { platformsJson: null }] },
       ],
     },
     include: {
@@ -92,6 +97,7 @@ async function main() {
       posterUrl: 0,
       externalUrl: 0,
       metadataJson: 0,
+      platformsJson: 0,
       genres: 0,
       tags: 0,
       credits: 0,
@@ -139,6 +145,9 @@ async function main() {
     }
 
     if (!args.dryRun) {
+      // Each upsert below is a round-trip to a remote (Neon) database, so a
+      // single item with many genres/tags/credits can exceed Prisma's default
+      // 5s interactive-transaction budget (P2028). Give it generous headroom.
       await prisma.$transaction(async (tx) => {
         if (Object.keys(update).length > 0) {
           await tx.mediaItem.update({
@@ -182,7 +191,7 @@ async function main() {
         if (credits.length > 0) {
           await replaceMediaCredits(tx, item.id, credits);
         }
-      });
+      }, { maxWait: 10_000, timeout: 60_000 });
     }
 
     stats.updated += 1;
@@ -191,6 +200,7 @@ async function main() {
     if (update.posterUrl) stats.fields.posterUrl += 1;
     if (update.externalUrl) stats.fields.externalUrl += 1;
     if (update.metadataJson) stats.fields.metadataJson += 1;
+    if (update.platformsJson) stats.fields.platformsJson += 1;
     if (genres.length > 0) stats.fields.genres += 1;
     if (tags.length > 0) stats.fields.tags += 1;
     if (credits.length > 0) stats.fields.credits += 1;
@@ -261,6 +271,9 @@ function buildBlankOnlyUpdate(
       payload: match.metadata,
     });
   }
+  if (isBlank(item.platformsJson) && match.platforms.length > 0) {
+    update.platformsJson = JSON.stringify(match.platforms);
+  }
 
   return update;
 }
@@ -327,6 +340,7 @@ async function findTmdb(
     externalUrl: `https://www.themoviedb.org/${endpoint}/${id}`,
     genres,
     tags: genres,
+    platforms: [],
     credits: tmdbCredits(record, endpoint),
     metadata: record,
   };
@@ -366,6 +380,7 @@ async function findTvmaze(item: MediaItemRow): Promise<MetadataMatch | null> {
     externalUrl: stringValue(show.url),
     genres,
     tags: genres,
+    platforms: [],
     credits: [],
     metadata: show,
   };
@@ -380,7 +395,7 @@ async function findIgdb(item: MediaItemRow): Promise<MetadataMatch | null> {
   let candidate: unknown = null;
   for (const query of titleSearchQueries(item.title)) {
     const body = [
-      "fields name,summary,url,first_release_date,genres.name,themes.name,involved_companies.developer,involved_companies.publisher,involved_companies.company.name,cover.url;",
+      "fields name,summary,url,first_release_date,genres.name,themes.name,involved_companies.developer,involved_companies.publisher,involved_companies.company.name,cover.url,platforms.name;",
       `search "${query.replaceAll('"', '\\"')}";`,
       "limit 10;",
     ].join(" ");
@@ -397,6 +412,9 @@ async function findIgdb(item: MediaItemRow): Promise<MetadataMatch | null> {
   const tags = arrayValue(game.themes)
     .map((theme) => stringValue(recordValue(theme).name))
     .filter(isPresent);
+  const platforms = arrayValue(game.platforms)
+    .map((platform) => stringValue(recordValue(platform).name))
+    .filter(isPresent);
 
   return {
     source: "igdb",
@@ -408,6 +426,7 @@ async function findIgdb(item: MediaItemRow): Promise<MetadataMatch | null> {
     externalUrl: stringValue(game.url),
     genres,
     tags: tags.length > 0 ? tags : genres,
+    platforms,
     credits: igdbCredits(game),
     metadata: game,
   };
@@ -439,6 +458,9 @@ async function findRawg(item: MediaItemRow): Promise<MetadataMatch | null> {
   const tags = arrayValue(game.tags)
     .map((tag) => stringValue(recordValue(tag).name))
     .filter(isPresent);
+  const platforms = arrayValue(game.platforms)
+    .map((entry) => stringValue(recordValue(recordValue(entry).platform).name))
+    .filter(isPresent);
 
   return {
     source: "rawg",
@@ -452,6 +474,7 @@ async function findRawg(item: MediaItemRow): Promise<MetadataMatch | null> {
       : null,
     genres,
     tags: tags.length > 0 ? tags : genres,
+    platforms,
     credits: [],
     metadata: game,
   };
