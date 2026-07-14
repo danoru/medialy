@@ -18,8 +18,16 @@
 # misc
 .DS_Store
 *.md
+!README.md
+!lib/scoring/README.md
 *.pem
 dev-server*.log
+
+# local scratch docs (build plans, todo lists, bug notes, etc.)
+docs/local/
+
+# Claude Code project config
+.claude/
 
 
 # debug
