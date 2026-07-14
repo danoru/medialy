@@ -76,6 +76,7 @@ export async function getDiscoverableUsers(viewerId: string, limit = 25) {
   return prisma.user.findMany({
     where: {
       id: { notIn: [viewerId, ...followingIds] },
+      isSystemAccount: false,
     },
     select: { id: true, displayName: true, image: true, avatarColor: true },
     orderBy: { displayName: "asc" },

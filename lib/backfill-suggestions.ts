@@ -21,7 +21,7 @@ import {
 } from "@/lib/edit-suggestions";
 
 const SYSTEM_USER_EMAIL = "metadata-backfill@medialy.local";
-const SYSTEM_USER_NAME = "Metadata Backfill";
+const SYSTEM_USER_NAME = "MedialyBot";
 
 /** Fields a backfill is allowed to propose. Everything else is left alone. */
 export type BackfillProposal = Partial<
@@ -40,17 +40,23 @@ export type BackfillProposal = Partial<
  * The bot account that authors backfill suggestions. `MediaEditSuggestion.userId`
  * is required and FK'd to `User`, and a CLI script has no signed-in user, so we
  * keep one non-admin system account. It has no Account/Session rows, so it can
- * never be logged into.
+ * never be logged into. `isSystemAccount` keeps it out of user-facing lists like
+ * "Discover users".
  */
 export async function getBackfillSuggestionUser() {
   return prisma.user.upsert({
     where: { email: SYSTEM_USER_EMAIL },
-    update: {},
+    update: {
+      displayName: SYSTEM_USER_NAME,
+      name: SYSTEM_USER_NAME,
+      isSystemAccount: true,
+    },
     create: {
       email: SYSTEM_USER_EMAIL,
       displayName: SYSTEM_USER_NAME,
       name: SYSTEM_USER_NAME,
       isAdmin: false,
+      isSystemAccount: true,
     },
     select: { id: true },
   });
