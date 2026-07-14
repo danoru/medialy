@@ -1,6 +1,16 @@
 import { MediaType, PrismaClient } from "@prisma/client";
 import "dotenv/config";
 import { replaceMediaCredits, type CreditInput } from "@/lib/credits";
+import {
+  fileBackfillSuggestion,
+  getBackfillSuggestionUser,
+  type BackfillProposal,
+} from "@/lib/backfill-suggestions";
+import {
+  canonicalTagDefinitionForName,
+  isTagApplicableForMediaType,
+  splitGenresAndTags,
+} from "@/lib/taxonomy";
 
 type Args = {
   dryRun: boolean;
@@ -10,6 +20,10 @@ type Args = {
    * "needs update" filter so the item is force-processed even if every field
    * is already populated — per-field writes still only happen when blank. */
   title: string | null;
+  /** Descriptions from a source almost always differ in wording from a curated
+   * one, so conflicting descriptions are counted but not queued for review by
+   * default. Opt in when you actually want to triage them. */
+  suggestDescriptions: boolean;
 };
 
 type MediaItemRow = {
@@ -104,6 +118,12 @@ async function main() {
     updated: 0,
     noMatch: 0,
     noUsefulData: 0,
+    /** Conflicts routed to /admin/edits rather than written. */
+    suggestionsFiled: 0,
+    /** Conflicts already queued from an earlier run; not re-filed. */
+    suggestionsDuplicate: 0,
+    /** Differing descriptions seen while --suggest-descriptions was off. */
+    descriptionConflicts: 0,
     fields: {
       description: 0,
       releaseDate: 0,
@@ -142,20 +162,68 @@ async function main() {
     stats.sources[match.source] += 1;
 
     const update = buildBlankOnlyUpdate(item, match);
-    const genres = item.genres.length === 0 ? normalizeNames(match.genres) : [];
-    const tags =
-      item.tags.length === 0 ? normalizeNames(match.tags).slice(0, 8) : [];
+    const taxonomy = resolveTaxonomy(item, match);
     const credits = item.credits.length === 0 ? match.credits : [];
+    const proposal = buildProposal(item, match, taxonomy, args);
+
+    // Anything the source wants to change on a field the item already fills is
+    // filed for review instead of written. Never overwrite curated data.
+    if (Object.keys(proposal).length > 0) {
+      if (args.dryRun) {
+        stats.suggestionsFiled += 1;
+        console.log(
+          JSON.stringify({
+            dryRun: true,
+            status: "would_suggest",
+            title: item.title,
+            mediaType: item.mediaType,
+            source: match.source,
+            proposal,
+          }),
+        );
+      } else {
+        const suggestionUserId = await getSuggestionUserId();
+        const result = await fileBackfillSuggestion({
+          mediaId: item.id,
+          userId: suggestionUserId,
+          proposal,
+          note: `Proposed by metadata:backfill from ${match.source} (${match.sourceId}).`,
+        });
+
+        if (result.status === "filed") {
+          stats.suggestionsFiled += 1;
+          console.log(
+            JSON.stringify({
+              status: "suggested",
+              title: item.title,
+              mediaType: item.mediaType,
+              source: match.source,
+              suggestionId: result.suggestionId,
+              fields: result.fields,
+            }),
+          );
+        } else if (result.status === "duplicate") {
+          stats.suggestionsDuplicate += 1;
+        }
+      }
+    }
+
+    if (taxonomy.descriptionConflict) stats.descriptionConflicts += 1;
+
+    const { genresToWrite, tagsToWrite } = taxonomy;
 
     if (
       Object.keys(update).length === 0 &&
-      genres.length === 0 &&
-      tags.length === 0 &&
+      genresToWrite.length === 0 &&
+      tagsToWrite.length === 0 &&
       credits.length === 0
     ) {
       stats.noUsefulData += 1;
       continue;
     }
+
+    const genres = genresToWrite;
+    const tags = tagsToWrite;
 
     if (!args.dryRun) {
       // Each upsert below is a round-trip to a remote (Neon) database, so a
@@ -254,6 +322,126 @@ async function findMetadata(item: MediaItemRow): Promise<MetadataMatch | null> {
   }
 
   return null;
+}
+
+let cachedSuggestionUserId: string | null = null;
+
+async function getSuggestionUserId() {
+  if (!cachedSuggestionUserId) {
+    cachedSuggestionUserId = (await getBackfillSuggestionUser()).id;
+  }
+  return cachedSuggestionUserId;
+}
+
+type ResolvedTaxonomy = {
+  /** Canonical genres from the source, capped at MAX_GENRES_PER_ITEM. */
+  sourceGenres: string[];
+  /** Canonical tags from the source, valid for this media type. */
+  sourceTags: string[];
+  /** Only non-empty when the item has no genres at all. */
+  genresToWrite: string[];
+  /** Only non-empty when the item has no tags at all. */
+  tagsToWrite: string[];
+  descriptionConflict: boolean;
+};
+
+/**
+ * Normalize a source's taxonomy and decide what may be written directly.
+ *
+ * Sources hand us one flat genre list (TMDB's `tags` *is* its genre list), so we
+ * run it through `splitGenresAndTags`: real genres land in genres (canonical,
+ * capped at 3) and everything else falls through to tags. Tags are then kept
+ * only if they're canonical and valid for this media type — which is what stops
+ * bare genre names like "Horror" from being written back as THEME tags.
+ */
+function resolveTaxonomy(
+  item: MediaItemRow,
+  match: MetadataMatch,
+): ResolvedTaxonomy {
+  const { genres: sourceGenres, tags: splitTags } = splitGenresAndTags(
+    item.mediaType,
+    [...match.genres, ...match.tags],
+  );
+
+  const sourceTags = splitTags.filter(
+    (name) =>
+      canonicalTagDefinitionForName(name) != null &&
+      isTagApplicableForMediaType(name, item.mediaType),
+  );
+
+  return {
+    sourceGenres,
+    sourceTags,
+    genresToWrite: item.genres.length === 0 ? sourceGenres : [],
+    tagsToWrite: item.tags.length === 0 ? sourceTags : [],
+    descriptionConflict:
+      !isBlank(item.description) &&
+      Boolean(match.description) &&
+      item.description !== match.description,
+  };
+}
+
+/**
+ * Build the set of fields the source wants to change on an item that already
+ * has data there. These become a suggestion; they are never written.
+ *
+ * Genres are proposed as the source's canonical set (so an over-cap item can be
+ * brought back to three), while tags are proposed as a *union* with what's
+ * already there — a tag proposal must never be able to drop curated tags.
+ */
+function buildProposal(
+  item: MediaItemRow,
+  match: MetadataMatch,
+  taxonomy: ResolvedTaxonomy,
+  args: Args,
+): BackfillProposal {
+  const proposal: BackfillProposal = {};
+
+  const currentGenres = item.genres.map((entry) => entry.genre.name);
+  const currentTags = item.tags.map((entry) => entry.tag.name);
+
+  if (
+    currentGenres.length > 0 &&
+    taxonomy.sourceGenres.length > 0 &&
+    !sameSet(currentGenres, taxonomy.sourceGenres)
+  ) {
+    proposal.genres = [...taxonomy.sourceGenres].sort();
+  }
+
+  if (currentTags.length > 0 && taxonomy.sourceTags.length > 0) {
+    const union = [...new Set([...currentTags, ...taxonomy.sourceTags])];
+    if (!sameSet(currentTags, union)) {
+      proposal.tags = union.sort();
+    }
+  }
+
+  if (
+    item.releaseDate &&
+    match.releaseDate &&
+    item.releaseDate.getTime() !== match.releaseDate.getTime()
+  ) {
+    proposal.releaseDate = match.releaseDate.toISOString().slice(0, 10);
+  }
+
+  if (
+    !isBlank(item.externalUrl) &&
+    match.externalUrl &&
+    item.externalUrl !== match.externalUrl
+  ) {
+    proposal.externalUrl = match.externalUrl;
+  }
+
+  if (args.suggestDescriptions && taxonomy.descriptionConflict) {
+    proposal.description = match.description ?? "";
+  }
+
+  return proposal;
+}
+
+function sameSet(first: string[], second: string[]) {
+  if (first.length !== second.length) return false;
+  const left = new Set(first);
+  return second.every((value) => left.has(value));
 }
 
 function buildBlankOnlyUpdate(
@@ -666,6 +854,7 @@ function parseArgs(argv: string[]): Args {
     limit,
     types,
     title: valueFor(argv, "--title") ?? null,
+    suggestDescriptions: argv.includes("--suggest-descriptions"),
   };
 }
 
@@ -709,15 +898,6 @@ function valueFor(argv: string[], key: string) {
   return index >= 0 ? argv[index + 1] : undefined;
 }
 
-function normalizeNames(values: string[]) {
-  return [
-    ...new Set(
-      values
-        .map((value) => normalizeName(value))
-        .filter((value) => value.length > 0),
-    ),
-  ];
-}
 
 function normalizeName(value: string) {
   return value

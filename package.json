@@ -22,6 +22,7 @@
     "ratings:recompute": "tsx scripts/recompute-ratings.ts",
     "tags:cleanup:dry-run": "tsx scripts/cleanup-tags.ts",
     "tags:cleanup": "tsx scripts/cleanup-tags.ts --apply",
+    "taxonomy:report": "tsx scripts/report-taxonomy-issues.ts",
     "candidates:fetch": "tsx scripts/fetch-upcoming.ts",
     "upcoming:fetch": "tsx scripts/fetch-upcoming.ts",
     "test": "vitest run",
