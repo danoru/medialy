@@ -224,7 +224,7 @@ function SuggestionDiff({
               >
                 <Typography
                   color="text.secondary"
-                  sx={{ fontSize: 11, fontWeight: 600 }}
+                  sx={{ fontSize: 14, fontWeight: 600 }}
                 >
                   Before
                 </Typography>
@@ -245,7 +245,7 @@ function SuggestionDiff({
             >
               <Typography
                 color="text.secondary"
-                sx={{ fontSize: 11, fontWeight: 600 }}
+                sx={{ fontSize: 14, fontWeight: 600 }}
               >
                 {isAddition ? "Proposed" : "After"}
               </Typography>
