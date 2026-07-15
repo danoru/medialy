@@ -6,6 +6,7 @@ import {
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
   replaceManualExternalRatings,
+  replaceMediaConnections,
   upsertMediaRelations,
 } from "@/lib/media";
 import type { ExternalRatingSource } from "@prisma/client";
@@ -15,7 +16,11 @@ import {
 } from "@/lib/scoring/recompute";
 import { requireAdmin } from "@/lib/user";
 import { queueToast } from "@/lib/toast";
-import type { MediaFormInput } from "@/lib/types";
+import type {
+  MediaFormInput,
+  MediaRelationInput,
+  MediaReleaseEventInput,
+} from "@/lib/types";
 import type { EditSuggestionSnapshot } from "@/lib/edit-suggestions";
 
 function snapshotToFormInput(snapshot: EditSuggestionSnapshot): MediaFormInput {
@@ -23,13 +28,12 @@ function snapshotToFormInput(snapshot: EditSuggestionSnapshot): MediaFormInput {
     title: snapshot.title,
     originalTitle: snapshot.originalTitle,
     mediaType: snapshot.mediaType as MediaFormInput["mediaType"],
-    status: "UNTRACKED",
     description: snapshot.description,
     releaseDate: snapshot.releaseDate ? new Date(snapshot.releaseDate) : null,
     externalUrl: snapshot.externalUrl,
     metadataJson: snapshot.metadataJson,
-    personalRating: null,
-    isFavorite: false,
+    // No per-user fields: a suggestion is shared-catalog data. Approving one
+    // must never touch anybody's rating, status, or favorites.
     genres: snapshot.genres,
     tags: snapshot.tags,
     credits: snapshot.credits.map((credit) => ({
@@ -41,6 +45,20 @@ function snapshotToFormInput(snapshot: EditSuggestionSnapshot): MediaFormInput {
       source: rating.source as ExternalRatingSource,
       score: rating.score,
       scale: rating.scale,
+    })),
+    // Older suggestions predate connections being part of the form. `undefined`
+    // there means "don't touch them", which is the right call — an old
+    // suggestion never intended to clear an item's links.
+    relations: snapshot.relations?.map((relation) => ({
+      kind: relation.kind as MediaRelationInput["kind"],
+      direction: relation.direction,
+      otherId: relation.otherId,
+      otherTitle: relation.otherTitle,
+    })),
+    releaseEvents: snapshot.releaseEvents?.map((event) => ({
+      kind: event.kind as MediaReleaseEventInput["kind"],
+      date: event.date,
+      title: event.title,
     })),
   };
 }
@@ -82,6 +100,7 @@ export async function approveMediaEditSuggestion(id: string) {
     }
 
     await upsertMediaRelations(mediaId, input);
+    await replaceMediaConnections(mediaId, input);
     await replaceManualExternalRatings(mediaId, input);
     await recomputeConsensusScore(mediaId);
   } else {
@@ -107,6 +126,7 @@ export async function approveMediaEditSuggestion(id: string) {
     }
 
     await upsertMediaRelations(created.id, input);
+    await replaceMediaConnections(created.id, input);
     await replaceManualExternalRatings(created.id, input);
     await recomputeMediaScores(created.id, suggestion.userId);
   }

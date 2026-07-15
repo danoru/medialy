@@ -6,6 +6,8 @@ import type {
   ImportSourceType,
   MediaStatus,
   MediaType,
+  RelationKind,
+  ReleaseKind,
   TagStatus,
 } from "@prisma/client";
 import type { MedialyMatchExplanation } from "@/lib/scoring/medialyMatch";
@@ -55,17 +57,29 @@ export type MediaItemDTO = {
   externalRatings?: ExternalRatingDTO[];
 };
 
+/**
+ * A proposed shared-catalog item, plus (optionally) the submitter's own
+ * `UserMedia` fields.
+ *
+ * The per-user fields are optional because only the CSV/XLSX import path
+ * supplies them — a Letterboxd export legitimately carries your rating and
+ * watched status. The metadata *form* no longer collects them at all, so they
+ * arrive `undefined` there and `userMediaMutationData` skips them.
+ */
 export type MediaFormInput = {
   title: string;
   originalTitle?: string;
   mediaType: MediaType;
-  status: MediaStatus;
+  /** Import-only. The edit/create form does not collect this. */
+  status?: MediaStatus;
   description?: string;
   releaseDate?: Date | null;
   externalUrl?: string;
   metadataJson?: string;
+  /** Import-only. The edit/create form does not collect this. */
   personalRating?: number | null;
-  isFavorite: boolean;
+  /** Import-only. The edit/create form does not collect this. */
+  isFavorite?: boolean;
   genres: string[];
   tags: string[];
   credits?: Array<{
@@ -74,6 +88,31 @@ export type MediaFormInput = {
     names: string[];
   }>;
   externalRatings?: ExternalRatingInput[];
+  /**
+   * The complete desired set of relations / re-releases for this item.
+   *
+   * `undefined` means "this caller doesn't manage connections" (CSV import) and
+   * they're left untouched. An empty array means "there are none" and any
+   * existing rows are removed. The distinction matters — conflating them would
+   * let an import silently wipe curated links.
+   */
+  relations?: MediaRelationInput[];
+  releaseEvents?: MediaReleaseEventInput[];
+};
+
+export type MediaRelationInput = {
+  kind: RelationKind;
+  /** "forward" = this item is the `from` side of the edge. */
+  direction: "forward" | "inverse";
+  otherId: string;
+  otherTitle: string;
+};
+
+export type MediaReleaseEventInput = {
+  kind: ReleaseKind;
+  /** ISO timestamp. */
+  date: string;
+  title: string | null;
 };
 
 export type PairwiseComparisonInput = {

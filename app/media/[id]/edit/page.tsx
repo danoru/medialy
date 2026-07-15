@@ -1,11 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Card, CardContent, Stack, Typography } from "@mui/material";
+import { Card, CardContent, Stack } from "@mui/material";
 import {
-  addMediaRelation,
-  addReleaseEvent,
-  removeMediaRelation,
-  removeReleaseEvent,
   searchMediaItemsForRelation,
   updateMediaItem,
 } from "@/app/media/actions";
@@ -16,7 +12,7 @@ import {
 } from "@/components/media/MediaConnectionsPanel";
 import { getMediaItemDTO } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUserId } from "@/lib/user";
+import { getCurrentUser } from "@/lib/user";
 
 type PageParams = Promise<{ id: string }>;
 
@@ -38,7 +34,7 @@ export default async function EditMediaPage({
 }) {
   const { id } = await params;
   const otherSelect = { id: true, title: true, mediaType: true } as const;
-  const [item, tags, userId, relationsFrom, relationsTo, releaseEvents] =
+  const [item, tags, user, relationsFrom, relationsTo, releaseEvents] =
     await Promise.all([
       getMediaItemDTO(id),
       prisma.tag.findMany({
@@ -46,7 +42,7 @@ export default async function EditMediaPage({
         orderBy: [{ status: "asc" }, { name: "asc" }],
         select: { mediaTypesJson: true, name: true, status: true },
       }),
-      getCurrentUserId(),
+      getCurrentUser(),
       prisma.mediaRelation.findMany({
         where: { fromId: id },
         include: { to: { select: otherSelect } },
@@ -86,37 +82,28 @@ export default async function EditMediaPage({
     title: event.title,
   }));
 
+  // One card, one form, one Save button. Relations and re-releases are staged
+  // inside the same form rather than saving themselves on click.
   return (
     <Stack spacing={3}>
       <Card variant="outlined">
         <CardContent>
           <MediaForm
             action={updateMediaItem.bind(null, id)}
+            connections={
+              <MediaConnectionsPanel
+                canEdit={Boolean(user)}
+                events={events}
+                fallbackTitle={item.title}
+                relations={relations}
+                searchAction={searchMediaItemsForRelation.bind(null, id)}
+              />
+            }
+            isAdmin={user?.isAdmin ?? false}
             item={item}
             submitLabel="Save changes"
             tagOptions={tags}
           />
-        </CardContent>
-      </Card>
-
-      <Card variant="outlined">
-        <CardContent>
-          <Stack spacing={2.5}>
-            <Typography sx={{ fontWeight: 700 }} variant="h6">
-              Connections
-            </Typography>
-            <MediaConnectionsPanel
-              addEventAction={addReleaseEvent.bind(null, id)}
-              addRelationAction={addMediaRelation.bind(null, id)}
-              canEdit={Boolean(userId)}
-              events={events}
-              fallbackTitle={item.title}
-              relations={relations}
-              removeEventAction={removeReleaseEvent.bind(null, id)}
-              removeRelationAction={removeMediaRelation.bind(null, id)}
-              searchAction={searchMediaItemsForRelation.bind(null, id)}
-            />
-          </Stack>
         </CardContent>
       </Card>
     </Stack>

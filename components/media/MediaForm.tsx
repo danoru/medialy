@@ -4,13 +4,13 @@ import {
   Alert,
   Autocomplete,
   Button,
-  Checkbox,
-  FormControlLabel,
+  Divider,
   Grid,
   MenuItem,
   Snackbar,
   Stack,
   TextField,
+  Typography,
 } from "@mui/material";
 import { useActionState, useMemo, useState } from "react";
 import { type MediaType, type TagStatus } from "@prisma/client";
@@ -26,7 +26,6 @@ import {
   type ManualExternalRatingDef,
 } from "@/lib/external-ratings";
 import { formatMediaType } from "@/lib/format";
-import { availableStatuses, statusLabel } from "@/lib/status-labels";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import {
   getGenresForMediaType,
@@ -52,8 +51,20 @@ const initialActionState: MediaFormActionState = {
   submittedAt: 0,
 };
 
+/**
+ * The shared-catalog metadata form.
+ *
+ * Deliberately contains *no* per-user fields. It used to carry `personalRating`,
+ * `status` and `isFavorite` alongside the catalog data, which meant a non-admin
+ * who typed a rating here lost it silently: `updateMediaItem` writes an edit
+ * suggestion and returns before `upsertUserMedia` runs, and the suggestion
+ * snapshot has nowhere to put a personal score. Rating now lives only on the
+ * stars (see `StarRating`), where it writes straight to `UserMedia`.
+ */
 export function MediaForm({
   action,
+  connections,
+  isAdmin = false,
   item,
   submitLabel,
   tagOptions = [],
@@ -62,6 +73,12 @@ export function MediaForm({
     state: MediaFormActionState,
     formData: FormData,
   ) => MediaFormActionState | Promise<MediaFormActionState>;
+  /**
+   * Relations / re-releases editor, rendered *inside* this form so its staged
+   * hidden inputs are submitted by the same "Save changes" button.
+   */
+  connections?: React.ReactNode;
+  isAdmin?: boolean;
   item?: MediaItemDTO;
   submitLabel: string;
   tagOptions?: TagOption[];
@@ -180,31 +197,6 @@ export function MediaForm({
               type="date"
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <TextField
-              defaultValue={item?.status ?? "UNTRACKED"}
-              fullWidth
-              label="Status"
-              name="status"
-              select
-            >
-              {availableStatuses(item?.mediaType).map((status) => (
-                <MenuItem key={status} value={status}>
-                  {statusLabel(status, item?.mediaType)}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <TextField
-              defaultValue={item?.personalRating ?? ""}
-              fullWidth
-              label="Personal rating"
-              name="personalRating"
-              slotProps={{ htmlInput: { min: 0, max: 10, step: 0.1 } }}
-              type="number"
-            />
-          </Grid>
           {CREDIT_ROLES_BY_MEDIA_TYPE[mediaType].map((role) => (
             <Grid key={role} size={{ xs: 12, md: 6 }}>
               <TextField
@@ -305,29 +297,43 @@ export function MediaForm({
               name="description"
             />
           </Grid>
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              defaultValue={item?.metadataJson ?? ""}
-              fullWidth
-              label="Metadata JSON"
-              minRows={3}
-              multiline
+          {/* Raw JSON is a maintenance hatch, not something to put in front of
+              someone adding a film they just watched. Non-admins don't see the
+              field — but it still round-trips as a hidden input, because
+              submitting it empty would wipe curated metadata on approval. */}
+          {isAdmin ? (
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                defaultValue={item?.metadataJson ?? ""}
+                fullWidth
+                label="Metadata JSON"
+                minRows={3}
+                multiline
+                name="metadataJson"
+              />
+            </Grid>
+          ) : (
+            <input
               name="metadataJson"
+              type="hidden"
+              value={item?.metadataJson ?? ""}
             />
-          </Grid>
+          )}
         </Grid>
-        <FormControlLabel
-          control={
-            <Checkbox
-              defaultChecked={item?.isFavorite ?? false}
-              name="isFavorite"
-            />
-          }
-          label="Favorite"
-        />
+
+        {connections ? (
+          <>
+            <Divider />
+            <Typography sx={{ fontWeight: 700 }} variant="h6">
+              Connections
+            </Typography>
+            {connections}
+          </>
+        ) : null}
+
         <Button
           disabled={isPending}
-          sx={{ alignSelf: "flex-start" }}
+          sx={{ alignSelf: "flex-start", minHeight: 44 }}
           type="submit"
           variant="contained"
         >

@@ -16,7 +16,7 @@ import {
 import type { SxProps, Theme } from "@mui/material/styles";
 import Link from "next/link";
 import type { MediaType, RelationKind, ReleaseKind } from "@prisma/client";
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { formatMediaType } from "@/lib/format";
 import {
   RELATION_FORWARD_LABEL,
@@ -44,17 +44,21 @@ export type ReleaseEventView = {
 
 type SearchOption = { id: string; title: string; mediaType: MediaType };
 
-type BoundFormAction = (formData: FormData) => void | Promise<void>;
-
+/**
+ * Relations and re-releases, staged as part of the parent metadata form.
+ *
+ * These used to be self-submitting forms with their own "Add link" / "Add"
+ * buttons, which meant editing a title *and* its sequel *and* a re-release took
+ * three separate saves — and, for a non-admin, the connections wrote straight to
+ * the shared catalog while the metadata went to review. Now everything is
+ * staged in local state, serialized into hidden inputs, and committed by the
+ * form's single "Save changes" button, through the same review pipeline.
+ */
 export function MediaConnectionsPanel({
   canEdit,
   fallbackTitle,
-  relations,
-  events,
-  addRelationAction,
-  removeRelationAction,
-  addEventAction,
-  removeEventAction,
+  relations: initialRelations,
+  events: initialEvents,
   searchAction,
 }: {
   canEdit: boolean;
@@ -62,32 +66,61 @@ export function MediaConnectionsPanel({
   fallbackTitle: string;
   relations: RelationView[];
   events: ReleaseEventView[];
-  addRelationAction: BoundFormAction;
-  removeRelationAction: (relationId: string) => void | Promise<void>;
-  addEventAction: BoundFormAction;
-  removeEventAction: (eventId: string) => void | Promise<void>;
   searchAction: (query: string) => Promise<SearchOption[]>;
 }) {
+  const [relations, setRelations] = useState<RelationView[]>(initialRelations);
+  const [events, setEvents] = useState<ReleaseEventView[]>(initialEvents);
+
   const hasAny = relations.length > 0 || events.length > 0;
-  // Nothing to show and nothing to add (anonymous viewer) — render nothing.
   if (!hasAny && !canEdit) return null;
 
   return (
     <Stack spacing={3}>
+      {/* The staged sets, handed to the parent <form> on submit. Always present
+          (even when empty) so the server can tell "no connections" apart from
+          "this caller doesn't manage connections" (e.g. CSV import). */}
+      <input
+        name="relationsJson"
+        type="hidden"
+        value={JSON.stringify(
+          relations.map((relation) => ({
+            kind: relation.kind,
+            direction: relation.direction,
+            otherId: relation.other.id,
+            otherTitle: relation.other.title,
+          })),
+        )}
+      />
+      <input
+        name="releaseEventsJson"
+        type="hidden"
+        value={JSON.stringify(
+          events.map((event) => ({
+            kind: event.kind,
+            date: event.date,
+            title: event.title,
+          })),
+        )}
+      />
+
       <RelationsSection
-        addAction={addRelationAction}
         canEdit={canEdit}
+        onAdd={(relation) => setRelations((current) => [...current, relation])}
+        onRemove={(id) =>
+          setRelations((current) => current.filter((r) => r.id !== id))
+        }
         relations={relations}
-        removeAction={removeRelationAction}
         searchAction={searchAction}
       />
       <Divider />
       <ReleaseEventsSection
-        addAction={addEventAction}
         canEdit={canEdit}
         events={events}
         fallbackTitle={fallbackTitle}
-        removeAction={removeEventAction}
+        onAdd={(event) => setEvents((current) => [...current, event])}
+        onRemove={(id) =>
+          setEvents((current) => current.filter((e) => e.id !== id))
+        }
       />
     </Stack>
   );
@@ -111,20 +144,18 @@ function EmptyRow({ children }: { children: React.ReactNode }) {
 }
 
 function RelationsSection({
-  addAction,
   canEdit,
+  onAdd,
+  onRemove,
   relations,
-  removeAction,
   searchAction,
 }: {
-  addAction: BoundFormAction;
   canEdit: boolean;
+  onAdd: (relation: RelationView) => void;
+  onRemove: (id: string) => void;
   relations: RelationView[];
-  removeAction: (relationId: string) => void | Promise<void>;
   searchAction: (query: string) => Promise<SearchOption[]>;
 }) {
-  const [isPending, startTransition] = useTransition();
-
   return (
     <Stack spacing={1.5}>
       <SectionHeading>Related titles</SectionHeading>
@@ -157,12 +188,9 @@ function RelationsSection({
                 />
                 {canEdit ? (
                   <IconButton
-                    aria-label="Remove link"
-                    onClick={() =>
-                      startTransition(() => removeAction(relation.id))
-                    }
-                    size="small"
-                    sx={{ ml: "auto" }}
+                    aria-label={`Remove link to ${relation.other.title}`}
+                    onClick={() => onRemove(relation.id)}
+                    sx={{ height: 44, ml: "auto", width: 44 }}
                   >
                     <CloseRoundedIcon fontSize="small" />
                   </IconButton>
@@ -175,23 +203,17 @@ function RelationsSection({
         <EmptyRow>No related titles yet.</EmptyRow>
       )}
       {canEdit ? (
-        <AddRelationForm
-          addAction={addAction}
-          disabled={isPending}
-          searchAction={searchAction}
-        />
+        <AddRelationRow onAdd={onAdd} searchAction={searchAction} />
       ) : null}
     </Stack>
   );
 }
 
-function AddRelationForm({
-  addAction,
-  disabled,
+function AddRelationRow({
+  onAdd,
   searchAction,
 }: {
-  addAction: BoundFormAction;
-  disabled: boolean;
+  onAdd: (relation: RelationView) => void;
   searchAction: (query: string) => Promise<SearchOption[]>;
 }) {
   // Start blank so a relationship is a deliberate choice — never defaults to a
@@ -215,20 +237,22 @@ function AddRelationForm({
     });
   };
 
+  const stage = () => {
+    if (!target || !kind) return;
+    onAdd({
+      // Local-only id: this row doesn't exist in the DB until the form saves.
+      id: `new:${kind}:${target.id}`,
+      kind,
+      direction: "forward",
+      other: target,
+    });
+    setTarget(null);
+    setKind("");
+    setOptions([]);
+  };
+
   return (
-    <Box
-      action={(formData: FormData) => {
-        if (!target || !kind) return;
-        formData.set("kind", kind);
-        formData.set("toId", target.id);
-        addAction(formData);
-        setTarget(null);
-        setKind("");
-        setOptions([]);
-      }}
-      component="form"
-      sx={addFormSx}
-    >
+    <Box sx={addFormSx}>
       <Typography sx={addFormCaptionSx} variant="labelMd">
         Add a related title
       </Typography>
@@ -271,11 +295,13 @@ function AddRelationForm({
           sx={{ flex: 1, minWidth: 220 }}
           value={target}
         />
+        {/* type="button": staging must not submit the parent form. */}
         <Button
-          disabled={disabled || !target || !kind}
-          size="small"
-          type="submit"
-          variant="contained"
+          disabled={!target || !kind}
+          onClick={stage}
+          sx={{ minHeight: 44 }}
+          type="button"
+          variant="outlined"
         >
           Add link
         </Button>
@@ -285,20 +311,18 @@ function AddRelationForm({
 }
 
 function ReleaseEventsSection({
-  addAction,
   canEdit,
   events,
   fallbackTitle,
-  removeAction,
+  onAdd,
+  onRemove,
 }: {
-  addAction: BoundFormAction;
   canEdit: boolean;
   events: ReleaseEventView[];
   fallbackTitle: string;
-  removeAction: (eventId: string) => void | Promise<void>;
+  onAdd: (event: ReleaseEventView) => void;
+  onRemove: (id: string) => void;
 }) {
-  const [isPending, startTransition] = useTransition();
-
   return (
     <Stack spacing={1.5}>
       <SectionHeading>Re-releases &amp; editions</SectionHeading>
@@ -324,9 +348,9 @@ function ReleaseEventsSection({
               </Typography>
               {canEdit ? (
                 <IconButton
-                  aria-label="Remove re-release"
-                  onClick={() => startTransition(() => removeAction(event.id))}
-                  size="small"
+                  aria-label={`Remove ${RELEASE_KIND_LABEL[event.kind]}`}
+                  onClick={() => onRemove(event.id)}
+                  sx={{ height: 44, width: 44 }}
                 >
                   <CloseRoundedIcon fontSize="small" />
                 </IconButton>
@@ -337,36 +361,36 @@ function ReleaseEventsSection({
       ) : (
         <EmptyRow>No remasters, ports, or re-releases recorded.</EmptyRow>
       )}
-      {canEdit ? (
-        <AddReleaseEventForm addAction={addAction} disabled={isPending} />
-      ) : null}
+      {canEdit ? <AddReleaseEventRow onAdd={onAdd} /> : null}
     </Stack>
   );
 }
 
-function AddReleaseEventForm({
-  addAction,
-  disabled,
+function AddReleaseEventRow({
+  onAdd,
 }: {
-  addAction: BoundFormAction;
-  disabled: boolean;
+  onAdd: (event: ReleaseEventView) => void;
 }) {
-  const formRef = useRef<HTMLFormElement>(null);
   // Blank by default — the type must be chosen explicitly before this can save.
   const [kind, setKind] = useState<ReleaseKind | "">("");
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState("");
+
+  const stage = () => {
+    if (!kind || !date) return;
+    onAdd({
+      id: `new:${kind}:${date}:${title}`,
+      kind,
+      date: new Date(`${date}T00:00:00`).toISOString(),
+      title: title.trim() || null,
+    });
+    setKind("");
+    setTitle("");
+    setDate("");
+  };
 
   return (
-    <Box
-      action={(formData: FormData) => {
-        if (!kind) return;
-        addAction(formData);
-        formRef.current?.reset();
-        setKind("");
-      }}
-      component="form"
-      ref={formRef}
-      sx={addFormSx}
-    >
+    <Box sx={addFormSx}>
       <Typography sx={addFormCaptionSx} variant="labelMd">
         Add a re-release
       </Typography>
@@ -377,7 +401,6 @@ function AddReleaseEventForm({
       >
         <TextField
           label="Type"
-          name="kind"
           onChange={(event) => setKind(event.target.value as ReleaseKind)}
           select
           size="small"
@@ -395,24 +418,26 @@ function AddReleaseEventForm({
         </TextField>
         <TextField
           label="Name (optional)"
-          name="title"
+          onChange={(event) => setTitle(event.target.value)}
           placeholder="e.g. Anniversary, Switch 2"
           size="small"
           sx={{ flex: 1, minWidth: 180 }}
+          value={title}
         />
         <TextField
           label="Release date"
-          name="date"
-          required
+          onChange={(event) => setDate(event.target.value)}
           size="small"
           slotProps={{ inputLabel: { shrink: true } }}
           type="date"
+          value={date}
         />
         <Button
-          disabled={disabled || !kind}
-          size="small"
-          type="submit"
-          variant="contained"
+          disabled={!kind || !date}
+          onClick={stage}
+          sx={{ minHeight: 44 }}
+          type="button"
+          variant="outlined"
         >
           Add
         </Button>
@@ -426,7 +451,7 @@ const rowSx: SxProps<Theme> = {
   bgcolor: "surface.1",
   border: "1px solid",
   borderColor: "border.subtle",
-  borderRadius: 2,
+  borderRadius: 1,
   display: "flex",
   gap: 1,
   px: 1.5,
@@ -434,19 +459,18 @@ const rowSx: SxProps<Theme> = {
 };
 
 const emptyRowSx: SxProps<Theme> = {
-  bgcolor: "surface.1",
-  border: "1px solid",
+  border: "1px dashed",
   borderColor: "border.subtle",
-  borderRadius: 2,
+  borderRadius: 1,
   px: 1.5,
-  py: 1.25,
+  py: 1,
 };
 
 const addFormSx: SxProps<Theme> = {
   bgcolor: "surface.1",
   border: "1px solid",
   borderColor: "border.subtle",
-  borderRadius: 2,
+  borderRadius: 1,
   p: 1.5,
 };
 

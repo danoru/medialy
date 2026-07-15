@@ -28,6 +28,12 @@ model MediaItem {
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
+  /// Who introduced this item. Null for seeded/backfilled catalog entries, so a
+  /// non-null value means "a real user added this" — which is exactly what the
+  /// admin "Recently added" review list filters on.
+  createdById String?
+  createdBy   User?   @relation("MediaItemCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
   genres          MediaGenre[]
   tags            MediaTag[]
   credits         MediaCredit[]
@@ -45,6 +51,7 @@ model MediaItem {
   @@unique([title, mediaType])
   @@index([mediaType])
   @@index([computedConsensusScore])
+  @@index([createdById])
 }
 
 /// Directed link between two *separate* `MediaItem`s — used when each side is
@@ -360,6 +367,7 @@ model User {
   customLists   CustomList[]
   editSuggestions       MediaEditSuggestion[] @relation("EditSuggestionAuthor")
   reviewedSuggestions   MediaEditSuggestion[] @relation("EditSuggestionReviewer")
+  createdMedia          MediaItem[]           @relation("MediaItemCreator")
   following     UserFollow[]          @relation("Follower")
   followers     UserFollow[]          @relation("Following")
 }

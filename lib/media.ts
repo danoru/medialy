@@ -1,5 +1,6 @@
 import type {
   MediaItem,
+  MediaStatus,
   MediaType,
   Prisma,
   PrismaClient,
@@ -13,7 +14,6 @@ import {
 import { manualRatingsForMediaType } from "@/lib/external-ratings";
 import { prisma } from "@/lib/prisma";
 import {
-  DEFAULT_USER_MEDIA,
   mergeUserMedia,
   userMediaInclude,
   type UserMediaFields,
@@ -227,6 +227,60 @@ export async function upsertMediaRelations(
 ) {
   await upsertTaxonomy(mediaId, input.genres, input.tags, input.mediaType);
   await replaceMediaCredits(prisma, mediaId, input.credits ?? []);
+}
+
+/**
+ * Reconcile an item's related titles and re-releases to exactly the staged set
+ * from the edit form.
+ *
+ * `undefined` means the caller doesn't manage connections (CSV import), so the
+ * existing rows are left alone. An empty array means "there are none" and the
+ * rows are removed — the two are deliberately distinct so an import can't
+ * silently wipe curated links.
+ */
+export async function replaceMediaConnections(
+  mediaId: string,
+  input: Pick<MediaFormInput, "relations" | "releaseEvents">,
+) {
+  if (input.relations !== undefined) {
+    const relations = input.relations
+      // An item can't relate to itself, and a self-edge would violate the
+      // (fromId, toId, kind) unique constraint in confusing ways.
+      .filter((relation) => relation.otherId !== mediaId)
+      .map((relation) =>
+        relation.direction === "forward"
+          ? { fromId: mediaId, toId: relation.otherId, kind: relation.kind }
+          : { fromId: relation.otherId, toId: mediaId, kind: relation.kind },
+      );
+
+    await prisma.$transaction(async (tx) => {
+      await tx.mediaRelation.deleteMany({
+        where: { OR: [{ fromId: mediaId }, { toId: mediaId }] },
+      });
+      if (relations.length > 0) {
+        await tx.mediaRelation.createMany({
+          data: relations,
+          skipDuplicates: true,
+        });
+      }
+    });
+  }
+
+  if (input.releaseEvents !== undefined) {
+    const events = input.releaseEvents.map((event) => ({
+      mediaId,
+      kind: event.kind,
+      date: new Date(event.date),
+      title: event.title,
+    }));
+
+    await prisma.$transaction(async (tx) => {
+      await tx.mediaReleaseEvent.deleteMany({ where: { mediaId } });
+      if (events.length > 0) {
+        await tx.mediaReleaseEvent.createMany({ data: events });
+      }
+    });
+  }
 }
 
 /**
@@ -457,13 +511,23 @@ export function mediaMutationData(input: MediaFormInput) {
 /**
  * Extracts the per-user fields from a `MediaFormInput` so callers can write
  * them to `UserMedia` after creating/updating the underlying `MediaItem`.
+ *
+ * Fields the input didn't supply are omitted entirely rather than coerced to a
+ * default — otherwise saving the metadata form (which no longer collects any of
+ * them) would blank out the user's existing rating and status.
  */
 export function userMediaMutationData(input: MediaFormInput) {
-  return {
-    status: input.status,
-    personalRating: input.personalRating ?? null,
-    isFavorite: input.isFavorite,
-  };
+  const data: {
+    status?: MediaStatus;
+    personalRating?: number | null;
+    isFavorite?: boolean;
+  } = {};
+  if (input.status !== undefined) data.status = input.status;
+  if (input.personalRating !== undefined) {
+    data.personalRating = input.personalRating;
+  }
+  if (input.isFavorite !== undefined) data.isFavorite = input.isFavorite;
+  return data;
 }
 
 export async function mediaMutationDataWithUniqueTitle(

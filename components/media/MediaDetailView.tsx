@@ -7,6 +7,7 @@ import CompareArrowsRoundedIcon from "@mui/icons-material/CompareArrowsRounded";
 import ComputerRoundedIcon from "@mui/icons-material/ComputerRounded";
 import DevicesOtherRoundedIcon from "@mui/icons-material/DevicesOtherRounded";
 import EditRoundedIcon from "@mui/icons-material/EditRounded";
+import FavoriteRoundedIcon from "@mui/icons-material/FavoriteRounded";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PhoneAndroidRoundedIcon from "@mui/icons-material/PhoneAndroidRounded";
 import SportsEsportsRoundedIcon from "@mui/icons-material/SportsEsportsRounded";
@@ -20,10 +21,6 @@ import {
   Box,
   Button,
   Chip,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
   Divider,
   MenuItem,
   Stack,
@@ -35,12 +32,15 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha } from "@mui/material/styles";
 import {
   addNote,
+  setMediaWatched,
   toggleFavoriteMediaItem,
   updateMediaRating,
   updateMediaStatus,
   updateNote,
+  type RateResult,
 } from "@/app/media/actions";
 import { ActionToastButton } from "@/components/shared/Toasts";
+import { StarRating } from "@/components/media/StarRating";
 import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
 import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
@@ -55,7 +55,7 @@ import type {
   ReleaseEventView,
 } from "@/components/media/MediaConnectionsPanel";
 import { availableStatuses, statusLabel } from "@/lib/status-labels";
-import { useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { UserMediaFields } from "@/lib/db/user-media";
 import type { WatchAvailability } from "@/lib/tmdb";
 
@@ -245,10 +245,10 @@ export function MediaDetailView({
               />
             ) : (
               <Stack sx={posterPlaceholderSx}>
-                <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+                <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
                   Poster missing
                 </Typography>
-                <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                   Add artwork to improve this page.
                 </Typography>
               </Stack>
@@ -346,11 +346,13 @@ export function MediaDetailView({
                 editHref={`/media/${item.id}/edit`}
                 favoriteAction={toggleFavoriteMediaItem.bind(null, item.id)}
                 isFavorite={item.isFavorite}
+                mediaId={item.id}
                 mediaType={item.mediaType}
                 personalRating={item.personalRating}
                 ratingAction={updateMediaRating.bind(null, item.id)}
                 status={item.status}
                 statusAction={updateMediaStatus.bind(null, item.id)}
+                title={item.title}
               />
             ) : (
               <Box sx={panelSx()}>
@@ -658,11 +660,11 @@ export function MediaDetailView({
                   />
                   <Stack>
                     <Typography
-                      sx={{ fontSize: "0.6875rem", color: "text.secondary" }}
+                      sx={{ fontSize: "0.875rem", color: "text.secondary" }}
                     >
                       Refined score trajectory
                     </Typography>
-                    <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+                    <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
                       {Math.round(eloTimeline[0])} →{" "}
                       {Math.round(eloTimeline[eloTimeline.length - 1])}
                     </Typography>
@@ -778,165 +780,127 @@ export function MediaDetailView({
   );
 }
 
-// ─── Action row (Rate & set status + Favorite + Edit) ────────────────
+// ─── Action row (Watched + stars + Favorite + status + Edit) ─────────
+//
+// Letterboxd-style: the two things you actually came to do — say you watched it
+// and say how much you liked it — are always visible, one tap each. No dialog.
+// The status select is the escape hatch for everything that isn't "watched".
 function ActionRow({
   editHref,
   favoriteAction,
   isFavorite,
+  mediaId,
   mediaType,
   personalRating,
   ratingAction,
   status,
   statusAction,
+  title,
 }: {
   editHref: string;
   favoriteAction: () => void | Promise<void>;
   isFavorite: boolean;
+  mediaId: string;
   mediaType: MediaType;
   personalRating: number | null;
-  ratingAction: (formData: FormData) => void | Promise<void>;
+  ratingAction: (formData: FormData) => Promise<RateResult>;
   status: MediaStatus;
   statusAction: (formData: FormData) => void | Promise<void>;
+  title: string;
 }) {
-  const [modalOpen, setModalOpen] = useState(false);
+  const [, startTransition] = useTransition();
+  const [watched, setWatched] = useState(status === "COMPLETED");
+  const [selectedStatus, setSelectedStatus] = useState<MediaStatus>(status);
+  const statusFormRef = useRef<HTMLFormElement>(null);
 
-  const ratingLabel =
-    personalRating == null
-      ? "Rate & set status"
-      : `${formatNumber(personalRating)} · ${statusLabel(status, mediaType)}`;
+  const watchedLabel = statusLabel("COMPLETED", mediaType);
+
+  const toggleWatched = () => {
+    const next = !watched;
+    setWatched(next);
+    setSelectedStatus(next ? "COMPLETED" : "UNTRACKED");
+    startTransition(async () => {
+      await setMediaWatched(mediaId, next);
+    });
+  };
 
   return (
-    <>
-      <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1 }}>
+    <Stack spacing={1.5}>
+      <Stack
+        direction="row"
+        sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}
+      >
         <Button
-          onClick={() => setModalOpen(true)}
-          startIcon={<StarRoundedIcon />}
-          variant="contained"
+          aria-pressed={watched}
+          onClick={toggleWatched}
+          startIcon={<CheckCircleRoundedIcon />}
+          sx={{ minHeight: 44 }}
+          variant={watched ? "contained" : "outlined"}
         >
-          {ratingLabel}
+          {watchedLabel}
         </Button>
+
         <Box action={favoriteAction} component="form">
           <Button
-            startIcon={<StarRoundedIcon />}
-            sx={
-              isFavorite
+            aria-pressed={isFavorite}
+            startIcon={<FavoriteRoundedIcon />}
+            sx={{
+              minHeight: 44,
+              ...(isFavorite
                 ? { color: "warning.main", borderColor: "warning.main" }
-                : undefined
-            }
+                : {}),
+            }}
             type="submit"
             variant="outlined"
           >
-            {isFavorite ? "Favorited" : "Favorite"}
+            Favorite
           </Button>
         </Box>
+
         <Button
           href={editHref}
           startIcon={<EditRoundedIcon />}
+          sx={{ minHeight: 44 }}
           variant="outlined"
         >
           Edit
         </Button>
       </Stack>
 
-      <RateStatusModal
-        initialRating={personalRating}
-        initialStatus={status}
+      <StarRating
+        mediaId={mediaId}
         mediaType={mediaType}
-        onClose={() => setModalOpen(false)}
-        open={modalOpen}
-        ratingAction={ratingAction}
-        statusAction={statusAction}
+        personalRating={personalRating}
+        rateAction={ratingAction}
+        title={title}
       />
-    </>
-  );
-}
 
-function RateStatusModal({
-  initialRating,
-  initialStatus,
-  mediaType,
-  onClose,
-  open,
-  ratingAction,
-  statusAction,
-}: {
-  initialRating: number | null;
-  initialStatus: MediaStatus;
-  mediaType: MediaType;
-  onClose: () => void;
-  open: boolean;
-  ratingAction: (formData: FormData) => void | Promise<void>;
-  statusAction: (formData: FormData) => void | Promise<void>;
-}) {
-  const [rating, setRating] = useState<string>(
-    initialRating == null ? "" : String(initialRating),
-  );
-  const [status, setStatus] = useState<MediaStatus>(initialStatus);
-  const [saving, setSaving] = useState(false);
-
-  const submit = async () => {
-    setSaving(true);
-    try {
-      const trimmed = rating.trim();
-      if (trimmed !== (initialRating == null ? "" : String(initialRating))) {
-        const ratingData = new FormData();
-        ratingData.set("personalRating", trimmed);
-        await ratingAction(ratingData);
-      }
-      if (status !== initialStatus) {
-        const statusData = new FormData();
-        statusData.set("status", status);
-        await statusAction(statusData);
-      }
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog fullWidth maxWidth="xs" onClose={onClose} open={open}>
-      <DialogTitle>Rate &amp; set status</DialogTitle>
-      <DialogContent>
-        <Stack spacing={2.5} sx={{ pt: 1 }}>
-          <TextField
-            autoFocus
-            fullWidth
-            helperText="0–10, decimals allowed."
-            label="Your rating"
-            onChange={(event) => setRating(event.target.value)}
-            slotProps={{ htmlInput: { min: 0, max: 10, step: 0.1 } }}
-            type="number"
-            value={rating}
-          />
-          <TextField
-            fullWidth
-            label="Status"
-            onChange={(event) => setStatus(event.target.value as MediaStatus)}
-            select
-            value={status}
-          >
-            {availableStatuses(mediaType).map((value) => (
-              <MenuItem key={value} value={value}>
-                {statusLabel(value, mediaType)}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button disabled={saving} onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          disabled={saving}
-          onClick={() => void submit()}
-          variant="contained"
+      <Box action={statusAction} component="form" ref={statusFormRef}>
+        <TextField
+          fullWidth
+          label="Status"
+          name="status"
+          onChange={(event) => {
+            const next = event.target.value as MediaStatus;
+            setSelectedStatus(next);
+            setWatched(next === "COMPLETED");
+            window.requestAnimationFrame(() => {
+              statusFormRef.current?.requestSubmit();
+            });
+          }}
+          select
+          size="small"
+          sx={{ maxWidth: 260 }}
+          value={selectedStatus}
         >
-          {saving ? "Saving…" : "Save"}
-        </Button>
-      </DialogActions>
-    </Dialog>
+          {availableStatuses(mediaType).map((value) => (
+            <MenuItem key={value} value={value}>
+              {statusLabel(value, mediaType)}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Box>
+    </Stack>
   );
 }
 
@@ -1430,18 +1394,18 @@ const bodyTextSx: SxProps<Theme> = {
 
 const calloutTitleSx: SxProps<Theme> = {
   color: "primary.main",
-  fontSize: "0.8125rem",
+  fontSize: "0.875rem",
   fontWeight: 600,
 };
 
 const comparisonDateSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.8125rem",
+  fontSize: "0.875rem",
 };
 
 const comparisonHeaderCellSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.6875rem",
+  fontSize: "0.875rem",
   fontWeight: 600,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
@@ -1470,7 +1434,7 @@ function comparisonResultSx(result: string): SxProps<Theme> {
       alpha(won ? theme.palette.success.main : theme.palette.error.main, 0.12),
     borderRadius: 999,
     color: won ? "success.main" : "error.main",
-    fontSize: "0.75rem",
+    fontSize: "0.875rem",
     fontWeight: 600,
     justifySelf: { sm: "start" },
     px: 1,
@@ -1560,7 +1524,7 @@ const providerLogoSx: SxProps<Theme> = {
 const availabilityAttributionSx: SxProps<Theme> = {
   mt: 1,
   color: "text.secondary",
-  fontSize: 12,
+  fontSize: 14,
 };
 
 function externalLogoSx(source: string): SxProps<Theme> {
@@ -1603,7 +1567,7 @@ const externalScoreSx: SxProps<Theme> = {
 
 const externalSourceLabelSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.8125rem",
+  fontSize: "0.875rem",
 };
 
 const heroTitleSx: SxProps<Theme> = {
@@ -1622,7 +1586,7 @@ const originalTitleSx: SxProps<Theme> = {
 
 const kickerSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.6875rem",
+  fontSize: "0.875rem",
   fontWeight: 600,
   letterSpacing: "0.1em",
   textTransform: "uppercase",
@@ -1678,7 +1642,7 @@ const metaPillSx: SxProps<Theme> = {
 
 const metadataTextSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.8125rem",
+  fontSize: "0.875rem",
 };
 
 const metricInfoIconSx: SxProps<Theme> = {
@@ -1689,7 +1653,7 @@ const metricInfoIconSx: SxProps<Theme> = {
 
 const metricLabelSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.6875rem",
+  fontSize: "0.875rem",
   fontWeight: 600,
   letterSpacing: "0.07em",
   textTransform: "uppercase",
@@ -1714,7 +1678,7 @@ const panelTitleSx: SxProps<Theme> = {
 
 const sectionTitleSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.75rem",
+  fontSize: "0.875rem",
   fontWeight: 600,
   letterSpacing: "0.18em",
   mb: 1.25,
@@ -1769,7 +1733,7 @@ function scoreTileSx(accent?: string): SxProps<Theme> {
 }
 
 const scoreTileSubSx: SxProps<Theme> = {
-  fontSize: "0.8125rem",
+  fontSize: "0.875rem",
   mt: 0.25,
 };
 
@@ -1854,7 +1818,7 @@ const creditAvatarSx: SxProps<Theme> = {
   color: "primary.main",
   display: "flex",
   flexShrink: 0,
-  fontSize: "0.8125rem",
+  fontSize: "0.875rem",
   fontWeight: 700,
   height: 36,
   justifyContent: "center",
@@ -1871,7 +1835,7 @@ const creditNameSx: SxProps<Theme> = {
 
 const creditRoleSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.75rem",
+  fontSize: "0.875rem",
   letterSpacing: "0.05em",
   mt: 0.25,
 };

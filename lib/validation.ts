@@ -1,11 +1,21 @@
-import { MediaStatus, MediaType } from "@prisma/client";
+import {
+  MediaStatus,
+  MediaType,
+  RelationKind,
+  ReleaseKind,
+} from "@prisma/client";
 import {
   CREDIT_ROLES_BY_MEDIA_TYPE,
   creditKindForRole,
   splitCreditNames,
   type CreditInput,
 } from "@/lib/credits";
-import type { CsvMediaRow, MediaFormInput } from "@/lib/types";
+import type {
+  CsvMediaRow,
+  MediaFormInput,
+  MediaRelationInput,
+  MediaReleaseEventInput,
+} from "@/lib/types";
 import { parseManualExternalRatings } from "@/lib/external-ratings";
 import { normalizeSearchText } from "@/lib/text-normalization";
 import {
@@ -113,22 +123,106 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
     JSON.parse(metadataJson);
   }
 
+  // No `status` / `personalRating` / `isFavorite` here: the metadata form is
+  // shared-catalog data only. Those are per-user fields and are written by the
+  // rating controls straight to `UserMedia` — routing them through this form
+  // meant a non-admin's score was dropped on the way to admin review.
   return {
     title,
     originalTitle: normalizeName(String(formData.get("originalTitle") ?? "")),
     mediaType,
-    status: coerceMediaStatus(formData.get("status")),
     description: String(formData.get("description") ?? "").trim(),
     releaseDate: parseOptionalDate(formData.get("releaseDate")),
     externalUrl: sanitizeExternalUrl(String(formData.get("externalUrl") ?? "")),
     metadataJson,
-    personalRating: parseOptionalRating(formData.get("personalRating")),
-    isFavorite: formData.get("isFavorite") === "on",
     genres: parseCanonicalGenres(formData.getAll("genres"), mediaType),
     tags: parseSelectedTags(formData.get("tags")),
     credits: parseCreditsFromFormData(formData, mediaType),
     externalRatings: parseManualExternalRatings(formData, mediaType),
+    relations: parseStagedRelations(formData.get("relationsJson")),
+    releaseEvents: parseStagedReleaseEvents(formData.get("releaseEventsJson")),
   };
+}
+
+/**
+ * Relations and re-releases are staged client-side by `MediaConnectionsPanel`
+ * and submitted as one JSON blob each, so they save with the rest of the form.
+ *
+ * Returns `undefined` when the field is absent — that means the submitter isn't
+ * managing connections at all, which must not be confused with "remove them".
+ */
+function parseStagedRelations(
+  raw: FormDataEntryValue | null,
+): MediaRelationInput[] | undefined {
+  const parsed = parseJsonArray(raw);
+  if (!parsed) return undefined;
+  const relations: MediaRelationInput[] = [];
+  for (const entry of parsed) {
+    const record = entry as Record<string, unknown>;
+    const kind = record.kind;
+    const otherId = record.otherId;
+    if (!isRelationKind(kind) || typeof otherId !== "string" || !otherId) {
+      continue;
+    }
+    relations.push({
+      kind,
+      direction: record.direction === "inverse" ? "inverse" : "forward",
+      otherId,
+      otherTitle:
+        typeof record.otherTitle === "string" ? record.otherTitle : otherId,
+    });
+  }
+  return relations;
+}
+
+function parseStagedReleaseEvents(
+  raw: FormDataEntryValue | null,
+): MediaReleaseEventInput[] | undefined {
+  const parsed = parseJsonArray(raw);
+  if (!parsed) return undefined;
+  const events: MediaReleaseEventInput[] = [];
+  for (const entry of parsed) {
+    const record = entry as Record<string, unknown>;
+    const kind = record.kind;
+    if (!isReleaseKind(kind) || typeof record.date !== "string") continue;
+    const date = new Date(record.date);
+    if (Number.isNaN(date.getTime())) continue;
+    events.push({
+      kind,
+      date: date.toISOString(),
+      title:
+        typeof record.title === "string" && record.title.trim()
+          ? record.title.trim()
+          : null,
+    });
+  }
+  return events;
+}
+
+function parseJsonArray(raw: FormDataEntryValue | null): unknown[] | undefined {
+  if (raw == null) return undefined;
+  const text = String(raw).trim();
+  if (!text) return undefined;
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isRelationKind(value: unknown): value is RelationKind {
+  return (
+    typeof value === "string" &&
+    (Object.values(RelationKind) as string[]).includes(value)
+  );
+}
+
+function isReleaseKind(value: unknown): value is ReleaseKind {
+  return (
+    typeof value === "string" &&
+    (Object.values(ReleaseKind) as string[]).includes(value)
+  );
 }
 
 export function mediaFormInputFromCsvRow(row: CsvMediaRow): MediaFormInput {

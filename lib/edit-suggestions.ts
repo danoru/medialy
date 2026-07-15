@@ -1,5 +1,14 @@
-import type { ExternalRatingSource } from "@prisma/client";
+import type {
+  ExternalRatingSource,
+  RelationKind,
+  ReleaseKind,
+} from "@prisma/client";
 import { manualRatingDef } from "@/lib/external-ratings";
+import {
+  RELATION_FORWARD_LABEL,
+  RELATION_INVERSE_LABEL,
+  RELEASE_KIND_LABEL,
+} from "@/lib/media-relations";
 import type { MediaFormInput } from "@/lib/types";
 import { prisma } from "@/lib/prisma";
 
@@ -10,6 +19,19 @@ import { prisma } from "@/lib/prisma";
  * time so the diff stays comparable even if the underlying item is later
  * touched directly by an admin between submission and review.
  */
+
+export type SnapshotRelation = {
+  kind: string;
+  direction: "forward" | "inverse";
+  otherId: string;
+  otherTitle: string;
+};
+
+export type SnapshotReleaseEvent = {
+  kind: string;
+  date: string; // ISO
+  title: string | null;
+};
 
 export type EditSuggestionSnapshot = {
   title: string;
@@ -23,6 +45,8 @@ export type EditSuggestionSnapshot = {
   tags: string[];
   credits: Array<{ role: string; kind: string; names: string[] }>;
   externalRatings: Array<{ source: string; score: number; scale: number }>;
+  relations: SnapshotRelation[];
+  releaseEvents: SnapshotReleaseEvent[];
 };
 
 export function inputToSnapshot(input: MediaFormInput): EditSuggestionSnapshot {
@@ -50,24 +74,71 @@ export function inputToSnapshot(input: MediaFormInput): EditSuggestionSnapshot {
         scale: rating.scale,
       }))
       .sort((a, b) => a.source.localeCompare(b.source)),
+    relations: sortRelations(
+      (input.relations ?? []).map((relation) => ({
+        kind: relation.kind,
+        direction: relation.direction,
+        otherId: relation.otherId,
+        otherTitle: relation.otherTitle,
+      })),
+    ),
+    releaseEvents: sortReleaseEvents(
+      (input.releaseEvents ?? []).map((event) => ({
+        kind: event.kind,
+        date: event.date,
+        title: event.title,
+      })),
+    ),
   };
+}
+
+function sortRelations(relations: SnapshotRelation[]): SnapshotRelation[] {
+  return [...relations].sort(
+    (a, b) =>
+      a.kind.localeCompare(b.kind) ||
+      a.otherTitle.localeCompare(b.otherTitle) ||
+      a.otherId.localeCompare(b.otherId),
+  );
+}
+
+function sortReleaseEvents(
+  events: SnapshotReleaseEvent[],
+): SnapshotReleaseEvent[] {
+  return [...events].sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      a.kind.localeCompare(b.kind) ||
+      (a.title ?? "").localeCompare(b.title ?? ""),
+  );
 }
 
 export async function snapshotMediaItem(
   mediaId: string,
 ): Promise<EditSuggestionSnapshot | null> {
-  const item = await prisma.mediaItem.findUnique({
-    where: { id: mediaId },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
-      credits: { include: { contributor: true }, orderBy: { order: "asc" } },
-      externalRatings: {
-        select: { source: true, score: true, scale: true },
-        orderBy: { source: "asc" },
+  const otherSelect = { id: true, title: true } as const;
+  const [item, relationsFrom, relationsTo, releaseEvents] = await Promise.all([
+    prisma.mediaItem.findUnique({
+      where: { id: mediaId },
+      include: {
+        genres: { include: { genre: true } },
+        tags: { include: { tag: true } },
+        credits: { include: { contributor: true }, orderBy: { order: "asc" } },
+        externalRatings: {
+          select: { source: true, score: true, scale: true },
+          orderBy: { source: "asc" },
+        },
       },
-    },
-  });
+    }),
+    prisma.mediaRelation.findMany({
+      where: { fromId: mediaId },
+      include: { to: { select: otherSelect } },
+    }),
+    prisma.mediaRelation.findMany({
+      where: { toId: mediaId },
+      include: { from: { select: otherSelect } },
+    }),
+    prisma.mediaReleaseEvent.findMany({ where: { mediaId } }),
+  ]);
   if (!item) return null;
 
   const creditsByRole = new Map<
@@ -105,6 +176,27 @@ export async function snapshotMediaItem(
         scale: rating.scale,
       }))
       .sort((a, b) => a.source.localeCompare(b.source)),
+    relations: sortRelations([
+      ...relationsFrom.map((relation) => ({
+        kind: relation.kind as string,
+        direction: "forward" as const,
+        otherId: relation.to.id,
+        otherTitle: relation.to.title,
+      })),
+      ...relationsTo.map((relation) => ({
+        kind: relation.kind as string,
+        direction: "inverse" as const,
+        otherId: relation.from.id,
+        otherTitle: relation.from.title,
+      })),
+    ]),
+    releaseEvents: sortReleaseEvents(
+      releaseEvents.map((event) => ({
+        kind: event.kind as string,
+        date: event.date.toISOString(),
+        title: event.title,
+      })),
+    ),
   };
 }
 
@@ -127,6 +219,8 @@ const FIELD_LABELS: Record<string, string> = {
   tags: "Tags",
   credits: "Credits",
   externalRatings: "External scores",
+  relations: "Related titles",
+  releaseEvents: "Re-releases",
 };
 
 export function diffSnapshots(
@@ -169,6 +263,28 @@ function formatField(key: string, value: unknown): string {
       )
       .join(" · ");
   }
+  if (key === "relations" && Array.isArray(value)) {
+    return (value as SnapshotRelation[])
+      .map(
+        (relation) =>
+          `${
+            relation.direction === "forward"
+              ? RELATION_FORWARD_LABEL[relation.kind as RelationKind]
+              : RELATION_INVERSE_LABEL[relation.kind as RelationKind]
+          } ${relation.otherTitle}`,
+      )
+      .join(" · ");
+  }
+  if (key === "releaseEvents" && Array.isArray(value)) {
+    return (value as SnapshotReleaseEvent[])
+      .map(
+        (event) =>
+          `${RELEASE_KIND_LABEL[event.kind as ReleaseKind]}${
+            event.title ? ` "${event.title}"` : ""
+          }: ${event.date.slice(0, 10)}`,
+      )
+      .join(" · ");
+  }
   if (Array.isArray(value)) {
     return value.join(", ");
   }
@@ -195,5 +311,7 @@ function emptySnapshot(): EditSuggestionSnapshot {
     tags: [],
     credits: [],
     externalRatings: [],
+    relations: [],
+    releaseEvents: [],
   };
 }

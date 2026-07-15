@@ -21,10 +21,21 @@ import { useFormStatus } from "react-dom";
 
 export type ToastSeverity = Extract<AlertColor, "success" | "info" | "warning" | "error">;
 
+type ToastAction = {
+  label: string;
+  onClick: () => void;
+};
+
 type ToastMessage = {
   id?: string;
   message: string;
   severity?: ToastSeverity;
+  /**
+   * Optional inline action (e.g. "Undo"). Only available to client-issued
+   * toasts via `useToast` — the server flash-toast path round-trips through a
+   * cookie and cannot carry a callback.
+   */
+  action?: ToastAction;
 };
 
 type ToastContextValue = {
@@ -34,8 +45,15 @@ type ToastContextValue = {
 const ToastContext = createContext<ToastContextValue | null>(null);
 const FLASH_TOAST_COOKIE = "medialy_toast";
 
+type ResolvedToast = {
+  id: string;
+  message: string;
+  severity: ToastSeverity;
+  action?: ToastAction;
+};
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toast, setToast] = useState<Required<ToastMessage> | null>(null);
+  const [toast, setToast] = useState<ResolvedToast | null>(null);
   const shownFlashIds = useRef(new Set<string>());
 
   const showToast = useCallback((nextToast: ToastMessage) => {
@@ -43,6 +61,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       id: nextToast.id ?? crypto.randomUUID(),
       message: nextToast.message,
       severity: nextToast.severity ?? "success",
+      action: nextToast.action,
     });
   }, []);
 
@@ -76,12 +95,28 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       <Snackbar
         anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
-        autoHideDuration={3600}
+        // Undo needs long enough to actually notice and reach for it.
+        autoHideDuration={toast?.action ? 8000 : 3600}
         onClose={handleClose}
         open={Boolean(toast)}
       >
         {toast ? (
           <Alert
+            action={
+              toast.action ? (
+                <Button
+                  color="inherit"
+                  onClick={() => {
+                    toast.action?.onClick();
+                    setToast(null);
+                  }}
+                  size="small"
+                  sx={{ fontWeight: 700, minHeight: 36 }}
+                >
+                  {toast.action.label}
+                </Button>
+              ) : undefined
+            }
             onClose={handleClose}
             severity={toast.severity}
             variant="filled"
@@ -152,7 +187,9 @@ function readFlashToast() {
     const rawValue = cookie.slice(FLASH_TOAST_COOKIE.length + 1);
     const parsed = JSON.parse(decodeURIComponent(rawValue)) as ToastMessage;
     if (!parsed.id || !parsed.message) return null;
-    return parsed as Required<ToastMessage>;
+    // Server-queued toasts never carry an action — a callback can't survive the
+    // cookie round-trip.
+    return { ...parsed, id: parsed.id, action: undefined };
   } catch {
     return null;
   }

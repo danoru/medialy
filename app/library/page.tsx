@@ -3,21 +3,14 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Divider,
   MenuItem,
   Stack,
   Tab,
   Tabs,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   Typography,
 } from "@mui/material";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { MediaStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -28,11 +21,6 @@ import {
   VISIBLE_MEDIA_TYPES,
   visibleMediaTypeFilter,
 } from "@/lib/media-types";
-import { updateMediaRatings } from "@/app/media/actions";
-import {
-  BulkStatusReviewModal,
-  type BulkStatusReviewItem,
-} from "@/components/media/BulkStatusReviewModal";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
@@ -45,9 +33,12 @@ import {
   mediaTypeTabSx,
 } from "@/lib/media-ui-helpers";
 import { MediaPageNavigator } from "@/components/media/MediaPageNavigator";
-import { PosterThumb } from "@/components/media/PosterCard";
+import { LibraryFilters } from "@/components/media/LibraryFilters";
+import {
+  MediaRatingsList,
+  type MediaRatingsListItem,
+} from "@/components/media/MediaRatingsList";
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
-import { SaveRatingsButton } from "@/components/media/SaveRatingsButton";
 import { matchesMediaTitleSearch } from "@/lib/media-search";
 import {
   getCanonicalTagDefinitions,
@@ -161,18 +152,6 @@ export default async function MediaPage({
 
   const startIndex = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const endIndex = Math.min(total, page * PAGE_SIZE);
-  const currentHref = buildMediaHref(params, {
-    type: selectedType,
-    page: String(page),
-  });
-
-  const reviewItems = await findReviewItems(
-    stringParam(params.reviewStatus) ?? "",
-  );
-  const reviewReturnTo = buildMediaHref(
-    { ...params, reviewStatus: undefined },
-    {},
-  );
 
   const selectedAccent =
     selectedType === ALL_MEDIA_TYPES ? ACCENTS.brand : mediaAccent(selectedType);
@@ -182,12 +161,6 @@ export default async function MediaPage({
       <PageAccentBackground
         mediaType={selectedType === ALL_MEDIA_TYPES ? null : selectedType}
       />
-      {reviewItems.length > 0 ? (
-        <BulkStatusReviewModal
-          items={reviewItems}
-          returnTo={reviewReturnTo}
-        />
-      ) : null}
       <Box>
         <Typography variant="eyebrow" sx={{ display: "block", mb: 0.75 }}>
           Library
@@ -264,12 +237,7 @@ export default async function MediaPage({
           </Tabs>
           <Divider sx={{ mb: 2 }} />
 
-          <Stack
-            component="form"
-            direction={{ xs: "column", md: "row" }}
-            spacing={2}
-            sx={{ flexWrap: "wrap" }}
-          >
+          <LibraryFilters>
             {selectedType ? (
               <input name="type" type="hidden" value={selectedType} />
             ) : null}
@@ -377,44 +345,57 @@ export default async function MediaPage({
               <MenuItem value="asc">Ascending</MenuItem>
               <MenuItem value="desc">Descending</MenuItem>
             </TextField>
-            <Button type="submit" variant="outlined">
+            <Button sx={{ minHeight: 44 }} type="submit" variant="outlined">
               Apply
             </Button>
-          </Stack>
+          </LibraryFilters>
         </CardContent>
       </Card>
 
-      <Box sx={{ display: { xs: "none", md: "block" } }}>
-        <form action={updateMediaRatings}>
-          <MediaRatingsTable
-            currentHref={currentHref}
+      <Card sx={{ overflow: "hidden" }} variant="outlined">
+        {items.length === 0 ? (
+          <StatePanel
+            action={{ href: "/media/new", label: "Add media" }}
+            description="Adjust the filters or add a new movie, show, or game to start building your library."
+            title="No media found"
+          />
+        ) : (
+          <MediaRatingsList
+            canRate={userId != null}
+            items={items.map(toRatingsListItem)}
+          />
+        )}
+        <CardContent>
+          <MediaResultsFooter
             endIndex={endIndex}
-            items={items}
             page={page}
             params={params}
             startIndex={startIndex}
             total={total}
             totalPages={totalPages}
           />
-        </form>
-      </Box>
-
-      <Box sx={{ display: { xs: "block", md: "none" } }}>
-        <form action={updateMediaRatings}>
-          <MediaRatingsCards
-            currentHref={currentHref}
-            endIndex={endIndex}
-            items={items}
-            page={page}
-            params={params}
-            startIndex={startIndex}
-            total={total}
-            totalPages={totalPages}
-          />
-        </form>
-      </Box>
+        </CardContent>
+      </Card>
     </Stack>
   );
+}
+
+/** Flatten a Prisma row into the serializable shape the client list needs. */
+function toRatingsListItem(item: MediaListItem): MediaRatingsListItem {
+  return {
+    id: item.id,
+    title: item.title,
+    mediaType: item.mediaType,
+    status: item.status,
+    personalRating: item.personalRating,
+    computedPersonalScore: item.computedPersonalScore,
+    computedConsensusScore: item.computedConsensusScore,
+    isFavorite: item.isFavorite,
+    isArchived: item.isArchived,
+    posterUrl: item.posterUrl,
+    genres: item.genres.map((entry) => entry.genre.name),
+    tags: item.tags.map((entry) => entry.tag.name),
+  };
 }
 
 type RawMediaListItem = Awaited<
@@ -436,36 +417,6 @@ const PER_USER_SORTS = new Set([
   "computedPersonalScore",
   "personalRating",
 ]);
-
-async function findReviewItems(
-  raw: string,
-): Promise<BulkStatusReviewItem[]> {
-  if (!raw) return [];
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
-  const ids = raw
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  if (ids.length === 0) return [];
-
-  const rows = await prisma.userMedia.findMany({
-    where: {
-      userId,
-      mediaId: { in: ids },
-      status: "UNTRACKED",
-    },
-    select: {
-      mediaId: true,
-      media: { select: { title: true, mediaType: true } },
-    },
-  });
-  return rows.map((row) => ({
-    id: row.mediaId,
-    title: row.media.title,
-    mediaType: row.media.mediaType,
-  }));
-}
 
 async function findMediaPageItems({
   direction,
@@ -560,331 +511,6 @@ function compareByUserField(
   return a.title.localeCompare(b.title);
 }
 
-function MediaRatingsTable({
-  currentHref,
-  endIndex,
-  items,
-  page,
-  params,
-  startIndex,
-  total,
-  totalPages,
-}: {
-  currentHref: string;
-  endIndex: number;
-  items: MediaListItem[];
-  page: number;
-  params: Record<string, string | string[] | undefined>;
-  startIndex: number;
-  total: number;
-  totalPages: number;
-}) {
-  return (
-    <Card variant="outlined">
-      <input name="returnTo" type="hidden" value={currentHref} />
-      {items.length > 0 ? (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>Title</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Genres</TableCell>
-              <TableCell align="right">Personal</TableCell>
-              <TableCell align="right">Consensus</TableCell>
-              <TableCell align="right">Explicit</TableCell>
-              <TableCell>Updated</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {items.map((item) => {
-              const rowAccent = mediaAccent(item.mediaType);
-              return (
-              <TableRow
-                hover
-                key={item.id}
-                sx={{
-                  "& > td:first-of-type": {
-                    borderLeft: `2px solid ${rowAccent}`,
-                  },
-                  background: `linear-gradient(90deg, ${alpha(rowAccent, 0.05)} 0%, transparent 20%)`,
-                }}
-              >
-                <TableCell>
-                  <input name="mediaId" type="hidden" value={item.id} />
-                  <input
-                    name={`current:${item.id}`}
-                    type="hidden"
-                    value={item.personalRating ?? ""}
-                  />
-                  <Stack direction="row" spacing={1.25} sx={{ alignItems: "center" }}>
-                    <PosterThumb item={item} size="sm" />
-                    <Stack spacing={0.5} sx={{ minWidth: 0 }}>
-                      <Link
-                        href={`/media/${item.id}`}
-                        style={{ textDecoration: "none" }}
-                      >
-                        <Typography sx={{ color: "text.primary", fontWeight: 600 }}>
-                          {item.title}
-                        </Typography>
-                      </Link>
-                      <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                        {item.isFavorite ? (
-                          <Chip color="secondary" label="Favorite" size="small" />
-                        ) : null}
-                        {item.isArchived ? (
-                          <Chip label="Archived" size="small" />
-                        ) : null}
-                        {item.tags.slice(0, 2).map((entry) => (
-                          <Chip
-                            key={entry.tagId}
-                            label={entry.tag.name}
-                            size="small"
-                            variant="outlined"
-                          />
-                        ))}
-                      </Stack>
-                    </Stack>
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <Typography
-                    component="span"
-                    sx={{
-                      color: rowAccent,
-                      fontSize: "0.7rem",
-                      fontWeight: 700,
-                      letterSpacing: "0.18em",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {formatMediaType(item.mediaType)}
-                  </Typography>
-                </TableCell>
-                <TableCell>{statusLabel(item.status, item.mediaType)}</TableCell>
-                <TableCell>
-                  {item.genres.map((entry) => entry.genre.name).join(", ") ||
-                    "Missing"}
-                </TableCell>
-                <TableCell align="right">
-                  <Typography
-                    component="span"
-                    sx={{
-                      color: item.computedPersonalScore != null ? rowAccent : "text.secondary",
-                      fontWeight: 600,
-                      fontVariantNumeric: "tabular-nums",
-                      textShadow:
-                        item.computedPersonalScore != null
-                          ? `0 0 12px ${alpha(rowAccent, 0.33)}`
-                          : "none",
-                    }}
-                  >
-                    {formatScore(item.computedPersonalScore)}
-                  </Typography>
-                </TableCell>
-                <TableCell align="right">
-                  {formatScore(item.computedConsensusScore)}
-                </TableCell>
-                <TableCell align="right">
-                  <TextField
-                    defaultValue={item.personalRating ?? ""}
-                    name={`rating:${item.id}`}
-                    placeholder="-"
-                    size="small"
-                    slotProps={{ htmlInput: { max: 10, min: 0, step: 0.5 } }}
-                    sx={{ width: 86 }}
-                    type="number"
-                  />
-                </TableCell>
-                <TableCell>{item.updatedAt.toLocaleDateString()}</TableCell>
-              </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      ) : (
-        <StatePanel
-          action={{ href: "/media/new", label: "Add media" }}
-          description="Adjust the filters or add a new movie, show, or game to start building your library."
-          title="No media found"
-        />
-      )}
-      <CardContent>
-        <MediaResultsFooter
-          endIndex={endIndex}
-          page={page}
-          params={params}
-          startIndex={startIndex}
-          total={total}
-          totalPages={totalPages}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
-function MediaRatingsCards({
-  currentHref,
-  endIndex,
-  items,
-  page,
-  params,
-  startIndex,
-  total,
-  totalPages,
-}: {
-  currentHref: string;
-  endIndex: number;
-  items: MediaListItem[];
-  page: number;
-  params: Record<string, string | string[] | undefined>;
-  startIndex: number;
-  total: number;
-  totalPages: number;
-}) {
-  return (
-    <Card sx={{ overflow: "hidden" }} variant="outlined">
-      <input name="returnTo" type="hidden" value={currentHref} />
-      {items.length === 0 ? (
-        <StatePanel
-          action={{ href: "/media/new", label: "Add media" }}
-          description="Adjust the filters or add a new movie, show, or game to start building your library."
-          title="No media found"
-        />
-      ) : (
-        <Stack sx={{ p: 1 }}>
-          {items.map((item, index) => {
-            const rowAccent = mediaAccent(item.mediaType);
-            return (
-            <Box
-              key={item.id}
-              sx={{
-                borderTop: index === 0 ? 0 : "1px solid",
-                borderColor: "divider",
-                borderLeft: `2px solid ${rowAccent}`,
-                background: `linear-gradient(90deg, ${alpha(rowAccent, 0.05)} 0%, transparent 20%)`,
-                pl: 1,
-                pr: 0.4,
-                py: 1,
-              }}
-            >
-              <input name="mediaId" type="hidden" value={item.id} />
-              <input
-                name={`current:${item.id}`}
-                type="hidden"
-                value={item.personalRating ?? ""}
-              />
-              <Stack spacing={1}>
-                <Box sx={{ minWidth: 0 }}>
-                  <Link
-                    href={`/media/${item.id}`}
-                    style={{ textDecoration: "none" }}
-                  >
-                    <Typography
-                      sx={{
-                        color: "primary.main",
-                        fontSize: "0.9375rem",
-                        fontWeight: 600,
-                        lineHeight: 1.2,
-                        overflowWrap: "anywhere",
-                      }}
-                    >
-                      {item.title}
-                    </Typography>
-                  </Link>
-                  <Stack
-                    direction="row"
-                    sx={{ flexWrap: "wrap", gap: 0.5, mt: 0.7 }}
-                  >
-                    <Chip
-                      label={formatMediaType(item.mediaType)}
-                      size="small"
-                    />
-                    <Chip
-                      label={statusLabel(item.status, item.mediaType)}
-                      size="small"
-                      variant="outlined"
-                    />
-                    {item.isFavorite ? (
-                      <Chip color="secondary" label="Favorite" size="small" />
-                    ) : null}
-                    {item.isArchived ? (
-                      <Chip label="Archived" size="small" />
-                    ) : null}
-                  </Stack>
-                </Box>
-
-                <Typography color="text.secondary" variant="body2">
-                  {item.genres.map((entry) => entry.genre.name).join(", ") ||
-                    "Missing genres"}
-                </Typography>
-
-                {item.tags.length > 0 ? (
-                  <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.5 }}>
-                    {item.tags.slice(0, 3).map((entry) => (
-                      <Chip
-                        key={entry.tagId}
-                        label={entry.tag.name}
-                        size="small"
-                        variant="outlined"
-                      />
-                    ))}
-                  </Stack>
-                ) : null}
-
-                <Box
-                  sx={{
-                    alignItems: "center",
-                    display: "grid",
-                    gap: 1,
-                    gridTemplateColumns: "1fr 1fr 86px",
-                  }}
-                >
-                  <Box>
-                    <Typography color="text.secondary" variant="caption">
-                      Personal
-                    </Typography>
-                    <Typography sx={{ fontWeight: 600 }}>
-                      {formatScore(item.computedPersonalScore)}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Typography color="text.secondary" variant="caption">
-                      Consensus
-                    </Typography>
-                    <Typography sx={{ fontWeight: 600 }}>
-                      {formatScore(item.computedConsensusScore)}
-                    </Typography>
-                  </Box>
-                  <TextField
-                    defaultValue={item.personalRating ?? ""}
-                    name={`rating:${item.id}`}
-                    placeholder="-"
-                    size="small"
-                    slotProps={{ htmlInput: { max: 10, min: 0, step: 0.5 } }}
-                    type="number"
-                  />
-                </Box>
-              </Stack>
-            </Box>
-            );
-          })}
-        </Stack>
-      )}
-      <CardContent>
-        <MediaResultsFooter
-          endIndex={endIndex}
-          page={page}
-          params={params}
-          startIndex={startIndex}
-          total={total}
-          totalPages={totalPages}
-        />
-      </CardContent>
-    </Card>
-  );
-}
-
 function MediaResultsFooter({
   endIndex,
   page,
@@ -923,7 +549,6 @@ function MediaResultsFooter({
           justifyContent: { sm: "flex-end" },
         }}
       >
-        <SaveRatingsButton />
         {total > 0 ? (
           <MediaPageNavigator
             page={page}
@@ -984,9 +609,6 @@ function orderBy(
   return [{ title: direction }];
 }
 
-function formatScore(value: number | null) {
-  return value == null ? "-" : value.toFixed(1);
-}
 
 function buildMediaHref(
   params: Record<string, string | string[] | undefined>,

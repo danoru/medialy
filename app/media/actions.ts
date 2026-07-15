@@ -2,17 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import {
-  MediaStatus,
-  type MediaType,
-  Prisma,
-  RelationKind,
-  ReleaseKind,
-} from "@prisma/client";
+import { MediaStatus, type MediaType, Prisma } from "@prisma/client";
 import {
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
   replaceManualExternalRatings,
+  replaceMediaConnections,
   upsertMediaRelations,
   userMediaMutationData,
 } from "@/lib/media";
@@ -26,6 +21,7 @@ import {
 import { upsertUserMedia } from "@/lib/db/user-media";
 import { requireUser, requireUserId } from "@/lib/user";
 import { inputToSnapshot, snapshotMediaItem } from "@/lib/edit-suggestions";
+import { statusAfterRating } from "@/lib/status-rules";
 
 export type MediaFormActionState = {
   message: string;
@@ -58,9 +54,7 @@ export async function createMediaItem(
       });
       revalidatePath("/admin/edits");
       revalidatePath("/admin");
-      await queueToast(
-        "Thanks! Your addition was sent for admin review.",
-      );
+      await queueToast("Thanks! Your addition was sent for admin review.");
       redirect("/library");
     }
 
@@ -69,7 +63,9 @@ export async function createMediaItem(
       if (existing) return null;
 
       const data = await mediaMutationDataWithUniqueTitle(tx, input);
-      const created = await tx.mediaItem.create({ data });
+      const created = await tx.mediaItem.create({
+        data: { ...data, createdById: user.id },
+      });
       await tx.userMedia.create({
         data: {
           userId: user.id,
@@ -83,9 +79,11 @@ export async function createMediaItem(
     if (!media) return duplicateMediaState();
 
     await upsertMediaRelations(media.id, input);
+    await replaceMediaConnections(media.id, input);
     await replaceManualExternalRatings(media.id, input);
     await recomputeMediaScores(media.id, user.id);
     revalidatePath("/library");
+    revalidatePath("/upcoming");
     await queueToast(`${media.title} added.`);
     redirect(`/media/${media.id}`);
   } catch (error) {
@@ -115,9 +113,7 @@ export async function updateMediaItem(
       });
       revalidatePath("/admin/edits");
       revalidatePath("/admin");
-      await queueToast(
-        "Thanks! Your edit was sent for admin review.",
-      );
+      await queueToast("Thanks! Your edit was sent for admin review.");
       redirect(`/media/${id}`);
     }
 
@@ -130,16 +126,23 @@ export async function updateMediaItem(
         where: { id },
         data,
       });
-      await upsertUserMedia(user.id, id, userMediaMutationData(input), tx);
+      // The metadata form carries no per-user fields any more, so this is
+      // usually empty — don't create a stray UserMedia row for nothing.
+      const userData = userMediaMutationData(input);
+      if (Object.keys(userData).length > 0) {
+        await upsertUserMedia(user.id, id, userData, tx);
+      }
       return true;
     });
 
     if (!updated) return duplicateMediaState();
 
     await upsertMediaRelations(id, input);
+    await replaceMediaConnections(id, input);
     await replaceManualExternalRatings(id, input);
     await recomputeMediaScores(id, user.id);
     revalidatePath("/library");
+    revalidatePath("/upcoming");
     revalidatePath(`/media/${id}`);
     await queueToast("Media item saved.");
     redirect(`/media/${id}`);
@@ -149,111 +152,63 @@ export async function updateMediaItem(
   }
 }
 
-export async function updateMediaRatings(formData: FormData) {
-  const returnTo = String(formData.get("returnTo") ?? "/library");
-  const ids = formData
-    .getAll("mediaId")
-    .map((value) => String(value))
-    .filter(Boolean);
-
-  const userId = await requireUserId();
-  let updatedCount = 0;
-  const newlyRatedIds: string[] = [];
-
-  for (const id of ids) {
-    const personalRating = parseOptionalRating(formData.get(`rating:${id}`));
-    const currentRating = parseOptionalRating(formData.get(`current:${id}`));
-
-    if (personalRating === currentRating) continue;
-
-    await upsertUserMedia(userId, id, { personalRating });
-    await recomputeMediaScores(id, userId);
-    updatedCount += 1;
-    if (personalRating != null && currentRating == null) {
-      newlyRatedIds.push(id);
-    }
-  }
-
-  // Find newly-rated rows that are still UNTRACKED so the page can prompt the
-  // user to set a status. Items where the rating just moved (e.g. 7 → 8) or
-  // got cleared are ignored — this is for the first-rating case only.
-  const untrackedNewlyRated =
-    newlyRatedIds.length > 0
-      ? await prisma.userMedia.findMany({
-          where: {
-            userId,
-            mediaId: { in: newlyRatedIds },
-            status: "UNTRACKED",
-          },
-          select: { mediaId: true },
-        })
-      : [];
-
+/** Pages whose content depends on the viewer's ratings/statuses. */
+function revalidateUserMediaViews(id?: string) {
   revalidatePath("/");
   revalidatePath("/dashboard");
   revalidatePath("/library");
-  revalidatePath("/recommendations");
+  revalidatePath("/watchlist");
   revalidatePath("/discover");
-  await queueToast(
-    updatedCount === 0
-      ? "No rating changes to save."
-      : `Saved ${updatedCount} rating${updatedCount === 1 ? "" : "s"}.`,
-  );
-
-  let destination = returnTo.startsWith("/library") ? returnTo : "/library";
-  if (untrackedNewlyRated.length > 0) {
-    const reviewIds = untrackedNewlyRated.map((row) => row.mediaId).join(",");
-    const separator = destination.includes("?") ? "&" : "?";
-    destination = `${destination}${separator}reviewStatus=${encodeURIComponent(reviewIds)}`;
-  }
-  redirect(destination);
+  if (id) revalidatePath(`/media/${id}`);
 }
 
-export async function updateMediaStatuses(formData: FormData) {
-  const userId = await requireUserId();
-  const ids = formData
-    .getAll("mediaId")
-    .map((value) => String(value))
-    .filter(Boolean);
+export type RateResult = {
+  personalRating: number | null;
+  /** Status the item is on now. */
+  status: MediaStatus;
+  /** Status it was on before — what an Undo should restore. */
+  previousStatus: MediaStatus;
+  /** True when this rating promoted the item to COMPLETED. */
+  autoCompleted: boolean;
+};
 
-  let updatedCount = 0;
-  for (const id of ids) {
-    const value = String(formData.get(`status:${id}`) ?? "");
-    if (!value || value === "UNTRACKED") continue;
-    if (!isMediaStatus(value)) continue;
-    await upsertUserMedia(userId, id, { status: value });
-    updatedCount += 1;
-  }
-
-  revalidatePath("/");
-  revalidatePath("/dashboard");
-  revalidatePath("/library");
-  revalidatePath("/recommendations");
-  revalidatePath("/discover");
-  await queueToast(
-    updatedCount === 0
-      ? "No status changes."
-      : `Updated ${updatedCount} status${updatedCount === 1 ? "" : "es"}.`,
-  );
-
-  const returnTo = String(formData.get("returnTo") ?? "/library");
-  redirect(returnTo.startsWith("/library") ? returnTo.split("?")[0] : "/library");
-}
-
-export async function updateMediaRating(id: string, formData: FormData) {
+/**
+ * Rate an item. Rating something you hadn't started implies you finished it, so
+ * we promote the status (see `statusAfterRating`) rather than nagging with a
+ * follow-up prompt. Returns what happened so the client can surface it — and
+ * offer an Undo — instead of silently changing state behind the user's back.
+ */
+export async function updateMediaRating(
+  id: string,
+  formData: FormData,
+): Promise<RateResult> {
   const personalRating = parseOptionalRating(formData.get("personalRating"));
   const userId = await requireUserId();
-  await upsertUserMedia(userId, id, { personalRating });
+
+  const existing = await prisma.userMedia.findUnique({
+    where: { userId_mediaId: { userId, mediaId: id } },
+    select: { status: true },
+  });
+  const previousStatus: MediaStatus = existing?.status ?? "UNTRACKED";
+
+  // Clearing a rating is not a statement that you watched it — only promote on
+  // an actual score.
+  const promoted =
+    personalRating == null ? null : statusAfterRating(previousStatus);
+
+  await upsertUserMedia(userId, id, {
+    personalRating,
+    ...(promoted ? { status: promoted } : {}),
+  });
   await recomputeMediaScores(id, userId);
-  revalidatePath("/");
-  revalidatePath("/dashboard");
-  revalidatePath("/library");
-  revalidatePath(`/media/${id}`);
-  revalidatePath("/recommendations");
-  revalidatePath("/discover");
-  await queueToast(
-    personalRating == null ? "Rating cleared." : "Rating saved.",
-  );
+  revalidateUserMediaViews(id);
+
+  return {
+    personalRating,
+    status: promoted ?? previousStatus,
+    previousStatus,
+    autoCompleted: promoted != null,
+  };
 }
 
 export async function updateMediaStatus(id: string, formData: FormData) {
@@ -265,11 +220,28 @@ export async function updateMediaStatus(id: string, formData: FormData) {
 
   const userId = await requireUserId();
   await upsertUserMedia(userId, id, { status });
-  revalidatePath("/library");
-  revalidatePath(`/media/${id}`);
-  revalidatePath("/recommendations");
-  revalidatePath("/discover");
-  await queueToast("Status saved.");
+  revalidateUserMediaViews(id);
+}
+
+/** Direct status write used by Undo and by the Watched toggle. */
+export async function setMediaStatus(id: string, status: MediaStatus) {
+  if (!isMediaStatus(status)) return;
+  const userId = await requireUserId();
+  await upsertUserMedia(userId, id, { status });
+  revalidateUserMediaViews(id);
+}
+
+/**
+ * The Letterboxd-style Watched toggle. Un-watching returns the item to
+ * UNTRACKED — we don't try to reconstruct whatever it was before, because that
+ * history isn't stored and guessing would be worse than a predictable reset.
+ */
+export async function setMediaWatched(id: string, watched: boolean) {
+  const userId = await requireUserId();
+  await upsertUserMedia(userId, id, {
+    status: watched ? "COMPLETED" : "UNTRACKED",
+  });
+  revalidateUserMediaViews(id);
 }
 
 export async function toggleFavoriteMediaItem(id: string) {
@@ -282,7 +254,6 @@ export async function toggleFavoriteMediaItem(id: string) {
   await upsertUserMedia(userId, id, { isFavorite });
   revalidatePath("/library");
   revalidatePath(`/media/${id}`);
-  revalidatePath("/recommendations");
   await queueToast(isFavorite ? "Added to favorites." : "Removed favorite.");
 }
 
@@ -355,15 +326,7 @@ function isMediaStatus(value: string): value is MediaStatus {
   return Object.values(MediaStatus).includes(value as MediaStatus);
 }
 
-function isRelationKind(value: string): value is RelationKind {
-  return Object.values(RelationKind).includes(value as RelationKind);
-}
-
-function isReleaseKind(value: string): value is ReleaseKind {
-  return Object.values(ReleaseKind).includes(value as ReleaseKind);
-}
-
-/** Title search backing the relation-target picker on the detail page. */
+/** Title search backing the relation-target picker on the edit page. */
 export async function searchMediaItemsForRelation(
   excludeId: string,
   query: string,
@@ -380,77 +343,4 @@ export async function searchMediaItemsForRelation(
     orderBy: { title: "asc" },
     take: 10,
   });
-}
-
-/** Link this item to another as a remake/sequel/spin-off/adaptation. The edge
- *  is stored once (`fromId -> toId`); the detail page renders it from both
- *  ends via the forward/inverse labels in `lib/media-relations.ts`. */
-export async function addMediaRelation(fromId: string, formData: FormData) {
-  await requireUserId();
-  const toId = String(formData.get("toId") ?? "");
-  const kind = String(formData.get("kind") ?? "");
-  if (!toId || !isRelationKind(kind)) {
-    await queueToast("Pick a title and a relationship.", "error");
-    return;
-  }
-  if (toId === fromId) {
-    await queueToast("An item can't link to itself.", "error");
-    return;
-  }
-  try {
-    await prisma.mediaRelation.create({ data: { fromId, toId, kind } });
-  } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
-      await queueToast("That link already exists.", "error");
-      return;
-    }
-    throw error;
-  }
-  revalidatePath(`/media/${fromId}`);
-  revalidatePath(`/media/${toId}`);
-  await queueToast("Link added.");
-}
-
-export async function removeMediaRelation(fromId: string, relationId: string) {
-  await requireUserId();
-  const relation = await prisma.mediaRelation.findUnique({
-    where: { id: relationId },
-    select: { toId: true },
-  });
-  await prisma.mediaRelation.deleteMany({ where: { id: relationId } });
-  revalidatePath(`/media/${fromId}`);
-  if (relation) revalidatePath(`/media/${relation.toId}`);
-  await queueToast("Link removed.");
-}
-
-/** Record a remaster/port/re-release/DLC of an existing item. The item's own
- *  `releaseDate` (first release) is left untouched; future events surface on
- *  the Upcoming calendar. */
-export async function addReleaseEvent(mediaId: string, formData: FormData) {
-  await requireUserId();
-  const kind = String(formData.get("kind") ?? "");
-  const dateStr = String(formData.get("date") ?? "");
-  const title = String(formData.get("title") ?? "").trim();
-  const date = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date(NaN);
-  if (!isReleaseKind(kind) || Number.isNaN(date.getTime())) {
-    await queueToast("Pick a type and a valid date.", "error");
-    return;
-  }
-  await prisma.mediaReleaseEvent.create({
-    data: { mediaId, kind, date, title: title || null },
-  });
-  revalidatePath(`/media/${mediaId}`);
-  revalidatePath("/upcoming");
-  await queueToast("Re-release added.");
-}
-
-export async function removeReleaseEvent(mediaId: string, eventId: string) {
-  await requireUserId();
-  await prisma.mediaReleaseEvent.deleteMany({ where: { id: eventId } });
-  revalidatePath(`/media/${mediaId}`);
-  revalidatePath("/upcoming");
-  await queueToast("Re-release removed.");
 }
