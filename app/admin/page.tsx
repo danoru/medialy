@@ -25,6 +25,7 @@ import InsightsIcon from "@mui/icons-material/Insights";
 import { ReleaseCandidateStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/user";
+import { formatMediaType } from "@/lib/format";
 import { getAdminSignals } from "@/lib/db/admin-signals";
 import { Sparkline } from "@/components/admin/Sparkline";
 
@@ -33,15 +34,34 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   await requireAdmin("/admin");
-  const [pendingTagCount, pendingSuggestionCount, pendingCandidateCount, signals] =
-    await Promise.all([
-      prisma.tag.count({ where: { status: "PENDING" } }),
-      prisma.mediaEditSuggestion.count({ where: { status: "PENDING" } }),
-      prisma.releaseCandidate.count({
-        where: { status: ReleaseCandidateStatus.PENDING },
-      }),
-      getAdminSignals(),
-    ]);
+  const [
+    pendingTagCount,
+    pendingSuggestionCount,
+    pendingCandidateCount,
+    signals,
+    userAddedMedia,
+  ] = await Promise.all([
+    prisma.tag.count({ where: { status: "PENDING" } }),
+    prisma.mediaEditSuggestion.count({ where: { status: "PENDING" } }),
+    prisma.releaseCandidate.count({
+      where: { status: ReleaseCandidateStatus.PENDING },
+    }),
+    getAdminSignals(),
+    // `createdById` is null for everything seeded or backfilled, so a non-null
+    // value is exactly "a user put this in the shared catalog".
+    prisma.mediaItem.findMany({
+      where: { createdById: { not: null } },
+      select: {
+        id: true,
+        title: true,
+        mediaType: true,
+        createdAt: true,
+        createdBy: { select: { displayName: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+    }),
+  ]);
 
   return (
     <Stack spacing={4}>
@@ -317,6 +337,52 @@ export default async function AdminPage() {
               </CardContent>
             </CardActionArea>
           </Link>
+        </Card>
+      </Stack>
+
+      <Stack spacing={2}>
+        <Stack spacing={0.5}>
+          <Typography variant="eyebrow">Recently added by users</Typography>
+          <Typography color="text.secondary" variant="body2">
+            Catalog items a real user introduced via search-and-add. Seeded and
+            backfilled entries have no creator and never appear here.
+          </Typography>
+        </Stack>
+        <Card variant="outlined">
+          {userAddedMedia.length === 0 ? (
+            <CardContent>
+              <Typography color="text.secondary" variant="body2">
+                No user-added items yet.
+              </Typography>
+            </CardContent>
+          ) : (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Title</TableCell>
+                  <TableCell>Type</TableCell>
+                  <TableCell>Added by</TableCell>
+                  <TableCell>When</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {userAddedMedia.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <Link href={`/media/${item.id}`}>{item.title}</Link>
+                    </TableCell>
+                    <TableCell>{formatMediaType(item.mediaType)}</TableCell>
+                    <TableCell>
+                      {item.createdBy?.displayName ?? "Unknown"}
+                    </TableCell>
+                    <TableCell>
+                      {item.createdAt.toLocaleDateString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </Card>
       </Stack>
     </Stack>
