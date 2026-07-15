@@ -1,5 +1,7 @@
+import { unstable_cache } from "next/cache";
 import type { ContributorKind, CreditRole, MediaType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { CATALOG_CACHE_TAG, CATALOG_REVALIDATE_SECONDS } from "@/lib/cache";
 import {
   buildOverallTopRankingContext,
   dashboardQualityScore,
@@ -230,7 +232,10 @@ export function pickLeadCredit(
   return null;
 }
 
-function tagAllowsMediaType(mediaTypesJson: string | null, mediaType: MediaType) {
+function tagAllowsMediaType(
+  mediaTypesJson: string | null,
+  mediaType: MediaType,
+) {
   if (!mediaTypesJson) return true;
   try {
     const mediaTypes = JSON.parse(mediaTypesJson);
@@ -288,73 +293,77 @@ export function toCanonCandidate(
  * Overall Top. With `genre` set it returns the deep per-genre list; otherwise
  * the overview (top overall + per-genre shelves).
  */
-export async function getCanonData({
-  type,
-  genre,
-  subgenre,
-}: {
-  type: MediaType;
-  genre?: string | null;
-  subgenre?: string | null;
-}): Promise<CanonData> {
-  const [pool, context] = await Promise.all([
-    prisma.mediaItem.findMany({
-      where: { mediaType: type },
-      select: {
-        id: true,
-        title: true,
-        mediaType: true,
-        posterUrl: true,
-        releaseDate: true,
-        computedConsensusScore: true,
-        genres: { select: { genre: { select: { name: true } } } },
-        tags: {
-          select: {
-            tag: {
-              select: {
-                name: true,
-                status: true,
-                category: true,
-                discoverable: true,
-                mediaTypesJson: true,
+export const getCanonData = unstable_cache(
+  async ({
+    type,
+    genre,
+    subgenre,
+  }: {
+    type: MediaType;
+    genre?: string | null;
+    subgenre?: string | null;
+  }): Promise<CanonData> => {
+    const [pool, context] = await Promise.all([
+      prisma.mediaItem.findMany({
+        where: { mediaType: type },
+        select: {
+          id: true,
+          title: true,
+          mediaType: true,
+          posterUrl: true,
+          releaseDate: true,
+          computedConsensusScore: true,
+          genres: { select: { genre: { select: { name: true } } } },
+          tags: {
+            select: {
+              tag: {
+                select: {
+                  name: true,
+                  status: true,
+                  category: true,
+                  discoverable: true,
+                  mediaTypesJson: true,
+                },
               },
             },
           },
-        },
-        credits: {
-          select: {
-            role: true,
-            order: true,
-            contributor: { select: { name: true, kind: true } },
+          credits: {
+            select: {
+              role: true,
+              order: true,
+              contributor: { select: { name: true, kind: true } },
+            },
+            orderBy: { order: "asc" },
           },
-          orderBy: { order: "asc" },
         },
-      },
-    }),
-    buildOverallTopRankingContext(),
-  ]);
+      }),
+      buildOverallTopRankingContext(),
+    ]);
 
-  const ranked = rankCanonItems(
-    pool.map((row) => toCanonCandidate(row, type)),
-    context,
-  );
+    const ranked = rankCanonItems(
+      pool.map((row) => toCanonCandidate(row, type)),
+      context,
+    );
 
-  if (genre) {
+    if (genre) {
+      return {
+        mode: "genre",
+        genre,
+        subgenre: subgenre ?? null,
+        subgenres: subgenreOptions(ranked, type, genre),
+        items: itemsForGenre(ranked, genre, subgenre).slice(0, CANON_LIMIT),
+      };
+    }
+
     return {
-      mode: "genre",
-      genre,
-      subgenre: subgenre ?? null,
-      subgenres: subgenreOptions(ranked, type, genre),
-      items: itemsForGenre(ranked, genre, subgenre).slice(0, CANON_LIMIT),
+      mode: "overall",
+      overall: ranked.slice(0, CANON_LIMIT),
+      shelves: buildGenreShelves(ranked, {
+        shelfSize: CANON_SHELF_SIZE,
+        minItems: CANON_SHELF_MIN_ITEMS,
+      }),
     };
-  }
-
-  return {
-    mode: "overall",
-    overall: ranked.slice(0, CANON_LIMIT),
-    shelves: buildGenreShelves(ranked, {
-      shelfSize: CANON_SHELF_SIZE,
-      minItems: CANON_SHELF_MIN_ITEMS,
-    }),
-  };
-}
+  },
+  ["canon-data"],
+  { revalidate: CATALOG_REVALIDATE_SECONDS, tags: [CATALOG_CACHE_TAG] },
+);

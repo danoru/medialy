@@ -5,7 +5,6 @@ import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import ReportProblemIcon from "@mui/icons-material/ReportProblem";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
@@ -52,7 +51,6 @@ type DashboardData = {
   comparisonCount: number;
   missingMetadataCount: number;
   duplicateCount: number;
-  topItems: MediaItemDTO[];
   recommendations: Array<{
     media: MediaItemDTO;
     score: number;
@@ -89,17 +87,11 @@ type DashboardData = {
       score: number;
     }>;
   }>;
-  personalTopItemsByMediaType: Array<{
-    mediaType: MediaType;
-    items: MediaItemDTO[];
-  }>;
-  upcomingItems: MediaItemDTO[];
   upcomingItemsByMediaType: Array<{
     mediaType: MediaType;
     items: MediaItemDTO[];
   }>;
   watchlistItems: MediaItemDTO[];
-  recentItems: MediaItemDTO[];
   health: {
     missingGenres: number;
     missingPosters: number;
@@ -114,9 +106,9 @@ type DashboardRecommendation = DashboardData["recommendations"][number];
 
 const panelActionSx: SxProps<Theme> = {
   color: "text.secondary",
-  fontSize: "0.75rem",
+  fontSize: "0.875rem",
   fontWeight: 550,
-  minHeight: 26,
+  minHeight: 44,
   px: 1,
   "&:hover": { color: "text.primary" },
 };
@@ -425,22 +417,30 @@ export function DashboardClient({
             title="Watchlist highlights"
           >
             <Stack spacing={1} sx={{ flex: 1, mt: 0.5 }}>
-              {data.watchlistItems.slice(0, 5).map((item) => {
-                // Prefer the Medialy Match score (0–100, "how strongly we
-                // predict you'll like this"). Fall back to consensus when an
-                // item is missing from the rec pool (e.g., release date filter).
-                const match = watchlistMatchByMediaId.get(item.id);
-                return (
-                  <MediaSignalRow
-                    href={`/media/${item.id}`}
-                    item={item}
-                    key={item.id}
-                    score={match ?? null}
-                    fallbackConsensus={item.computedConsensusScore}
-                    compact
-                  />
-                );
-              })}
+              {data.watchlistItems.length === 0 ? (
+                // This panel used to map an empty array with no fallback,
+                // rendering a heading over literal blank space.
+                <Typography color="text.secondary" variant="body2">
+                  Nothing on your watchlist yet.
+                </Typography>
+              ) : (
+                data.watchlistItems.slice(0, 5).map((item) => {
+                  // Prefer the Medialy Match score (0–100, "how strongly we
+                  // predict you'll like this"). Fall back to consensus when an
+                  // item is missing from the rec pool (e.g., release date filter).
+                  const match = watchlistMatchByMediaId.get(item.id);
+                  return (
+                    <MediaSignalRow
+                      href={`/media/${item.id}`}
+                      item={item}
+                      key={item.id}
+                      score={match ?? null}
+                      fallbackConsensus={item.computedConsensusScore}
+                      compact
+                    />
+                  );
+                })
+              )}
             </Stack>
           </DashboardSection>
         </Box>
@@ -553,7 +553,10 @@ function DiagonalPickStrip({
         display: "flex",
         flexDirection: { xs: "column", md: "row" },
         height: { xs: "auto", md: 468 },
-        minHeight: { xs: 720, md: 468 },
+        // No `minHeight` floor at xs: the slices stack vertically on a phone, so
+        // a 720px floor plus five 200px slices meant ~1,360px — three and a half
+        // screens of "Tonight's pick" before anything else on the dashboard.
+        minHeight: { md: 468 },
         overflow: "hidden",
         position: "relative",
       }}
@@ -628,7 +631,7 @@ function DiagonalPickStrip({
           <Typography
             sx={{
               color: "rgba(255,255,255,0.72)",
-              fontSize: "0.6875rem",
+              fontSize: "0.875rem",
               fontWeight: 600,
               letterSpacing: "0.14em",
               textTransform: "uppercase",
@@ -687,24 +690,14 @@ function DiagonalPickStrip({
             >
               View details
             </Button>
-            <Button
-              component={Link}
-              href="/recommendations"
-              size="small"
-              startIcon={<InfoOutlinedIcon sx={{ fontSize: 16 }} />}
-              sx={{
-                bgcolor: "rgba(255,255,255,0.1)",
-                color: "#FFFFFF",
-                "&:hover": { bgcolor: "rgba(255,255,255,0.18)" },
-              }}
-            >
-              Why this pick?
-            </Button>
           </Stack>
         </Stack>
       </Box>
 
-      {/* Up-next slices */}
+      {/* Up-next slices. On a phone these stack, so we show at most two —
+          five of them buried the rest of the dashboard below three screens of
+          scroll. The full set is still there at md+, where they sit side by
+          side as intended. */}
       {upNext.map((rec, i) => {
         const isLast = i === upNext.length - 1;
         const clip = isLast ? lastClip : middleClip;
@@ -716,7 +709,8 @@ function DiagonalPickStrip({
             key={rec.media.id}
             sx={{
               color: "inherit",
-              display: "block",
+              // Hide everything past the first two once they're stacked.
+              display: { xs: i < 2 ? "block" : "none", md: "block" },
               flex: { xs: "1 1 auto", md: "1 1 0" },
               height: { xs: 200, md: "100%" },
               marginLeft: { xs: 0, md: `-${DIAG_SKEW}px` },
@@ -875,7 +869,7 @@ function ScoreBadge({
       <Typography
         sx={{
           color: "rgba(255,255,255,0.7)",
-          fontSize: "0.625rem",
+          fontSize: "0.875rem",
           fontWeight: 550,
           lineHeight: 1,
           mt: 0.25,
@@ -894,7 +888,7 @@ function OnDarkChip({ children }: { children: React.ReactNode }) {
         bgcolor: "rgba(255,255,255,0.12)",
         borderRadius: 1.5,
         color: "rgba(255,255,255,0.92)",
-        fontSize: "0.6875rem",
+        fontSize: "0.875rem",
         fontWeight: 550,
         lineHeight: 1,
         px: 1,
@@ -1009,7 +1003,7 @@ function CollectionCoverCard({
           sx={{
             color: "rgba(255,255,255,0.82)",
             display: "-webkit-box",
-            fontSize: "0.8rem",
+            fontSize: "0.875rem",
             lineHeight: 1.35,
             mt: 0.5,
             overflow: "hidden",
@@ -1061,7 +1055,7 @@ function MediaTypeTabs({
           borderRadius: 1.5,
           color: "rgba(255,255,255,0.7)",
           gap: 0.6,
-          minHeight: 28,
+          minHeight: 44,
           px: 1,
           py: 0.4,
           textTransform: "none",
@@ -1089,7 +1083,7 @@ function MediaTypeTabs({
           borderRadius: 1.5,
           color: "text.secondary",
           gap: 0.6,
-          minHeight: 28,
+          minHeight: 44,
           px: 1,
           py: 0.4,
           textTransform: "none",
@@ -1134,14 +1128,14 @@ function MediaTypeTabs({
             {mediaTypeIcon(mediaType)}
             <Typography
               component="span"
-              sx={{ fontSize: "0.75rem", fontWeight: 550 }}
+              sx={{ fontSize: "0.875rem", fontWeight: 550 }}
             >
               {shortMediaTypeLabel(mediaType)}
             </Typography>
             {showCounts ? (
               <Typography
                 component="span"
-                sx={{ fontSize: "0.6875rem", opacity: 0.7 }}
+                sx={{ fontSize: "0.875rem", opacity: 0.7 }}
               >
                 {countByType.get(mediaType) ?? 0}
               </Typography>
@@ -1192,7 +1186,7 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
         <Link href={`/media/${item.id}`} style={{ textDecoration: "none" }}>
           <Typography
             noWrap
-            sx={{ color: "text.primary", fontSize: "0.8125rem", fontWeight: 550 }}
+            sx={{ color: "text.primary", fontSize: "0.875rem", fontWeight: 550 }}
           >
             {item.title}
           </Typography>
@@ -1200,14 +1194,14 @@ function UpcomingRow({ item }: { item: MediaItemDTO }) {
       </Box>
       <Box sx={{ minWidth: 92, textAlign: "right" }}>
         <Typography
-          sx={{ color: "text.primary", fontSize: "0.75rem", fontWeight: 600 }}
+          sx={{ color: "text.primary", fontSize: "0.875rem", fontWeight: 600 }}
         >
           {item.releaseDate
             ? new Date(item.releaseDate).toLocaleDateString()
             : "-"}
         </Typography>
         {item.releaseDate ? (
-          <Typography color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+          <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
             {formatUpcomingRelativeLabel(item.releaseDate)}
           </Typography>
         ) : null}
@@ -1281,14 +1275,14 @@ function HealthPill({ label, value }: { label: string; value: number }) {
       <Typography
         noWrap
         color="text.secondary"
-        sx={{ flex: 1, fontSize: "0.75rem", minWidth: 0 }}
+        sx={{ flex: 1, fontSize: "0.875rem", minWidth: 0 }}
       >
         {label}
       </Typography>
       <Typography
         sx={{
           color: value > 0 ? "warning.main" : "success.main",
-          fontSize: "0.8125rem",
+          fontSize: "0.875rem",
           fontWeight: 700,
         }}
       >
@@ -1316,7 +1310,7 @@ function EmptyPanel({ icon, label }: { icon: React.ReactNode; label: string }) {
       }}
     >
       {icon}
-      <Typography sx={{ fontSize: "0.8125rem" }}>{label}</Typography>
+      <Typography sx={{ fontSize: "0.875rem" }}>{label}</Typography>
     </Stack>
   );
 }
@@ -1390,7 +1384,7 @@ function MediaSignalRow({
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography
               noWrap
-              sx={{ fontSize: "0.8125rem", fontWeight: 600 }}
+              sx={{ fontSize: "0.875rem", fontWeight: 600 }}
             >
               {item.title}
             </Typography>
@@ -1403,7 +1397,7 @@ function MediaSignalRow({
                 size="small"
                 variant="outlined"
               />
-              <Typography color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+              <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                 {statusLabel(item.status, item.mediaType)}
               </Typography>
               {!compact &&
@@ -1428,10 +1422,10 @@ function MediaSignalRow({
                 mb: 0.5,
               }}
             >
-              <Typography color="text.secondary" sx={{ fontSize: "0.625rem" }}>
+              <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                 {scoreLabel}
               </Typography>
-              <Typography sx={{ fontSize: "0.625rem", fontWeight: 600 }}>
+              <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
                 {displayValue}
               </Typography>
             </Stack>

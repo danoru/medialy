@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toMediaItemDTO } from "@/lib/media";
 import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
@@ -12,7 +13,7 @@ import { normalizeComparableTitle } from "@/lib/text-normalization";
 import { getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { getFollowingIds, getUserProfiles } from "@/lib/social/follows";
-import { getUserOverlap } from "@/lib/social/overlap";
+import { calculateRatingCompatibility } from "@/lib/scoring/compatibility";
 import { bayesianShrunkMean } from "@/lib/scoring/affinity";
 import { TOP_RANKING } from "@/lib/scoring/config";
 
@@ -430,10 +431,101 @@ export async function getDataHealthReport(
   };
 }
 
+export type DataHealthCounts = {
+  missingGenres: number;
+  missingDates: number;
+  missingPosters: number;
+  lowComparisonItems: number;
+  duplicateCandidates: number;
+};
+
 /**
- * Compatibility with each user the viewer follows. Fans out one overlap
- * computation per follow — the platform's small enough that this is fine; if
- * it grows, batch the underlying queries.
+ * Just the five data-health tallies — for the dashboard and profile, which only
+ * read `.length` of each list.
+ *
+ * `getDataHealthReport` hydrates the entire catalog with genres/tags/userMedia
+ * joins to produce these counts; that full report is only needed by the
+ * data-health page. Here we use `count` aggregates for four of the metrics and
+ * a thin title-only scan for the duplicate grouping (which needs JS title
+ * normalization and so can't be a pure SQL count) — no relation joins.
+ */
+export async function getDataHealthCounts(
+  userId?: string | null,
+): Promise<DataHealthCounts> {
+  const resolvedUserId =
+    userId === undefined ? await getCurrentUserId() : userId;
+  const base: Prisma.MediaItemWhereInput = {
+    mediaType: visibleMediaTypeFilter(),
+    ...(resolvedUserId == null
+      ? {}
+      : {
+          OR: [
+            { userMedia: { none: { userId: resolvedUserId } } },
+            { userMedia: { some: { userId: resolvedUserId, isArchived: false } } },
+          ],
+        }),
+  };
+
+  // "Low comparison" means the viewer's own comparisonCount < 3, and a missing
+  // UserMedia row counts as 0 (< 3). So: everything active EXCEPT items this
+  // user has already compared 3+ times. Anonymous viewers have no rows, so
+  // every item qualifies (base alone).
+  const lowComparisonWhere: Prisma.MediaItemWhereInput =
+    resolvedUserId == null
+      ? base
+      : {
+          ...base,
+          NOT: {
+            userMedia: {
+              some: { userId: resolvedUserId, comparisonCount: { gte: 3 } },
+            },
+          },
+        };
+
+  const [missingGenres, missingDates, missingPosters, lowComparisonItems, dupRows] =
+    await Promise.all([
+      prisma.mediaItem.count({ where: { ...base, genres: { none: {} } } }),
+      prisma.mediaItem.count({ where: { ...base, releaseDate: null } }),
+      prisma.mediaItem.count({ where: { ...base, posterUrl: null } }),
+      prisma.mediaItem.count({ where: lowComparisonWhere }),
+      prisma.mediaItem.findMany({
+        where: base,
+        select: { title: true, mediaType: true, releaseDate: true },
+      }),
+    ]);
+
+  const dupGroups = new Map<string, number>();
+  for (const item of dupRows) {
+    const year = item.releaseDate
+      ? new Date(item.releaseDate).getFullYear()
+      : "unknown";
+    const key = `${normalizeComparableTitle(item.title)}::${item.mediaType}::${year}`;
+    dupGroups.set(key, (dupGroups.get(key) ?? 0) + 1);
+  }
+  let duplicateCandidates = 0;
+  for (const count of dupGroups.values()) {
+    if (count > 1) duplicateCandidates += 1;
+  }
+
+  return {
+    missingGenres,
+    missingDates,
+    missingPosters,
+    lowComparisonItems,
+    duplicateCandidates,
+  };
+}
+
+/**
+ * Compatibility with each user the viewer follows.
+ *
+ * This only needs the rating-compatibility numbers, so it does NOT call the
+ * full `getUserOverlap` per follow — that fans out ~5 queries each (shared
+ * watchlist, watch-next titles, shared genres) whose results this panel throws
+ * away. Instead we load the viewer's rated rows once and every followed user's
+ * rated rows in a single `in` query, then pair them up in memory. N follows go
+ * from ~5N queries to a flat 3 (profiles + viewer + all targets). The richer
+ * `getUserOverlap` still backs the per-user detail pages.
  */
 export async function getFollowCompatibility(
   userId?: string | null,
@@ -442,31 +534,64 @@ export async function getFollowCompatibility(
     userId === undefined ? await getCurrentUserId() : userId;
   if (resolvedUserId == null) return [];
 
-  const followingIds = await getFollowingIds(resolvedUserId);
+  const followingIds = (await getFollowingIds(resolvedUserId)).filter(
+    (id) => id !== resolvedUserId,
+  );
   if (followingIds.length === 0) return [];
 
-  const profiles = await getUserProfiles(followingIds);
-  const overlaps = await Promise.all(
-    followingIds.map(async (targetId) => ({
-      targetId,
-      overlap: await getUserOverlap(resolvedUserId, targetId),
-    })),
-  );
+  const ratedVisible = {
+    isArchived: false,
+    personalRating: { not: null },
+    media: { mediaType: visibleMediaTypeFilter() },
+  } as const;
 
-  return overlaps.map(({ targetId, overlap }) => {
+  const [profiles, viewerRows, targetRows] = await Promise.all([
+    getUserProfiles(followingIds),
+    prisma.userMedia.findMany({
+      where: { userId: resolvedUserId, ...ratedVisible },
+      select: { mediaId: true, personalRating: true },
+    }),
+    prisma.userMedia.findMany({
+      where: { userId: { in: followingIds }, ...ratedVisible },
+      select: { userId: true, mediaId: true, personalRating: true },
+    }),
+  ]);
+
+  const viewerRatingByMedia = new Map(
+    viewerRows.map((row) => [row.mediaId, row.personalRating as number]),
+  );
+  const targetRowsByUser = new Map<
+    string,
+    Array<{ mediaId: string; personalRating: number }>
+  >();
+  for (const row of targetRows) {
+    const list = targetRowsByUser.get(row.userId) ?? [];
+    list.push({ mediaId: row.mediaId, personalRating: row.personalRating as number });
+    targetRowsByUser.set(row.userId, list);
+  }
+
+  return followingIds.map((targetId) => {
+    const pairs: Array<{ viewerRating: number; otherRating: number }> = [];
+    for (const row of targetRowsByUser.get(targetId) ?? []) {
+      const viewerRating = viewerRatingByMedia.get(row.mediaId);
+      if (viewerRating != null) {
+        pairs.push({ viewerRating, otherRating: row.personalRating });
+      }
+    }
+    const compat = calculateRatingCompatibility(pairs);
     const profile = profiles.get(targetId);
     return {
       userId: targetId,
       displayName: profile?.displayName ?? "Someone",
       image: profile?.image ?? null,
       avatarColor: profile?.avatarColor ?? null,
-      overlapCount: overlap.overlapCount,
-      compatibilityScore: overlap.compatibilityScore,
-      averageDistance: overlap.averageDistance,
+      overlapCount: compat.overlapCount,
+      compatibilityScore: compat.compatibilityScore,
+      averageDistance: compat.averageDistance,
       explanation: buildCompatibilityExplanation(
-        overlap.overlapCount,
-        overlap.compatibilityScore,
-        overlap.averageDistance,
+        compat.overlapCount,
+        compat.compatibilityScore,
+        compat.averageDistance,
       ),
     };
   });

@@ -100,23 +100,39 @@ export default async function MediaDetailPage({
   // Relations and re-releases are public facts about the title (not per-user
   // joins), so they're fetched unconditionally and rendered read-only here.
   // Editing lives on the edit page via MediaConnectionsPanel.
+  // These three Neon reads all depend only on the already-loaded `rawItem`, so
+  // fire them together rather than serially: the relation/release triad, the
+  // community-average rows, and the Medialy Match summary. Cuts the detail
+  // page's serial round-trips (and the time Neon compute stays active) roughly
+  // in half.
   const otherSelect = { id: true, title: true, mediaType: true } as const;
-  const [relationsFrom, relationsTo, releaseEventRows] = await Promise.all([
-    prisma.mediaRelation.findMany({
-      where: { fromId: rawItem.id },
-      include: { to: { select: otherSelect } },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.mediaRelation.findMany({
-      where: { toId: rawItem.id },
-      include: { from: { select: otherSelect } },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.mediaReleaseEvent.findMany({
-      where: { mediaId: rawItem.id },
-      orderBy: { date: "asc" },
-    }),
-  ]);
+  const [[relationsFrom, relationsTo, releaseEventRows], otherUserMedia, matchSummary] =
+    await Promise.all([
+      Promise.all([
+        prisma.mediaRelation.findMany({
+          where: { fromId: rawItem.id },
+          include: { to: { select: otherSelect } },
+          orderBy: { createdAt: "asc" },
+        }),
+        prisma.mediaRelation.findMany({
+          where: { toId: rawItem.id },
+          include: { from: { select: otherSelect } },
+          orderBy: { createdAt: "asc" },
+        }),
+        prisma.mediaReleaseEvent.findMany({
+          where: { mediaId: rawItem.id },
+          orderBy: { date: "asc" },
+        }),
+      ]),
+      // Community average: mean of other Medialy users' computedPersonalScore.
+      // Distinct from Consensus (external sources only). Always excludes the
+      // viewing user so they don't see their own score reflected back.
+      prisma.userMedia.findMany({
+        where: { mediaId: rawItem.id, ...(userId ? { NOT: { userId } } : {}) },
+        select: { computedPersonalScore: true },
+      }),
+      getMediaItemMatch(rawItem.id, userId),
+    ]);
   const relations: RelationView[] = [
     ...relationsFrom.map((relation) => ({
       id: relation.id,
@@ -138,16 +154,6 @@ export default async function MediaDetailPage({
     title: event.title,
   }));
 
-  // Community average: mean of other Medialy users' computedPersonalScore.
-  // Distinct from Consensus (external sources only). Always excludes the
-  // viewing user so they don't see their own score reflected back.
-  const otherUserMedia = await prisma.userMedia.findMany({
-    where: {
-      mediaId: rawItem.id,
-      ...(userId ? { NOT: { userId } } : {}),
-    },
-    select: { computedPersonalScore: true },
-  });
   const community = calculateCommunityAverage(otherUserMedia);
 
   // Recompute consensus on the fly to expose agreement % for the tooltip.
@@ -156,8 +162,6 @@ export default async function MediaDetailPage({
   const consensus = calculateConsensusScore(rawItem.externalRatings, {
     mediaType: rawItem.mediaType,
   });
-
-  const matchSummary = await getMediaItemMatch(rawItem.id, userId);
 
   // "Where to watch" for movies/TV is fetched live (availability changes over
   // time) and cached by lib/tmdb. Game platforms are static, so they are read

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import {
-  getDataHealthReport,
+  getDataHealthCounts,
   getFollowCompatibility,
   getGenreInsights,
 } from "@/lib/insights";
@@ -111,7 +111,7 @@ export async function getProfileData() {
     contextGroups,
     genreInsights,
     followCompatibility,
-    healthReport,
+    healthCounts,
     followedUserRatingRows,
   ] = await Promise.all([
     prisma.mediaItem.findMany({
@@ -155,7 +155,7 @@ export async function getProfileData() {
     }),
     getGenreInsights(),
     getFollowCompatibility(user.id),
-    getDataHealthReport(),
+    getDataHealthCounts(),
     followingIds.length > 0
       ? prisma.userMedia.findMany({
           where: {
@@ -370,7 +370,7 @@ export async function getProfileData() {
     {
       label: "Posters",
       coverage: pct(
-        totalItems - healthReport.missingPosters.length,
+        totalItems - healthCounts.missingPosters,
         totalItems,
       ),
     },
@@ -378,8 +378,8 @@ export async function getProfileData() {
       label: "Metadata",
       coverage: pct(
         totalItems -
-          healthReport.missingGenres.length -
-          healthReport.missingDates.length,
+          healthCounts.missingGenres -
+          healthCounts.missingDates,
         Math.max(totalItems, 1),
       ),
     },
@@ -410,7 +410,7 @@ export async function getProfileData() {
     header: {
       trackingSince,
       lastUpdatedLabel: relativeLabel(lastUpdatedDate ?? null),
-      libraryFresh: healthReport.lowComparisonItems.length === 0,
+      libraryFresh: healthCounts.lowComparisonItems === 0,
       stats: {
         totalItems,
         watchlistCount,

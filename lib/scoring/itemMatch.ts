@@ -50,9 +50,25 @@ export async function getMediaItemMatch(
   });
   if (!item) return null;
 
-  // Exclude the current item from the affinity pool so reasons don't
-  // self-reference (e.g. "Director X — you rated <this item> 9/10").
-  const affinity = await getAffinityMaps(userId, { excludeMediaId: mediaId });
+  // These three reads are independent — the affinity pool, the followed-user
+  // ratings for this item, and the similar-title groups — so fire them together
+  // instead of serially. `followerCompatibility` alone depends on the followed
+  // ratings, so it stays sequential after them.
+  const subgenreNames = item.tags
+    .filter((entry) => entry.tag.category === "SUBGENRE")
+    .map((entry) => entry.tag.name);
+
+  const [affinity, followedRatingsByMedia, similarTitleGroups] =
+    await Promise.all([
+      getAffinityMaps(userId, { excludeMediaId: mediaId }),
+      getFollowedUserRatingsByMedia(userId, [mediaId]),
+      findSimilarTitleGroups(userId, {
+        id: item.id,
+        mediaType: item.mediaType,
+        genres: item.genres.map((entry) => entry.genre.name),
+        subgenres: subgenreNames,
+      }),
+    ]);
 
   const genreRaw = item.genres.reduce(
     (total, entry) => total + (affinity.genres.get(entry.genre.name) ?? 0),
@@ -68,13 +84,11 @@ export async function getMediaItemMatch(
     0,
   );
 
-  // Compute the friend signal the same way `getRecommendations` does so the
+  // Friend signal computed the same way `getRecommendations` does so the
   // detail-page Medialy Match matches the dashboard/recommendations number.
   // friendAffinity carries 30% of the weight; passing 0 here would understate
-  // the score for items rated by followed users.
-  const followedRatingsByMedia = await getFollowedUserRatingsByMedia(userId, [
-    mediaId,
-  ]);
+  // the score for items rated by followed users. `followedRatingsByMedia` was
+  // loaded above; only the compatibility map depends on it.
   const followerCompatibility = await getFollowerCompatibilityMap(
     userId,
     followedRatingsByMedia,
@@ -105,17 +119,7 @@ export async function getMediaItemMatch(
       item.mediaType,
     ) ?? null;
 
-  const subgenreNames = item.tags
-    .filter((entry) => entry.tag.category === "SUBGENRE")
-    .map((entry) => entry.tag.name);
-
-  const similarTitleGroups = await findSimilarTitleGroups(userId, {
-    id: item.id,
-    mediaType: item.mediaType,
-    genres: item.genres.map((entry) => entry.genre.name),
-    subgenres: subgenreNames,
-  });
-
+  // `similarTitleGroups` was loaded in the parallel batch above.
   return {
     score: match.score,
     similarTitleGroups,

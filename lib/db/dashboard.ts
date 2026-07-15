@@ -1,7 +1,9 @@
+import { unstable_cache } from "next/cache";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { CATALOG_CACHE_TAG, CATALOG_REVALIDATE_SECONDS } from "@/lib/cache";
 import {
-  getDataHealthReport,
+  getDataHealthCounts,
   getFollowCompatibility,
   getGenreInsightsByMediaType,
 } from "@/lib/insights";
@@ -124,40 +126,59 @@ export function dashboardQualityScore(
 }
 
 /**
- * Runs the cross-user aggregation queries (community averages, external-source
- * counts, and the two global priors) and assembles the {@link
- * OverallTopRankingContext} that drives the objective Top rankings. Shared by
- * the dashboard's Overall Top 10 and the Discover "Top Lists" charts so both
- * surfaces rank items identically.
+ * The raw cross-user aggregates behind the ranking context (community averages,
+ * external-source counts, two global priors). Split out and cached because the
+ * result is a serializable, viewer-independent snapshot that changes slowly —
+ * see lib/cache.ts. The `Map`-shaped {@link OverallTopRankingContext} is
+ * assembled from this outside the cache (Maps don't survive JSON serialization).
  */
+const getRawRankingAggregates = unstable_cache(
+  async () => {
+    const [
+      overallCommunityRatings,
+      overallConsensusSourceCounts,
+      globalCommunityAggregate,
+      globalConsensusAggregate,
+    ] = await Promise.all([
+      prisma.userMedia.groupBy({
+        by: ["mediaId"],
+        where: { isArchived: false, personalRating: { not: null } },
+        _avg: { computedPersonalScore: true },
+        _count: { computedPersonalScore: true },
+      }),
+      prisma.externalRating.groupBy({
+        by: ["mediaId"],
+        _count: { _all: true },
+      }),
+      prisma.userMedia.aggregate({
+        where: { isArchived: false, personalRating: { not: null } },
+        _avg: { computedPersonalScore: true },
+      }),
+      prisma.mediaItem.aggregate({
+        where: { computedConsensusScore: { not: null } },
+        _avg: { computedConsensusScore: true },
+      }),
+    ]);
+    return {
+      overallCommunityRatings,
+      overallConsensusSourceCounts,
+      globalCommunityMean:
+        globalCommunityAggregate._avg.computedPersonalScore ?? null,
+      globalConsensusMean:
+        globalConsensusAggregate._avg.computedConsensusScore ?? null,
+    };
+  },
+  ["overall-ranking-aggregates"],
+  { revalidate: CATALOG_REVALIDATE_SECONDS, tags: [CATALOG_CACHE_TAG] },
+);
+
 export async function buildOverallTopRankingContext(): Promise<OverallTopRankingContext> {
-  const [
+  const {
     overallCommunityRatings,
     overallConsensusSourceCounts,
-    globalCommunityAggregate,
-    globalConsensusAggregate,
-  ] = await Promise.all([
-    prisma.userMedia.groupBy({
-      by: ["mediaId"],
-      where: { isArchived: false, personalRating: { not: null } },
-      _avg: { computedPersonalScore: true },
-      _count: { computedPersonalScore: true },
-    }),
-    prisma.externalRating.groupBy({
-      by: ["mediaId"],
-      _count: { _all: true },
-    }),
-    // Globals used as Bayesian priors. Cheap (single AVG queries) and the
-    // values change slowly enough that we don't bother caching.
-    prisma.userMedia.aggregate({
-      where: { isArchived: false, personalRating: { not: null } },
-      _avg: { computedPersonalScore: true },
-    }),
-    prisma.mediaItem.aggregate({
-      where: { computedConsensusScore: { not: null } },
-      _avg: { computedConsensusScore: true },
-    }),
-  ]);
+    globalCommunityMean: rawCommunityMean,
+    globalConsensusMean: rawConsensusMean,
+  } = await getRawRankingAggregates();
 
   const communityByMediaId = new Map<string, CommunityRatingEvidence>();
   for (const row of overallCommunityRatings) {
@@ -172,12 +193,8 @@ export async function buildOverallTopRankingContext(): Promise<OverallTopRanking
   for (const row of overallConsensusSourceCounts) {
     consensusByMediaId.set(row.mediaId, { sources: row._count._all });
   }
-  const globalCommunityMean =
-    globalCommunityAggregate._avg.computedPersonalScore ??
-    TOP_RANKING.fallbackPrior;
-  const globalConsensusMean =
-    globalConsensusAggregate._avg.computedConsensusScore ??
-    TOP_RANKING.fallbackPrior;
+  const globalCommunityMean = rawCommunityMean ?? TOP_RANKING.fallbackPrior;
+  const globalConsensusMean = rawConsensusMean ?? TOP_RANKING.fallbackPrior;
 
   return {
     communityByMediaId,
@@ -246,17 +263,19 @@ export async function getDashboardData() {
       { userMedia: { some: { userId, isArchived: false } } },
     ],
   };
-  const userMediaStatus = (
-    statuses: Prisma.EnumMediaStatusFilter["in"],
-  ) => ({
-    userMedia: { some: { userId, isArchived: false, status: { in: statuses } } },
+  const userMediaStatus = (statuses: Prisma.EnumMediaStatusFilter["in"]) => ({
+    userMedia: {
+      some: { userId, isArchived: false, status: { in: statuses } },
+    },
   });
   const withUserAndTaxonomy = {
     genres: { include: { genre: true } },
     tags: { include: { tag: true } },
     ...userMediaInclude(userId),
   } as const;
-  const mergeAll = <T extends { userMedia: Parameters<typeof mergeUserMedia>[0]["userMedia"] }>(
+  const mergeAll = <
+    T extends { userMedia: Parameters<typeof mergeUserMedia>[0]["userMedia"] },
+  >(
     rows: T[],
   ) => rows.map(mergeUserMedia);
 
@@ -264,17 +283,13 @@ export async function getDashboardData() {
     totalItems,
     watchlistCount,
     comparisonCount,
-    topItems,
     recommendations,
-    healthReport,
+    healthCounts,
     genreInsights,
     mediaTypeCounts,
-    upcomingItems,
     watchlistItems,
-    recentItems,
     followCompatibility,
     followingCount,
-    personalTopItemsByMediaType,
     upcomingItemsByMediaType,
     overallTopItems,
     topRankingContext,
@@ -291,28 +306,14 @@ export async function getDashboardData() {
     prisma.pairwiseComparison.count({
       where: { userId, winner: { mediaType: visibleMediaTypeFilter() } },
     }),
-    prisma.mediaItem.findMany({
-      where: {
-        mediaType: visibleMediaTypeFilter(),
-        ...userMediaStatus(["COMPLETED"]),
-      },
-      include: withUserAndTaxonomy,
-      take: 50,
-    }),
     getRecommendations(),
-    getDataHealthReport(),
+    getDataHealthCounts(),
     getGenreInsightsByMediaType(),
     prisma.mediaItem.groupBy({
       by: ["mediaType"],
       where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
       _count: { _all: true },
       orderBy: { mediaType: "asc" },
-    }),
-    prisma.mediaItem.findMany({
-      where: getDashboardUpcomingWhere(today),
-      include: withUserAndTaxonomy,
-      orderBy: dashboardUpcomingOrderBy,
-      take: 5,
     }),
     prisma.mediaItem.findMany({
       where: {
@@ -322,26 +323,10 @@ export async function getDashboardData() {
       include: withUserAndTaxonomy,
       take: 50,
     }),
-    prisma.mediaItem.findMany({
-      where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
-      include: withUserAndTaxonomy,
-      orderBy: [{ updatedAt: "desc" }],
-      take: 5,
-    }),
     getFollowCompatibility(userId),
     user
       ? prisma.userFollow.count({ where: { followerId: userId } })
       : Promise.resolve(0),
-    Promise.all(
-      VISIBLE_MEDIA_TYPES.map(async (mediaType) => ({
-        mediaType,
-        items: await prisma.mediaItem.findMany({
-          where: { mediaType, ...userMediaStatus(["COMPLETED"]) },
-          include: withUserAndTaxonomy,
-          take: 50,
-        }),
-      })),
-    ),
     Promise.all(
       VISIBLE_MEDIA_TYPES.map(async (mediaType) => ({
         mediaType,
@@ -362,24 +347,6 @@ export async function getDashboardData() {
     buildOverallTopRankingContext(),
   ]);
 
-  // Sort the rows we couldn't sort in SQL (because the score columns live on
-  // the joined UserMedia row) by their merged values.
-  const sortByPersonalThenPairwise = <
-    T extends { computedPersonalScore: number | null; pairwiseScore: number },
-  >(
-    rows: T[],
-  ) =>
-    [...rows].sort(
-      (a, b) =>
-        (b.computedPersonalScore ?? -Infinity) -
-          (a.computedPersonalScore ?? -Infinity) ||
-        b.pairwiseScore - a.pairwiseScore,
-    );
-
-  const mergedTopItems = sortByPersonalThenPairwise(mergeAll(topItems)).slice(
-    0,
-    10,
-  );
   // Watchlist items haven't been watched, so personal/pairwise scores are
   // mostly null or at the default — sort by the Medialy Match score shown in
   // the UI (falling back to consensus) so the top 5 reflect predicted fit.
@@ -390,19 +357,17 @@ export async function getDashboardData() {
   const mergedWatchlistItems = [...mergeAll(watchlistItems)]
     .sort((a, b) => {
       const aScore =
-        watchlistMatchByMediaId.get(a.id) ?? a.computedConsensusScore ?? -Infinity;
+        watchlistMatchByMediaId.get(a.id) ??
+        a.computedConsensusScore ??
+        -Infinity;
       const bScore =
-        watchlistMatchByMediaId.get(b.id) ?? b.computedConsensusScore ?? -Infinity;
+        watchlistMatchByMediaId.get(b.id) ??
+        b.computedConsensusScore ??
+        -Infinity;
       return bScore - aScore;
     })
     .slice(0, 5);
-  const mergedRecentItems = mergeAll(recentItems);
-  const mergedUpcomingItems = mergeAll(upcomingItems);
   const mergedOverallTopItems = mergeAll(overallTopItems);
-  const mergedPersonalTopByType = personalTopItemsByMediaType.map((entry) => ({
-    mediaType: entry.mediaType,
-    items: sortByPersonalThenPairwise(mergeAll(entry.items)).slice(0, 10),
-  }));
   const mergedUpcomingByType = upcomingItemsByMediaType.map((entry) => ({
     mediaType: entry.mediaType,
     items: mergeAll(entry.items),
@@ -421,16 +386,11 @@ export async function getDashboardData() {
     watchlistCount,
     comparisonCount,
     missingMetadataCount:
-      healthReport.missingGenres.length +
-      healthReport.missingDates.length +
-      healthReport.missingPosters.length,
-    duplicateCount: healthReport.duplicateCandidates.length,
-    topItems: mergedTopItems.map(toMediaItemDTO),
+      healthCounts.missingGenres +
+      healthCounts.missingDates +
+      healthCounts.missingPosters,
+    duplicateCount: healthCounts.duplicateCandidates,
     topItemsByMediaType,
-    personalTopItemsByMediaType: mergedPersonalTopByType.map((entry) => ({
-      mediaType: entry.mediaType,
-      items: entry.items.map(toMediaItemDTO),
-    })),
     recommendations: recommendations.slice(0, 18),
     tonightPicksByMediaType,
     genreInsights,
@@ -438,20 +398,18 @@ export async function getDashboardData() {
       mediaType: entry.mediaType,
       count: entry._count._all,
     })),
-    upcomingItems: mergedUpcomingItems.map(toMediaItemDTO),
     upcomingItemsByMediaType: mergedUpcomingByType.map((entry) => ({
       mediaType: entry.mediaType,
       items: entry.items.map(toMediaItemDTO),
     })),
     watchlistItems: mergedWatchlistItems.map(toMediaItemDTO),
-    recentItems: mergedRecentItems.map(toMediaItemDTO),
     followCompatibility: followCompatibility.slice(0, 5),
     followingCount,
     health: {
-      missingGenres: healthReport.missingGenres.length,
-      missingReleaseDates: healthReport.missingDates.length,
-      missingPosters: healthReport.missingPosters.length,
-      lowComparisonItems: healthReport.lowComparisonItems.length,
+      missingGenres: healthCounts.missingGenres,
+      missingReleaseDates: healthCounts.missingDates,
+      missingPosters: healthCounts.missingPosters,
+      lowComparisonItems: healthCounts.lowComparisonItems,
     },
   };
 }
