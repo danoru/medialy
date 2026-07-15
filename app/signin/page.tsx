@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Box, Button, Container, Stack, Typography } from "@mui/material";
-import { auth, signIn } from "@/lib/auth";
+import { signIn } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/user";
 
 /**
  * Sign-in page. Single Google button — Medialy is intentionally
@@ -15,11 +16,14 @@ export default async function SignInPage({
 }: {
   searchParams: Promise<{ callbackUrl?: string }>;
 }) {
-  const session = await auth();
+  // getCurrentUser (not auth() directly) so a valid-but-orphaned JWT — a token
+  // whose user row is gone — is treated as signed-out and kept on this page,
+  // the guard the auth session callback used to provide.
+  const user = await getCurrentUser();
   const { callbackUrl: rawCallbackUrl } = await searchParams;
   const callbackUrl = safeCallbackUrl(rawCallbackUrl);
 
-  if (session?.user) {
+  if (user) {
     redirect(callbackUrl);
   }
 
@@ -46,6 +50,19 @@ export default async function SignInPage({
             Continue with Google
           </Button>
         </form>
+
+        {process.env.NODE_ENV !== "production" ? (
+          <form
+            action={async () => {
+              "use server";
+              await signIn("dev-login", { redirectTo: callbackUrl });
+            }}
+          >
+            <Button type="submit" variant="outlined" size="small" fullWidth>
+              Dev sign-in (local only)
+            </Button>
+          </form>
+        ) : null}
       </Stack>
     </Container>
   );

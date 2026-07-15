@@ -7,14 +7,19 @@ import {
 } from "@mui/material";
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 import { listCollections } from "@/lib/db/collections";
-import { requireUser } from "@/lib/user";
+import { getCurrentUser } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Collections" };
 
 export default async function CollectionsIndexPage() {
-  const user = await requireUser("/discover/collections");
-  const collections = await listCollections({ includeDrafts: user.isAdmin });
+  // Collections are public discovery content — the anonymous dashboard already
+  // surfaces featured ones — so browsing the full list doesn't require a
+  // session. Only draft visibility and the "New collection" affordance are
+  // admin-gated.
+  const user = await getCurrentUser();
+  const isAdmin = user?.isAdmin ?? false;
+  const collections = await listCollections({ includeDrafts: isAdmin });
 
   return (
     <Box sx={{ mx: "auto" }}>
@@ -33,7 +38,7 @@ export default async function CollectionsIndexPage() {
               Themed, hand-picked lists to serve up.
             </Typography>
           </Box>
-          {user.isAdmin ? (
+          {isAdmin ? (
             <Button
               component="a"
               href="/discover/collections/new"

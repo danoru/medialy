@@ -1,6 +1,8 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import type { Adapter, AdapterUser } from "next-auth/adapters";
+import type { Provider } from "next-auth/providers";
+import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import { prisma } from "@/lib/prisma";
 
@@ -55,37 +57,63 @@ const adapter: Adapter = {
   },
 };
 
+/**
+ * DEV ONLY. A password-less sign-in that mints a JWT session for an existing
+ * user, so local signed-in flows can be exercised without going through Google.
+ *
+ * Never shipped: it's only pushed into `providers` when NODE_ENV !==
+ * "production", and `authorize` itself hard-refuses in production as a second
+ * guard. It creates no users and grants no admin it didn't already find on the
+ * row — it only re-attaches to a user that already exists (defaulting to the
+ * seeded `usr_default`). An optional `email` input picks a different user.
+ */
+const devLoginProvider = Credentials({
+  id: "dev-login",
+  name: "Dev Login",
+  credentials: { email: { label: "Email (optional)", type: "text" } },
+  async authorize(credentials) {
+    if (process.env.NODE_ENV === "production") return null;
+    const email =
+      typeof credentials?.email === "string" ? credentials.email.trim() : "";
+    const user = email
+      ? await prisma.user.findFirst({ where: { email } })
+      : ((await prisma.user.findUnique({ where: { id: "usr_default" } })) ??
+        (await prisma.user.findFirst({ orderBy: { createdAt: "asc" } })));
+    if (!user) return null;
+    return { id: user.id, name: user.displayName, email: user.email };
+  },
+});
+
+const providers: Provider[] = [
+  Google({
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  }),
+];
+if (!isProd) providers.push(devLoginProvider);
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter,
   session: { strategy: "jwt" },
   trustHost: true,
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    }),
-  ],
+  providers,
   pages: {
     signIn: "/signin",
   },
   callbacks: {
     async session({ session, token }) {
-      // JWTs outlive the User row: if a user is deleted (or re-homed) the
-      // signed cookie still validates, and a naive `session.user.id = sub`
-      // would hand callers a ghost id pointing at nothing. Verify the row
-      // still exists before populating; otherwise leave `session.user`
-      // undefined so consumers (signin page, requireUser) treat it as
-      // unauthenticated.
-      if (!token.sub) return session;
-      const exists = await prisma.user.findUnique({
-        where: { id: token.sub },
-        select: { id: true },
-      });
-      if (!exists) {
-        session.user = undefined as unknown as typeof session.user;
-        return session;
-      }
-      if (session.user) session.user.id = token.sub;
+      // Populate the id from the token and stop — no DB read here.
+      //
+      // JWTs outlive the User row (a deleted/re-homed user still has a valid
+      // cookie), so `session.user.id` can be a ghost id. We deliberately do
+      // NOT verify existence in this callback anymore: it ran a `user.findUnique`
+      // on every `auth()` call, and `auth()` is called inside `getCurrentUser`
+      // — which then does its own full-row `findUnique` and returns null for a
+      // missing row. That second read is the single source of truth (and stays
+      // fresh for `isAdmin` etc.), so the existence check here was pure
+      // duplication. The only other direct `auth()` caller, the sign-in page,
+      // resolves through `getCurrentUser` for the same guard.
+      if (token.sub && session.user) session.user.id = token.sub;
       return session;
     },
   },

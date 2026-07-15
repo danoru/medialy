@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { User } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -22,7 +23,20 @@ import { prisma } from "@/lib/prisma";
 
 export const DEFAULT_USER_ID = "usr_default";
 
-export async function getCurrentUser(): Promise<User | null> {
+/**
+ * Resolve the acting user, memoized per request.
+ *
+ * `getCurrentUser` is called several times per render — the layout (for the
+ * app shell), the page (`getCurrentUserId`), and often again inside data
+ * helpers like `getMediaItemDTO`. Each call otherwise runs an `auth()` (which
+ * itself does a `user.findUnique` in the session callback) plus a second
+ * `user.findUnique` here. `React.cache` collapses all of those into one
+ * lookup for the lifetime of a single request, which cuts a big chunk of the
+ * redundant per-request Neon compute. It's a no-op outside a request context
+ * (server actions get their own scope; scripts just don't dedupe), so it's
+ * safe everywhere this module is imported.
+ */
+export const getCurrentUser = cache(async (): Promise<User | null> => {
   let sessionUserId: string | null = null;
   try {
     const { auth } = await import("@/lib/auth");
@@ -40,7 +54,7 @@ export async function getCurrentUser(): Promise<User | null> {
   } catch {
     return null;
   }
-}
+});
 
 export async function getCurrentUserId(): Promise<string | null> {
   const user = await getCurrentUser();
