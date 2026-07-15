@@ -33,6 +33,7 @@ import {
 } from "@/lib/upcoming";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
+import { UpcomingRowActions } from "@/components/upcoming/UpcomingRowActions";
 import { getCurrentUser } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import {
@@ -373,14 +374,17 @@ function ReleaseRow({
           direction="row"
           sx={{ flexWrap: "wrap", gap: 0.75, justifyContent: "flex-end" }}
         >
-          <Button href={`/media/${id}`} size="small" variant="outlined">
-            Open
-          </Button>
           {isSignedIn ? (
-            <Button href={`/media/${id}/edit`} size="small" variant="contained">
-              Edit
+            <UpcomingRowActions mediaId={id} status={status} title={title} />
+          ) : (
+            <Button
+              href={`/media/${id}`}
+              sx={{ minHeight: 44 }}
+              variant="outlined"
+            >
+              Details
             </Button>
-          ) : null}
+          )}
         </Stack>
       </Stack>
     </Stack>

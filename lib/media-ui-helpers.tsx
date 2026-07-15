@@ -107,7 +107,10 @@ export function posterFallback(mediaType: MediaType): string {
 export function mediaTypeTabSx(mediaType: MediaType) {
   const accent = mediaAccent(mediaType);
   return {
-    color: `${alpha(accent, 0.55)} !important`,
+    // 0.55 alpha on a near-black background lands around 3-4:1 — under AA for
+    // the small text these tabs use, and they're the library's primary filter.
+    color: `${alpha(accent, 0.82)} !important`,
+    minHeight: 44,
     "&:hover": { color: `${accent} !important` },
     "&.Mui-selected": { color: `${accent} !important` },
   };

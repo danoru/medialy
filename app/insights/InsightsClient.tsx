@@ -353,7 +353,7 @@ function KpiStrip({
           </Typography>
           <Typography
             color="text.secondary"
-            sx={{ fontSize: "0.75rem", mt: 0.4 }}
+            sx={{ fontSize: "0.875rem", mt: 0.4 }}
           >
             <Box component="span" sx={{ color: accent, fontWeight: 600 }}>
               {stat.detail}
@@ -422,7 +422,7 @@ function GenrePerformance({
         sx={{
           color: "text.secondary",
           display: { xs: "none", sm: "grid" },
-          fontSize: "0.75rem",
+          fontSize: "0.875rem",
           fontWeight: 600,
           gridTemplateColumns: "30px minmax(170px, 1fr) 76px 56px",
           px: 0.25,
@@ -451,7 +451,7 @@ function GenrePerformance({
               minHeight: 31,
             }}
           >
-            <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
               {index + 1}.
             </Typography>
             <Box sx={{ minWidth: 0 }}>
@@ -461,14 +461,14 @@ function GenrePerformance({
               >
                 <Typography
                   noWrap
-                  sx={{ fontSize: "0.8125rem", fontWeight: 600 }}
+                  sx={{ fontSize: "0.875rem", fontWeight: 600 }}
                 >
                   {genre.name}
                 </Typography>
                 <Typography
                   sx={{
                     flexShrink: 0,
-                    fontSize: "0.75rem",
+                    fontSize: "0.875rem",
                     fontWeight: 600,
                   }}
                 >
@@ -509,7 +509,7 @@ function GenrePerformance({
             />
             <Typography
               color="text.secondary"
-              sx={{ fontSize: "0.75rem", justifySelf: "end" }}
+              sx={{ fontSize: "0.875rem", justifySelf: "end" }}
             >
               {genre.ratedCount}
             </Typography>
@@ -683,7 +683,7 @@ function ScoreDistribution({
           >
             {ratedCount}
           </Typography>
-          <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+          <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
             Rated
           </Typography>
         </Box>
@@ -703,10 +703,10 @@ function ScoreDistribution({
                 width: 9,
               }}
             />
-            <Typography sx={{ flex: 1, fontSize: "0.75rem" }}>
+            <Typography sx={{ flex: 1, fontSize: "0.875rem" }}>
               {band.label}
             </Typography>
-            <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
               {band.share}%
             </Typography>
           </Stack>
@@ -722,7 +722,7 @@ function ScoreDistribution({
           width: "100%",
         }}
       >
-        <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+        <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
           Average Score
         </Typography>
         <Typography sx={{ fontWeight: 600 }}>
@@ -743,7 +743,7 @@ function RisingGenres({
   if (genres.length === 0) {
     return (
       <Stack spacing={0.9}>
-        <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+        <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
           No recent rated movement yet. Current strongest genres:
         </Typography>
         {fallbackGenres.map((genre, index) => (
@@ -782,7 +782,7 @@ function LowDataGenres({ genres }: { genres: GenreInsight[] }) {
 
   return (
     <Stack spacing={0.9}>
-      <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+      <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
         High-potential genres to rate or complete next.
       </Typography>
       {genres.map((genre, index) => (
@@ -854,7 +854,7 @@ function StandoutTitles({ titles }: { titles: InsightStandoutTitle[] }) {
                   bottom: 7,
                   color: "#FFFFFF",
                   display: "flex",
-                  fontSize: "0.6875rem",
+                  fontSize: "0.875rem",
                   fontWeight: 600,
                   gap: 0.25,
                   left: 7,
@@ -863,14 +863,14 @@ function StandoutTitles({ titles }: { titles: InsightStandoutTitle[] }) {
                   position: "absolute",
                 }}
               >
-                <StarIcon sx={{ fontSize: 13 }} />
+                <StarIcon sx={{ fontSize: 14 }} />
                 {title.score.toFixed(1)}
               </Box>
             </Box>
-            <Typography noWrap sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
+            <Typography noWrap sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
               {title.title}
             </Typography>
-            <Typography color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
               {title.releaseYear ?? "Unknown"}
             </Typography>
           </Box>
@@ -904,10 +904,10 @@ function CompactRankRow({
         pb: 0.65,
       }}
     >
-      <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+      <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
         {rank}.
       </Typography>
-      <Typography noWrap sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+      <Typography noWrap sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
         {label}
       </Typography>
       <Stack direction="row" sx={{ alignItems: "center", gap: 0.7 }}>
@@ -915,7 +915,7 @@ function CompactRankRow({
           <Typography
             sx={{
               color: delta >= 0 ? "success.main" : "error.main",
-              fontSize: "0.75rem",
+              fontSize: "0.875rem",
               fontWeight: 600,
             }}
           >
@@ -923,7 +923,7 @@ function CompactRankRow({
             {delta.toFixed(1)}
           </Typography>
         ) : null}
-        <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+        <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
           {value}
         </Typography>
       </Stack>
@@ -951,7 +951,7 @@ function EmptyPanel({ label, sx }: { label: string; sx?: SxProps<Theme> }) {
         sx,
       )}
     >
-      <Typography sx={{ fontSize: "0.8125rem" }}>{label}</Typography>
+      <Typography sx={{ fontSize: "0.875rem" }}>{label}</Typography>
     </Box>
   );
 }
@@ -960,7 +960,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <Stack direction="row" sx={{ alignItems: "center", gap: 0.55 }}>
       <Box sx={{ bgcolor: color, height: 2, width: 16 }} />
-      <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+      <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
         {label}
       </Typography>
     </Stack>

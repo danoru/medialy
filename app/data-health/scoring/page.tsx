@@ -21,7 +21,7 @@ import {
   SOURCE_MEDIA_APPLICABILITY,
   SOURCE_TRUST_WEIGHTS,
 } from "@/lib/scoring/config";
-import { requireUserId } from "@/lib/user";
+import { requireAdmin } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Scoring" };
@@ -34,7 +34,7 @@ export const metadata = { title: "Scoring" };
  * If you change a constant, just reload — there's no caching layer in front.
  */
 export default async function ScoringConfigPage() {
-  await requireUserId("/data-health/scoring");
+  await requireAdmin("/data-health/scoring");
   return (
     <Stack spacing={2.5}>
       <Box>
@@ -137,7 +137,7 @@ export default async function ScoringConfigPage() {
           value={
             <Stack spacing={0.5}>
               {Object.entries(SOURCE_MEDIA_APPLICABILITY).map(([k, v]) => (
-                <Typography key={k} sx={{ fontSize: "0.75rem" }}>
+                <Typography key={k} sx={{ fontSize: "0.875rem" }}>
                   <strong>{k}</strong>: {v == null ? "all" : v.join(", ")}
                 </Typography>
               ))}
@@ -311,7 +311,7 @@ function FormulaSection({
           <Box
             sx={{
               fontFamily: "monospace",
-              fontSize: "0.75rem",
+              fontSize: "0.875rem",
               p: 1,
               bgcolor: "surface.1",
               border: "1px solid",
@@ -322,7 +322,7 @@ function FormulaSection({
           >
             {formula}
           </Box>
-          <Typography color="text.secondary" sx={{ fontSize: "0.8125rem" }}>
+          <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
             {description}
           </Typography>
           <Divider sx={{ my: 1 }} />
@@ -352,7 +352,7 @@ function Row({
       }}
     >
       <Stack direction="row" sx={{ alignItems: "center", gap: 0.5, minWidth: 220 }}>
-        <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>{label}</Typography>
+        <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>{label}</Typography>
         {info ? (
           <Tooltip arrow title={info} placement="top">
             <InfoOutlinedIcon
@@ -363,7 +363,7 @@ function Row({
       </Stack>
       <Box
         sx={{
-          fontSize: "0.8125rem",
+          fontSize: "0.875rem",
           color: "text.secondary",
           fontFamily:
             typeof value === "string" || typeof value === "number"
@@ -376,7 +376,7 @@ function Row({
           <Chip
             label={String(value)}
             size="small"
-            sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+            sx={{ fontFamily: "monospace", fontSize: "0.875rem" }}
           />
         ) : (
           value

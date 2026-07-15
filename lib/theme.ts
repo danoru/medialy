@@ -98,7 +98,7 @@ const darkTokens: Tokens = {
   text: {
     primary: "#F4EEFA",
     secondary: "rgba(244, 238, 250, 0.62)",
-    disabled: "rgba(244, 238, 250, 0.32)",
+    disabled: "rgba(244, 238, 250, 0.50)",
   },
   accent: {
     primary: "#FF9E7D",
@@ -227,7 +227,7 @@ function componentOverrides() {
           borderRadius: 8,
           boxShadow: "none",
           fontWeight: 550,
-          minHeight: 36,
+          minHeight: 44,
           paddingInline: 14,
           "&:hover": { boxShadow: "none" },
           "&.MuiButton-containedPrimary": {
@@ -290,9 +290,9 @@ function componentOverrides() {
       styleOverrides: {
         root: {
           borderRadius: 6,
-          fontSize: "0.75rem",
+          fontSize: "0.875rem",
           fontWeight: 500,
-          height: 24,
+          height: 32,
         },
         filled: ({ theme: themeParam }: { theme: Theme }) => ({
           backgroundColor: themeParam.palette.surface[1],
@@ -457,25 +457,25 @@ const sharedTypography = {
   },
 
   body1: { fontSize: "0.9375rem", fontWeight: 400, lineHeight: 1.55 },
-  body2: { fontSize: "0.8125rem", fontWeight: 400, lineHeight: 1.5 },
+  body2: { fontSize: "0.875rem", fontWeight: 400, lineHeight: 1.5 },
 
   button: {
     fontFamily: bodyFontFamily,
-    fontSize: "0.8125rem",
+    fontSize: "0.875rem",
     fontWeight: 550,
     letterSpacing: "-0.005em",
     textTransform: "none" as const,
   },
 
   caption: {
-    fontSize: "0.75rem",
+    fontSize: "0.875rem",
     fontWeight: 500,
     letterSpacing: 0,
     lineHeight: 1.4,
   },
 
   overline: {
-    fontSize: "0.6875rem",
+    fontSize: "0.8125rem",
     fontWeight: 600,
     letterSpacing: "0.1em",
     lineHeight: 1.3,
@@ -508,7 +508,7 @@ const sharedTypography = {
 
   labelSm: {
     fontFamily: bodyFontFamily,
-    fontSize: "0.6875rem",
+    fontSize: "0.8125rem",
     fontWeight: 550,
     letterSpacing: "0.005em",
     lineHeight: 1.3,
@@ -516,7 +516,7 @@ const sharedTypography = {
 
   labelMd: {
     fontFamily: bodyFontFamily,
-    fontSize: "0.8125rem",
+    fontSize: "0.875rem",
     fontWeight: 550,
     letterSpacing: 0,
     lineHeight: 1.3,
@@ -553,9 +553,9 @@ export function createMedialyTheme(initialMode: ThemeMode = "dark") {
       // `color="text.secondary"` instead.
       eyebrow: {
         fontFamily: bodyFontFamily,
-        fontSize: "0.6875rem",
+        fontSize: "0.875rem",
         fontWeight: 600,
-        letterSpacing: "0.12em",
+        letterSpacing: "0.08em",
         lineHeight: 1.3,
         textTransform: "uppercase" as const,
         color: "var(--mui-palette-text-secondary)",

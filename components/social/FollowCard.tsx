@@ -67,11 +67,11 @@ export function FollowCard({
               />
             </Stack>
             {overlap.topSharedGenres.length > 0 ? (
-              <Typography color="text.secondary" sx={{ fontSize: "0.8125rem" }}>
+              <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                 You both gravitate toward {overlap.topSharedGenres.slice(0, 3).join(", ")}.
               </Typography>
             ) : (
-              <Typography color="text.secondary" sx={{ fontSize: "0.8125rem" }}>
+              <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                 Not enough shared completed items to spot a pattern yet.
               </Typography>
             )}
@@ -105,7 +105,7 @@ export function FollowCard({
           <Box>
             <Typography
               color="text.secondary"
-              sx={{ fontSize: "0.6875rem", fontWeight: 700, letterSpacing: 0.6, mb: 1, textTransform: "uppercase" }}
+              sx={{ fontSize: "0.875rem", fontWeight: 700, letterSpacing: 0.6, mb: 1, textTransform: "uppercase" }}
             >
               Watch next together
             </Typography>

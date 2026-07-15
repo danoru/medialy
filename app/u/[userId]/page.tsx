@@ -182,12 +182,12 @@ export default async function PublicProfilePage({
                         />
                       )}
                       <Typography
-                        sx={{ fontSize: "0.8125rem", fontWeight: 600, mt: 1 }}
+                        sx={{ fontSize: "0.875rem", fontWeight: 600, mt: 1 }}
                         title={media.title}
                       >
                         {media.title}
                       </Typography>
-                      <Typography color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+                      <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                         {row.personalRating != null
                           ? `Rated ${row.personalRating}/10`
                           : "Completed"}

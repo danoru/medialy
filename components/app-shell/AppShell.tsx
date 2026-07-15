@@ -206,6 +206,26 @@ export function AppShell({
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh" }}>
+      {/* Keyboard users shouldn't have to tab through the whole nav to reach
+          the page they're on. Visually hidden until focused. */}
+      <Box
+        component="a"
+        href="#main-content"
+        sx={{
+          bgcolor: "background.paper",
+          border: "1px solid",
+          borderColor: "border.default",
+          borderRadius: 1,
+          left: 8,
+          p: 1.5,
+          position: "absolute",
+          top: -200,
+          zIndex: (theme) => theme.zIndex.tooltip + 1,
+          "&:focus": { top: 8 },
+        }}
+      >
+        Skip to content
+      </Box>
       <AppBar
         elevation={0}
         position="fixed"
@@ -303,12 +323,10 @@ export function AppShell({
                 },
               })}
             >
-              <Box
-                component="span"
-                sx={{ display: { xs: "none", sm: "inline" } }}
-              >
-                Add media
-              </Box>
+              {/* The label used to be hidden at xs, leaving a bare "+" as one of
+                  the app's two most important controls. Keep it visible; if the
+                  text ever has to go again, the aria-label must stay. */}
+              <Box component="span">Add media</Box>
             </Button>
           ) : null}
 
@@ -335,7 +353,7 @@ export function AppShell({
                     border: `1px solid ${alpha(theme.palette.accent.primary, 0.55)}`,
                     boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.04)} inset, 0 0 14px ${alpha(theme.palette.accent.primary, 0.45)}`,
                     color: "primary.main",
-                    fontSize: "0.75rem",
+                    fontSize: "0.875rem",
                     fontWeight: 650,
                     height: 28,
                     transition: "box-shadow 180ms ease, transform 180ms ease",
@@ -438,19 +456,18 @@ export function AppShell({
                 sx={{
                   color: "text.primary",
                   display: "inline-flex",
-                  height: 36,
+                  minHeight: 44,
                   minWidth: 0,
                   px: { xs: 1, sm: 1.25 },
                 }}
                 variant="text"
               >
+                {/* Also previously hidden at xs, leaving an unlabelled arrow as
+                    the only way in for a new user. */}
                 <Typography
                   variant="labelMd"
                   component="span"
-                  sx={{
-                    display: { xs: "none", sm: "inline" },
-                    fontWeight: 550,
-                  }}
+                  sx={{ fontWeight: 550 }}
                 >
                   Sign In
                 </Typography>
@@ -747,6 +764,7 @@ export function AppShell({
 
       <Box
         component="main"
+        id="main-content"
         sx={{
           flexGrow: 1,
           minWidth: 0,
@@ -794,11 +812,11 @@ export function AppShell({
               "& svg": { fontSize: 20 },
             },
             "& .MuiBottomNavigationAction-label": {
-              fontSize: "0.6875rem",
+              fontSize: "0.875rem",
               fontWeight: 500,
               mt: 0.25,
               whiteSpace: "nowrap",
-              "&.Mui-selected": { fontSize: "0.6875rem", fontWeight: 600 },
+              "&.Mui-selected": { fontSize: "0.875rem", fontWeight: 600 },
             },
           }}
           value={mobileBottomValue}

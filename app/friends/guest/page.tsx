@@ -172,7 +172,7 @@ export default async function GuestRecommendPage({
                         size="small"
                       />
                     </Stack>
-                    <Typography color="text.secondary" sx={{ fontSize: "0.75rem", mt: 0.5 }}>
+                    <Typography color="text.secondary" sx={{ fontSize: "0.875rem", mt: 0.5 }}>
                       {rec.reason}
                     </Typography>
                   </Box>

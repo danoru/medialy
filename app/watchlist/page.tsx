@@ -1,28 +1,18 @@
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
-import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CloseIcon from "@mui/icons-material/Close";
-import FilterListIcon from "@mui/icons-material/FilterList";
 import FormatListNumberedIcon from "@mui/icons-material/FormatListNumbered";
-import GridViewIcon from "@mui/icons-material/GridView";
 import GroupIcon from "@mui/icons-material/Group";
 import LocalFireDepartmentIcon from "@mui/icons-material/LocalFireDepartment";
-import MoreVertIcon from "@mui/icons-material/MoreVert";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import PlayCircleIcon from "@mui/icons-material/PlayCircle";
 import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import StarRoundedIcon from "@mui/icons-material/StarRounded";
-import TuneIcon from "@mui/icons-material/Tune";
-import ViewListIcon from "@mui/icons-material/ViewList";
 import {
   Box,
   Button,
   Card,
   CardContent,
-  Chip,
-  IconButton,
-  LinearProgress,
+  Chip,  LinearProgress,
   Stack,
   Tab,
   Tabs,
@@ -42,14 +32,13 @@ import { formatReasonValue, matchLabel, matchTone } from "@/lib/score-display";
 import { releaseYearLabel, compactDateLabel } from "@/lib/date-labels";
 import {
   mediaAccent,
-  mediaTypeIcon,
-  mediaTypeTabIndicatorColor,
-  mediaTypeTabSx,
+  mediaTypeIcon,  mediaTypeTabSx,
   shortMediaTypeLabel,
 } from "@/lib/media-ui-helpers";
 import { PosterImage, PosterThumb } from "@/components/media/PosterCard";
 import { ScoreRing, ScoreBars } from "@/components/media/ScoreDisplay";
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
+import { WatchlistItemActions } from "@/components/watchlist/WatchlistItemActions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Watchlist" };
@@ -202,55 +191,11 @@ function WatchlistHeader({
             Watchlist
           </Typography>
           <Chip label={entriesCount.toLocaleString()} size="small" />
-          <IconButton aria-label="More watchlist actions" size="small">
-            <MoreVertIcon fontSize="small" />
-          </IconButton>
         </Stack>
-
-        <Stack
-          direction="row"
-          spacing={0.65}
-          sx={{ flexWrap: "wrap", justifyContent: { md: "flex-end" } }}
-        >
-          <Button
-            size="small"
-            startIcon={<FilterListIcon />}
-            sx={compactControlSx}
-            variant="outlined"
-          >
-            Filter
-          </Button>
-          <Button
-            size="small"
-            startIcon={<TuneIcon />}
-            sx={compactControlSx}
-            variant="outlined"
-          >
-            Sort: Priority
-          </Button>
-          <Box
-            sx={{
-              bgcolor: "surface.1",
-              border: "1px solid",
-              borderColor: "border.subtle",
-              borderRadius: 2,
-              display: "flex",
-              gap: 0.25,
-              p: 0.3,
-            }}
-          >
-            <IconButton aria-label="List view" size="small">
-              <ViewListIcon fontSize="small" />
-            </IconButton>
-            <IconButton
-              aria-label="Grid view"
-              size="small"
-              sx={{ color: "primary.main" }}
-            >
-              <GridViewIcon fontSize="small" />
-            </IconButton>
-          </Box>
-        </Stack>
+        {/* Removed: a "More" menu, Filter, "Sort: Priority", and a List/Grid
+            toggle — all of them focusable controls with no handler and no
+            behaviour behind them. Five dead stops for keyboard and screen-reader
+            users, and a promise of filtering the page can't keep. */}
       </Stack>
 
       <Card variant="outlined" sx={compactPanelSx}>
@@ -334,7 +279,7 @@ function RankedQueuePanel({
             <Typography sx={{ fontSize: "1rem", fontWeight: 650 }}>
               Ranked Queue
             </Typography>
-            <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
               {selectedLabel}
             </Typography>
           </Stack>
@@ -350,7 +295,7 @@ function RankedQueuePanel({
           sx={{
             color: "text.secondary",
             display: { xs: "none", md: "grid" },
-            fontSize: "0.625rem",
+            fontSize: "0.875rem",
             fontWeight: 600,
             gridTemplateColumns: "34px 48px minmax(0, 1fr) 275px 72px 28px",
             letterSpacing: "0.07em",
@@ -424,7 +369,7 @@ function QueuePagination({
         py: 0.75,
       }}
     >
-      <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+      <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
         Showing {pageStartIndex + 1}-{pageEndIndex} of {totalCount}
       </Typography>
       {totalPages > 1 ? (
@@ -518,7 +463,7 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
             direction="row"
             sx={{ alignItems: "center", flexWrap: "wrap", gap: 0.4, mt: 0.45 }}
           >
-            <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+            <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
               {formatMediaType(item.mediaType)}
             </Typography>
             {releaseYear ? <DotMeta>{releaseYear}</DotMeta> : null}
@@ -529,11 +474,16 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
           </Stack>
         </Box>
 
+        {/* Was hidden below md, which meant a phone showed a 1-10 ranking with
+            nothing at all to explain what it was ranked on. */}
         <Box
           sx={{
-            display: { xs: "none", md: "grid" },
+            display: "grid",
             gap: 0.8,
-            gridTemplateColumns: "48px 76px minmax(0, 1fr)",
+            gridTemplateColumns: {
+              xs: "48px minmax(0, 1fr)",
+              md: "48px 76px minmax(0, 1fr)",
+            },
             minWidth: 0,
           }}
         >
@@ -542,7 +492,7 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
             <Typography
               sx={{
                 color: matchTone(entry.score),
-                fontSize: "0.75rem",
+                fontSize: "0.875rem",
                 fontWeight: 600,
                 lineHeight: 1.15,
               }}
@@ -551,7 +501,7 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
             </Typography>
             <Typography
               color="text.secondary"
-              sx={{ fontSize: "0.625rem", mt: 0.2 }}
+              sx={{ fontSize: "0.875rem", mt: 0.2 }}
             >
               {Math.round(entry.confidence * 100)}% conf.
             </Typography>
@@ -572,17 +522,10 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
 
         <Typography
           color="text.secondary"
-          sx={{ display: { xs: "none", md: "block" }, fontSize: "0.75rem" }}
+          sx={{ display: { xs: "none", md: "block" }, fontSize: "0.875rem" }}
         >
           {updatedLabel}
         </Typography>
-        <MoreVertIcon
-          sx={{
-            color: "text.secondary",
-            display: { xs: "none", md: "block" },
-            fontSize: 19,
-          }}
-        />
       </Box>
     </Link>
   );
@@ -597,9 +540,6 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
     <Card component="section" variant="outlined" sx={compactPanelSx}>
       <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
         <PanelTitle
-          action={
-            <MoreVertIcon sx={{ color: "text.secondary", fontSize: 19 }} />
-          }
           icon={<AutoAwesomeIcon sx={{ color: "primary.main", fontSize: 18 }} />}
           title="Tonight Pick"
         />
@@ -632,7 +572,7 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
               }}
             >
               {releaseYear ? (
-                <Typography sx={{ fontSize: "0.75rem" }}>
+                <Typography sx={{ fontSize: "0.875rem" }}>
                   {releaseYear}
                 </Typography>
               ) : null}
@@ -665,14 +605,14 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
                 >
                   <Typography
                     color="text.secondary"
-                    sx={{ fontSize: "0.625rem" }}
+                    sx={{ fontSize: "0.875rem" }}
                   >
                     Medialy Match
                   </Typography>
                   <Typography
                     sx={{
                       color: matchTone(entry.score),
-                      fontSize: "0.625rem",
+                      fontSize: "0.875rem",
                     }}
                   >
                     {matchLabel(entry.score)}
@@ -696,23 +636,11 @@ function TonightPickPanel({ entry }: { entry: Recommendation }) {
           </Box>
         </Box>
 
-        <Stack direction="row" spacing={0.55} sx={{ mt: 1 }}>
-          <Button
-            fullWidth
-            href={`/media/${item.id}`}
-            startIcon={<CheckCircleIcon />}
-            sx={{ minHeight: 34 }}
-            variant="contained"
-          >
-            Open Details
-          </Button>
-          <IconButton aria-label="Save watchlist item" size="small">
-            <BookmarkBorderIcon fontSize="small" />
-          </IconButton>
-          <IconButton aria-label="Dismiss watchlist item" size="small">
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        </Stack>
+        <WatchlistItemActions
+          mediaId={item.id}
+          mediaType={item.mediaType}
+          title={item.title}
+        />
       </CardContent>
     </Card>
   );
@@ -723,17 +651,6 @@ function NextUpPanel({ entries }: { entries: Recommendation[] }) {
     <Card component="section" variant="outlined" sx={compactPanelSx}>
       <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
         <PanelTitle
-          action={
-            <Typography
-              sx={{
-                color: "primary.main",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-              }}
-            >
-              View all
-            </Typography>
-          }
           count={entries.length}
           title="Next Up"
         />
@@ -745,7 +662,7 @@ function NextUpPanel({ entries }: { entries: Recommendation[] }) {
           ) : (
             <Typography
               color="text.secondary"
-              sx={{ fontSize: "0.8125rem", py: 1.5, textAlign: "center" }}
+              sx={{ fontSize: "0.875rem", py: 1.5, textAlign: "center" }}
             >
               Add more queue items to build this lane.
             </Typography>
@@ -786,13 +703,13 @@ function NextUpRow({ entry }: { entry: Recommendation }) {
         <PlayCircleIcon sx={{ color: "text.secondary", fontSize: 22 }} />
         <PosterThumb item={item} accent={matchTone(entry.score)} size="sm" />
         <Box sx={{ minWidth: 0 }}>
-          <Typography noWrap sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+          <Typography noWrap sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
             {item.title}
           </Typography>
           <Typography
             color="text.secondary"
             noWrap
-            sx={{ fontSize: "0.6875rem", mt: 0.2 }}
+            sx={{ fontSize: "0.875rem", mt: 0.2 }}
           >
             {primarySignal(entry)}
           </Typography>
@@ -813,11 +730,10 @@ function NextUpRow({ entry }: { entry: Recommendation }) {
         </Box>
         <Typography
           color="text.secondary"
-          sx={{ fontSize: "0.6875rem", textAlign: "right" }}
+          sx={{ fontSize: "0.875rem", textAlign: "right" }}
         >
           {Math.round(entry.score)}%
         </Typography>
-        <MoreVertIcon sx={{ color: "text.secondary", fontSize: 18 }} />
       </Box>
     </Link>
   );
@@ -871,7 +787,7 @@ function QueueMixPanel({
               >
                 {total.toLocaleString()}
               </Typography>
-              <Typography color="text.secondary" sx={{ fontSize: "0.625rem" }}>
+              <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                 Items
               </Typography>
             </Box>
@@ -896,13 +812,13 @@ function QueueMixPanel({
                       width: 7,
                     }}
                   />
-                  <Typography noWrap sx={{ fontSize: "0.75rem" }}>
+                  <Typography noWrap sx={{ fontSize: "0.875rem" }}>
                     {formatMediaType(entry.mediaType)}
                   </Typography>
                 </Stack>
                 <Typography
                   color="text.secondary"
-                  sx={{ fontSize: "0.6875rem" }}
+                  sx={{ fontSize: "0.875rem" }}
                 >
                   {entry.count}
                 </Typography>
@@ -942,23 +858,13 @@ function MatchSignalsPanel({
 }: {
   signals: Array<{ label: string; share: number; value: number }>;
 }) {
+  // Nothing real to show → show nothing, rather than inventing numbers.
+  if (signals.length === 0) return null;
+
   return (
     <Card component="section" variant="outlined" sx={compactPanelSx}>
       <CardContent sx={{ p: 1, "&:last-child": { pb: 1 } }}>
-        <PanelTitle
-          action={
-            <Typography
-              sx={{
-                color: "primary.main",
-                fontSize: "0.75rem",
-                fontWeight: 600,
-              }}
-            >
-              View all
-            </Typography>
-          }
-          title="Match Signals"
-        />
+        <PanelTitle title="Match Signals" />
         <Stack spacing={0.9} sx={{ mt: 1 }}>
           {signals.map((signal) => (
             <SignalBar key={signal.label} signal={signal} />
@@ -969,7 +875,7 @@ function MatchSignalsPanel({
           sx={{
             borderTop: "1px solid",
             borderColor: "divider",
-            fontSize: "0.6875rem",
+            fontSize: "0.875rem",
             lineHeight: 1.35,
             mt: 1,
             pt: 0.8,
@@ -995,10 +901,10 @@ function SignalBar({
         <Box sx={{ color: accent, display: "flex" }}>
           {signalIcon(signal.label)}
         </Box>
-        <Typography sx={{ flex: 1, fontSize: "0.75rem", minWidth: 0 }}>
+        <Typography sx={{ flex: 1, fontSize: "0.875rem", minWidth: 0 }}>
           {signal.label}
         </Typography>
-        <Typography color="text.secondary" sx={{ fontSize: "0.6875rem" }}>
+        <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
           {Math.round(signal.share)}%
         </Typography>
       </Stack>
@@ -1080,7 +986,7 @@ function ReasonChip({ label, value }: { label: string; value: number }) {
         border: `1px solid ${alpha(color, 0.2)}`,
         borderRadius: 1,
         color,
-        fontSize: "0.625rem",
+        fontSize: "0.875rem",
         fontWeight: 600,
         lineHeight: 1,
         px: 0.65,
@@ -1101,7 +1007,7 @@ function SoftPill({ children }: { children: React.ReactNode }) {
         borderColor: "border.subtle",
         borderRadius: 1,
         color: "text.secondary",
-        fontSize: "0.625rem",
+        fontSize: "0.875rem",
         fontWeight: 600,
         lineHeight: 1,
         px: 0.55,
@@ -1115,7 +1021,7 @@ function SoftPill({ children }: { children: React.ReactNode }) {
 
 function DotMeta({ children }: { children: React.ReactNode }) {
   return (
-    <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+    <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
       / {children}
     </Typography>
   );
@@ -1146,7 +1052,7 @@ function StatPill({
         {icon}
       </Box>
       <Box sx={{ minWidth: 0 }}>
-        <Typography color="text.secondary" noWrap sx={{ fontSize: "0.625rem" }}>
+        <Typography color="text.secondary" noWrap sx={{ fontSize: "0.875rem" }}>
           {label}
         </Typography>
         <Typography
@@ -1201,25 +1107,15 @@ const compactPanelSx: SxProps<Theme> = {
   overflow: "hidden",
 };
 
-const compactControlSx = {
-  bgcolor: "surface.1",
-  borderColor: "border.subtle",
-  color: "text.secondary",
-  minHeight: 34,
-  px: 1.05,
-  "&:hover": {
-    bgcolor: "surface.2",
-    borderColor: "border.strong",
-  },
-} satisfies SxProps<Theme>;
-
 const paginationButtonSx = {
   bgcolor: "surface.1",
   borderColor: "border.subtle",
   color: "text.secondary",
-  fontSize: "0.75rem",
-  minHeight: 29,
-  minWidth: 34,
+  fontSize: "0.875rem",
+  // Up to seven of these render side by side; at 29x34 they were near
+  // unhittable with a thumb.
+  minHeight: 44,
+  minWidth: 44,
   px: 0.8,
   "&:hover": {
     bgcolor: "surface.2",
@@ -1276,13 +1172,10 @@ function getMatchSignals(entries: Recommendation[]) {
       value,
     }));
 
-  return signals.length > 0
-    ? signals
-    : [
-        { label: "Genre affinity", share: 38, value: 38 },
-        { label: "Friend signal", share: 27, value: 27 },
-        { label: "Consensus", share: 18, value: 18 },
-      ];
+  // No placeholder fallback. This used to return hardcoded 38/27/18% bars when
+  // a user had no real signals, which rendered invented numbers as if they were
+  // that person's data. An empty list is honest; the caller hides the panel.
+  return signals;
 }
 
 function positiveReasons(entry: Recommendation) {

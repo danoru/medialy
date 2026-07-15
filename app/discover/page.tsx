@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   Box,
   Card,
@@ -461,7 +462,7 @@ function HeroSection({
             alignItems: "center",
             display: "grid",
             gridTemplateColumns: {
-              xs: "repeat(5, minmax(52px, 1fr))",
+              xs: "repeat(3, minmax(96px, 1fr))",
               sm: "repeat(5, minmax(84px, 1fr))",
             },
             minHeight: { xs: 168, sm: 240, md: 430 },
@@ -482,10 +483,14 @@ function HeroSection({
               elevated={index === 2}
               item={item}
               key={item.id}
+              linked
               sx={{
+                // Only three fit across a phone, so don't wrap the other two
+                // onto a second row.
+                display: { xs: index < 3 ? "block" : "none", sm: "block" },
                 mt: index % 2 === 0 ? { xs: 0, md: -5 } : { xs: 2, md: 8 },
                 transform: {
-                  xs: `rotate(${[-4, 3, -1, 4, -3][index] ?? 0}deg)`,
+                  xs: "none",
                   md: `rotate(${[-7, 4, -2, 6, -5][index] ?? 0}deg)`,
                 },
                 zIndex: index === 2 ? 4 : 3 - Math.abs(index - 2),
@@ -777,6 +782,7 @@ function ShelfPoster({
 }) {
   return (
     <Box
+      aria-label={item.title}
       component="a"
       href={`/media/${item.id}`}
       sx={{
@@ -797,7 +803,7 @@ function ShelfPoster({
             borderRadius: 1,
             color: accent,
             display: "flex",
-            fontSize: "0.6875rem",
+            fontSize: "0.875rem",
             fontWeight: 700,
             height: 24,
             justifyContent: "center",
@@ -835,6 +841,10 @@ function IfYouLikedPanel({
       <Typography component="h2" sx={sectionTitleSx}>
         If You Liked...
       </Typography>
+      {/* Was a five-column grid even at 390px, which squeezed each `noWrap`
+          title into ~85px — and nothing in the row was a link, so the user
+          could see two films and tap neither. Now it stacks on a phone and both
+          halves navigate. */}
       <Stack spacing={0.8} sx={{ mt: 1.25 }}>
         {chains.map((chain) => (
           <Box
@@ -848,26 +858,20 @@ function IfYouLikedPanel({
               display: "grid",
               gap: 1,
               gridTemplateColumns: {
-                xs: "38px minmax(0, 1fr) 30px 38px minmax(0, 1fr)",
+                xs: "1fr",
                 sm: "48px 1fr auto 48px 1fr",
               },
               p: 1,
             }}
           >
-            <PosterImage item={chain.seed} />
-            <Typography noWrap sx={{ fontWeight: 600 }}>
-              {chain.seed.title}
-            </Typography>
+            <ChainLink item={chain.seed} />
             <Typography
               color="text.secondary"
-              sx={{ fontSize: "0.75rem", fontWeight: 550 }}
+              sx={{ fontWeight: 550, textAlign: { xs: "center", sm: "left" } }}
             >
               then
             </Typography>
-            <PosterImage item={chain.next} />
-            <Typography noWrap sx={{ fontWeight: 600 }}>
-              {chain.next.title}
-            </Typography>
+            <ChainLink item={chain.next} />
           </Box>
         ))}
       </Stack>
@@ -971,7 +975,7 @@ function CuratedCollections({
         <Box
           component="a"
           href="/discover/collections"
-          sx={{ color: accent, fontSize: "0.8rem", textDecoration: "none" }}
+          sx={{ color: accent, fontSize: "0.875rem", textDecoration: "none" }}
         >
           {collections.length > 0 ? "View all collections" : "Manage collections"}
         </Box>
@@ -1063,22 +1067,62 @@ function CuratedCollections({
   );
 }
 
+/** One half of an "If You Liked…" chain — poster + title, as a single link.
+ *
+ *  Note this page is a Server Component, so `component={Link}` can't be used:
+ *  MUI's `Box` is a client component and a function prop can't cross the RSC
+ *  boundary. Plain `<Link>` on the outside, `sx` on the inside. */
+function ChainLink({ item }: { item: DiscoveryItem }) {
+  return (
+    <Link
+      href={`/media/${item.id}`}
+      style={{ color: "inherit", textDecoration: "none" }}
+    >
+      <Box
+        sx={{
+          alignItems: "center",
+          display: "grid",
+          gap: 1,
+          gridTemplateColumns: "48px minmax(0, 1fr)",
+          minHeight: 44,
+        }}
+      >
+        <PosterImage item={item} />
+        <Typography noWrap sx={{ fontWeight: 600 }}>
+          {item.title}
+        </Typography>
+      </Box>
+    </Link>
+  );
+}
+
+/**
+ * A poster.
+ *
+ * `linked` controls whether it is *itself* the anchor. `ShelfPoster` already
+ * wraps it in one, and an `<a>` inside an `<a>` is invalid HTML — it also gave
+ * screen-reader users the same destination twice in a row. Callers that render
+ * it bare (the hero fan) opt into the link; callers that wrap it don't.
+ */
 function PosterCard({
   accent,
   elevated = false,
   item,
+  linked = false,
   sx,
 }: {
   accent?: string;
   elevated?: boolean;
   item: DiscoveryItem;
+  linked?: boolean;
   sx?: object;
 }) {
   const tint = accent ?? mediaAccent(item.mediaType);
   return (
     <Box
-      component="a"
-      href={`/media/${item.id}`}
+      component={linked ? "a" : "div"}
+      href={linked ? `/media/${item.id}` : undefined}
+      aria-label={linked ? item.title : undefined}
       sx={{
         aspectRatio: "2 / 3",
         backgroundImage: item.posterUrl

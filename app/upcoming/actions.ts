@@ -18,7 +18,6 @@ function revalidateUpcomingChange(id: string) {
 
 function revalidateCandidateChange() {
   revalidatePath("/admin/candidates");
-  revalidatePath("/recommendations");
   revalidatePath("/dashboard");
   revalidatePath("/library");
 }

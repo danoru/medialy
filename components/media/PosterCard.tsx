@@ -190,7 +190,7 @@ export function PosterTile({
             sx={{
               color: "#FFFFFF",
               display: "-webkit-box",
-              fontSize: "0.75rem",
+              fontSize: "0.875rem",
               fontWeight: 600,
               lineHeight: 1.15,
               overflow: "hidden",
@@ -205,7 +205,7 @@ export function PosterTile({
             <Typography
               sx={{
                 color: "rgba(255,255,255,0.7)",
-                fontSize: "0.625rem",
+                fontSize: "0.875rem",
                 fontWeight: 500,
                 lineHeight: 1,
                 mt: 0.5,

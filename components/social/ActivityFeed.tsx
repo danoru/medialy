@@ -62,7 +62,7 @@ export function ActivityFeed({ items }: { items: ActivityFeedItem[] }) {
                     <> · <strong>{item.rating}/10</strong></>
                   ) : null}
                 </Typography>
-                <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                   {relative(item.occurredAt)}
                 </Typography>
               </Box>

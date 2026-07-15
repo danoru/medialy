@@ -19,7 +19,7 @@ import {
   mediaTypeTabSx,
 } from "@/lib/media-ui-helpers";
 import { StatePanel } from "@/components/shared/StatePanel";
-import { requireUserId } from "@/lib/user";
+import { requireAdmin } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Data Health" };
@@ -31,7 +31,7 @@ export default async function DataHealthPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const userId = await requireUserId("/data-health");
+  const userId = (await requireAdmin("/data-health")).id;
   const params = await searchParams;
   const requestedType = stringParam(params.type);
   const selectedType = isVisibleMediaType(requestedType)

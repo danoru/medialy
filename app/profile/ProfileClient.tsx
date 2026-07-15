@@ -90,7 +90,7 @@ function Donut({
         </Typography>
         <Typography
           color="text.secondary"
-          sx={{ fontSize: "0.75rem", fontWeight: 600 }}
+          sx={{ fontSize: "0.875rem", fontWeight: 600 }}
         >
           {centerLabel}
         </Typography>
@@ -238,7 +238,7 @@ function Gauge({
         </Typography>
         <Typography
           color="text.secondary"
-          sx={{ fontSize: "0.75rem", fontWeight: 600 }}
+          sx={{ fontSize: "0.875rem", fontWeight: 600 }}
         >
           {label}
         </Typography>
@@ -263,12 +263,12 @@ function BarRow({
   return (
     <Box>
       <Stack direction="row" sx={{ justifyContent: "space-between", mb: 0.4 }}>
-        <Typography sx={{ fontSize: "0.75rem", fontWeight: 600 }}>
+        <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
           {label}
         </Typography>
         <Typography
           color="text.secondary"
-          sx={{ fontSize: "0.75rem", fontWeight: 600 }}
+          sx={{ fontSize: "0.875rem", fontWeight: 600 }}
         >
           {suffix}
         </Typography>
@@ -348,7 +348,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                 </Typography>
                 <Typography
                   color="text.secondary"
-                  sx={{ fontSize: "0.75rem" }}
+                  sx={{ fontSize: "0.875rem" }}
                 >
                   Tracking since {header.trackingSince}
                 </Typography>
@@ -369,7 +369,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                   />
                   <Typography
                     color="text.secondary"
-                    sx={{ fontSize: "0.75rem" }}
+                    sx={{ fontSize: "0.875rem" }}
                   >
                     {header.libraryFresh
                       ? "Library is in good shape"
@@ -431,7 +431,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                 <Radar axes={tasteRadar.axes} />
                 <Typography
                   color="text.secondary"
-                  sx={{ fontSize: "0.75rem", mt: 0.5, textAlign: "center" }}
+                  sx={{ fontSize: "0.875rem", mt: 0.5, textAlign: "center" }}
                 >
                   {strongestAxis.length
                     ? `You compare most through ${strongestAxis.join(" & ")}.`
@@ -477,14 +477,14 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                         }}
                       />
                       <Typography
-                        sx={{ flex: 1, fontSize: "0.75rem", fontWeight: 600 }}
+                        sx={{ flex: 1, fontSize: "0.875rem", fontWeight: 600 }}
                         noWrap
                       >
                         {formatMediaType(entry.mediaType)}
                       </Typography>
                       <Typography
                         color="text.secondary"
-                        sx={{ fontSize: "0.75rem", fontWeight: 600 }}
+                        sx={{ fontSize: "0.875rem", fontWeight: 600 }}
                       >
                         {entry.share}%
                       </Typography>
@@ -526,7 +526,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
               <Typography
                 color="text.secondary"
                 sx={{
-                  fontSize: "0.75rem",
+                  fontSize: "0.875rem",
                   mt: 1,
                   textAlign: "center",
                 }}
@@ -566,7 +566,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                     <Typography
                       sx={{
                         color: "success.main",
-                        fontSize: "0.8125rem",
+                        fontSize: "0.875rem",
                         fontWeight: 600,
                       }}
                     >
@@ -574,7 +574,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                     </Typography>
                   </Box>
                 </Stack>
-                <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+                <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                   {data.topFollow.explanation}
                 </Typography>
                 <Chip
@@ -605,7 +605,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                 label="Covered"
                 value={data.comparisonCoverage.percent}
               />
-              <Typography color="text.secondary" sx={{ fontSize: "0.75rem" }}>
+              <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
                 {data.comparisonCoverage.wellCompared} of{" "}
                 {data.comparisonCoverage.eligible} completed titles have enough
                 comparisons. More comparisons unlock stronger recommendations.
@@ -677,7 +677,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                             alpha(theme.palette.common.black, 0.6),
                           color: "#FFFFFF",
                           display: "flex",
-                          fontSize: "0.75rem",
+                          fontSize: "0.875rem",
                           fontWeight: 600,
                           gap: 0.25,
                           px: 0.5,
@@ -691,7 +691,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                     <Typography
                       noWrap
                       color="text.secondary"
-                      sx={{ fontSize: "0.75rem", mt: 0.25 }}
+                      sx={{ fontSize: "0.875rem", mt: 0.25 }}
                     >
                       {item.title}
                     </Typography>
@@ -733,13 +733,13 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                       {signal.count}
                     </Typography>
                     <Typography
-                      sx={{ fontSize: "0.8125rem", fontWeight: 600, mt: 0.4 }}
+                      sx={{ fontSize: "0.875rem", fontWeight: 600, mt: 0.4 }}
                     >
                       {signal.label}
                     </Typography>
                     <Typography
                       color="text.secondary"
-                      sx={{ fontSize: "0.75rem", mt: 0.25 }}
+                      sx={{ fontSize: "0.875rem", mt: 0.25 }}
                     >
                       {signal.description}
                     </Typography>
@@ -750,7 +750,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
             {data.topSignal ? (
               <Typography
                 color="text.secondary"
-                sx={{ fontSize: "0.75rem", mt: 1 }}
+                sx={{ fontSize: "0.875rem", mt: 1 }}
               >
                 Your strongest signal right now is{" "}
                 <Box
@@ -784,7 +784,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                     direction="row"
                     sx={{ justifyContent: "space-between" }}
                   >
-                    <Typography sx={{ fontSize: "0.8125rem", fontWeight: 600 }}>
+                    <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
                       {entry.label}
                     </Typography>
                     <Typography
@@ -795,7 +795,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                             : entry.coverage >= 45
                               ? "warning.main"
                               : "error.main",
-                        fontSize: "0.8125rem",
+                        fontSize: "0.875rem",
                         fontWeight: 600,
                       }}
                     >
@@ -820,7 +820,7 @@ function EmptyHint({ text }: { text: string }) {
         color: "text.secondary",
         display: "flex",
         flex: 1,
-        fontSize: "0.8125rem",
+        fontSize: "0.875rem",
         justifyContent: "center",
         minHeight: 120,
         px: 2,
