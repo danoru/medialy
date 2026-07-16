@@ -151,7 +151,7 @@ export function MediaForm({
               name="originalTitle"
             />
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField
               fullWidth
               label="Type"
@@ -187,7 +187,7 @@ export function MediaForm({
               ))}
             </TextField>
           </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+          <Grid size={{ xs: 12, sm: 6, md: 4 }}>
             <TextField
               defaultValue={dateValue(item?.releaseDate)}
               fullWidth
@@ -195,6 +195,14 @@ export function MediaForm({
               name="releaseDate"
               slotProps={{ inputLabel: { shrink: true } }}
               type="date"
+            />
+          </Grid>
+          <Grid size={{ xs: 12, md: 4 }}>
+            <TextField
+              defaultValue={item?.externalUrl ?? ""}
+              fullWidth
+              label="External URL"
+              name="externalUrl"
             />
           </Grid>
           {CREDIT_ROLES_BY_MEDIA_TYPE[mediaType].map((role) => (
@@ -279,14 +287,6 @@ export function MediaForm({
               />
             </Grid>
           ))}
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              defaultValue={item?.externalUrl ?? ""}
-              fullWidth
-              label="External URL"
-              name="externalUrl"
-            />
-          </Grid>
           <Grid size={{ xs: 12 }}>
             <TextField
               defaultValue={item?.description ?? ""}
