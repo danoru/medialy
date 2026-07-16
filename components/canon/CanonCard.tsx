@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, type MouseEvent } from "react";
-import { Box, Chip, Typography } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import type { CreditRole, MediaType } from "@prisma/client";
-import { PosterImage } from "@/components/media/PosterCard";
 import { creditLabel } from "@/lib/credits";
+import { ACCENTS, HEADING_FONT, posterFallback } from "@/lib/media-ui-helpers";
 
 export type CanonCardData = {
   id: string;
@@ -19,18 +19,22 @@ export type CanonCardData = {
   rank: number;
 };
 
+/** How the rank reads on the poster: a big outlined numeral overlapping the
+ * corner (the top-overall runners) or a small solid badge (dense genre rows). */
+export type CanonRankStyle = "stroke" | "badge";
+
 /**
- * A ranked poster card whose front shows rank + score; on hover (pointer) or
- * first tap (touch) a detail overlay reveals title, year, lead contributor,
- * and genres. The whole card links to the item's detail page — on touch the
- * first tap reveals and the next follows the link.
+ * A ranked poster card. The rank is the only mark on the artwork; the title and
+ * year+genres sit below the poster (never overlaid on it). Score is a supporting
+ * signal, so it — with the lead contributor — is revealed on hover, or on first
+ * tap for touch, before the card links through to the item.
  */
 export function CanonCard({
-  accent,
   data,
+  rankStyle = "badge",
 }: {
-  accent: string;
   data: CanonCardData;
+  rankStyle?: CanonRankStyle;
 }) {
   const [revealed, setRevealed] = useState(false);
 
@@ -56,98 +60,148 @@ export function CanonCard({
       href={`/media/${data.id}`}
       onClick={handleClick}
       sx={{
-        borderRadius: 1.5,
         color: "inherit",
         display: "block",
-        overflow: "hidden",
-        position: "relative",
+        minWidth: 0,
         textDecoration: "none",
-        [`&:hover .canon-reveal, &.revealed .canon-reveal`]: {
-          opacity: 1,
-          transform: "translateY(0)",
+        "&:hover .canon-poster, &.revealed .canon-poster": {
+          borderColor: "border.strong",
+          transform: "translateY(-4px)",
         },
+        "&:hover .canon-reveal, &.revealed .canon-reveal": { opacity: 1 },
       }}
     >
-      <PosterImage
-        item={{
-          mediaType: data.mediaType,
-          posterUrl: data.posterUrl,
-          title: data.title,
-        }}
-      />
+      <Box sx={{ position: "relative", pt: rankStyle === "stroke" ? "18px" : 0 }}>
+        {rankStyle === "stroke" ? (
+          <Box
+            aria-hidden
+            sx={{
+              color: "transparent",
+              fontFamily: HEADING_FONT,
+              fontSize: 58,
+              fontWeight: 700,
+              left: -4,
+              lineHeight: 1,
+              pointerEvents: "none",
+              position: "absolute",
+              top: -8,
+              WebkitTextStroke: "1px rgba(244,238,250,0.35)",
+              zIndex: 2,
+            }}
+          >
+            {data.rank}
+          </Box>
+        ) : null}
 
-      <Box
-        className="canon-reveal"
-        sx={{
-          background:
-            "linear-gradient(180deg, rgba(8,8,11,0.1) 0%, rgba(8,8,11,0.55) 45%, rgba(8,8,11,0.92) 100%)",
-          display: "flex",
-          flexDirection: "column",
-          gap: 0.25,
-          inset: 0,
-          justifyContent: "flex-end",
-          opacity: 0,
-          p: 1,
-          position: "absolute",
-          transform: "translateY(10px)",
-          transition: "opacity 160ms ease, transform 160ms ease",
-        }}
-      >
-        <Typography
-          sx={{ color: "#fff", fontWeight: 700, lineHeight: 1.2 }}
-          variant="body2"
+        <Box
+          className="canon-poster"
+          sx={{
+            aspectRatio: "2 / 3",
+            backgroundImage: data.posterUrl
+              ? `url(${data.posterUrl})`
+              : posterFallback(data.mediaType),
+            backgroundPosition: "center",
+            backgroundSize: "cover",
+            border: "1px solid",
+            borderColor: "border.default",
+            borderRadius: "8px",
+            overflow: "hidden",
+            position: "relative",
+            transition: "transform 200ms ease, border-color 200ms ease",
+          }}
         >
-          {data.title}
-        </Typography>
-        {metaLine ? (
-          <Typography sx={{ color: alpha("#fff", 0.78) }} variant="caption">
-            {metaLine}
-          </Typography>
-        ) : null}
-        {data.leadCredit ? (
-          <Typography sx={{ color: alpha("#fff", 0.78) }} variant="caption">
-            {creditLabel(data.mediaType, data.leadCredit.role)}{" "}
-            <Box component="span" sx={{ color: "#fff", fontWeight: 600 }}>
-              {data.leadCredit.name}
+          {rankStyle === "badge" ? (
+            <Box
+              sx={{
+                alignItems: "center",
+                backgroundColor: alpha("#000", 0.72),
+                borderRadius: "5px",
+                color: "#fff",
+                display: "flex",
+                fontSize: "0.72rem",
+                fontWeight: 700,
+                height: 20,
+                justifyContent: "center",
+                left: 5,
+                minWidth: 20,
+                position: "absolute",
+                px: 0.5,
+                top: 5,
+                zIndex: 2,
+              }}
+            >
+              {data.rank}
             </Box>
-          </Typography>
-        ) : null}
+          ) : null}
+
+          <Box
+            className="canon-reveal"
+            sx={{
+              alignItems: "flex-start",
+              background:
+                "linear-gradient(180deg, rgba(8,8,11,0.05) 0%, rgba(8,8,11,0.5) 55%, rgba(8,8,11,0.92) 100%)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 0.5,
+              inset: 0,
+              justifyContent: "flex-end",
+              opacity: 0,
+              p: 1,
+              position: "absolute",
+              transition: "opacity 160ms ease",
+              zIndex: 1,
+            }}
+          >
+            <Typography
+              component="div"
+              sx={{
+                color: ACCENTS.teal,
+                fontFamily: HEADING_FONT,
+                fontWeight: 700,
+                lineHeight: 1,
+              }}
+              variant="subtitle2"
+            >
+              {data.score.toFixed(1)}
+            </Typography>
+            {data.leadCredit ? (
+              <Typography
+                sx={{ color: alpha("#fff", 0.82), lineHeight: 1.25 }}
+                variant="caption"
+              >
+                {creditLabel(data.mediaType, data.leadCredit.role)}{" "}
+                <Box component="span" sx={{ color: "#fff", fontWeight: 600 }}>
+                  {data.leadCredit.name}
+                </Box>
+              </Typography>
+            ) : null}
+          </Box>
+        </Box>
       </Box>
 
-      <Box
+      <Typography
         sx={{
-          alignItems: "center",
-          backgroundColor: alpha("#000", 0.72),
-          borderRadius: 1,
-          color: "#fff",
-          display: "flex",
-          fontSize: "0.72rem",
-          fontWeight: 700,
-          height: 22,
-          justifyContent: "center",
-          left: 4,
-          minWidth: 22,
-          position: "absolute",
-          px: 0.5,
-          top: 4,
+          display: "-webkit-box",
+          fontSize: "0.8rem",
+          fontWeight: 600,
+          lineHeight: 1.25,
+          minHeight: 33,
+          mt: 1,
+          overflow: "hidden",
+          WebkitBoxOrient: "vertical",
+          WebkitLineClamp: 2,
         }}
+        title={data.title}
       >
-        {data.rank}
-      </Box>
-      <Chip
-        label={data.score.toFixed(1)}
-        size="small"
-        sx={{
-          backgroundColor: alpha(accent, 0.92),
-          color: "#fff",
-          fontWeight: 700,
-          height: 20,
-          position: "absolute",
-          right: 4,
-          top: 4,
-          "& .MuiChip-label": { px: 0.75 },
-        }}
-      />
+        {data.title}
+      </Typography>
+      {metaLine ? (
+        <Typography
+          sx={{ color: "text.secondary", fontSize: "0.72rem", mt: 0.25 }}
+        >
+          {metaLine}
+        </Typography>
+      ) : null}
     </Box>
   );
 }

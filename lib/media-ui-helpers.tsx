@@ -34,6 +34,13 @@ export const ACCENTS = {
 } as const;
 
 /**
+ * Display font stack for headings and large numerals. Mirrors the `--font-heading`
+ * next/font variable, falling back to the geometric grotesks the design leans on.
+ */
+export const HEADING_FONT =
+  'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif';
+
+/**
  * Canonical media-type accent map. One color per `MediaType`. Used for icon
  * tints, poster fallback gradients, chip borders, and left-border accents
  * across dashboard, watchlist, discover, insights, media detail, and profile.
