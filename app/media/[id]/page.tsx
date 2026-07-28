@@ -8,6 +8,10 @@ import { calculateCommunityAverage } from "@/lib/scoring/communityAverage";
 import { calculateConsensusScore } from "@/lib/scoring/consensus";
 import { getMediaItemMatch } from "@/lib/scoring/itemMatch";
 import {
+  getFriendMediaActivity,
+  type FriendMediaEntry,
+} from "@/lib/social/visibility";
+import {
   getWatchProviders,
   resolveTmdbId,
   tmdbIdFromUrl,
@@ -100,14 +104,18 @@ export default async function MediaDetailPage({
   // Relations and re-releases are public facts about the title (not per-user
   // joins), so they're fetched unconditionally and rendered read-only here.
   // Editing lives on the edit page via MediaConnectionsPanel.
-  // These three Neon reads all depend only on the already-loaded `rawItem`, so
-  // fire them together rather than serially: the relation/release triad, the
-  // community-average rows, and the Medialy Match summary. Cuts the detail
-  // page's serial round-trips (and the time Neon compute stays active) roughly
-  // in half.
+  // These Neon reads all depend only on the already-loaded `rawItem`, so fire
+  // them together rather than serially: the relation/release triad, the
+  // community-average rows, the Medialy Match summary, and friend activity.
+  // Cuts the detail page's serial round-trips (and the time Neon compute stays
+  // active) roughly in half.
   const otherSelect = { id: true, title: true, mediaType: true } as const;
-  const [[relationsFrom, relationsTo, releaseEventRows], otherUserMedia, matchSummary] =
-    await Promise.all([
+  const [
+    [relationsFrom, relationsTo, releaseEventRows],
+    otherUserMedia,
+    matchSummary,
+    friendActivity,
+  ] = await Promise.all([
       Promise.all([
         prisma.mediaRelation.findMany({
           where: { fromId: rawItem.id },
@@ -132,6 +140,12 @@ export default async function MediaDetailPage({
         select: { computedPersonalScore: true },
       }),
       getMediaItemMatch(rawItem.id, userId),
+      // What people the viewer follows have done with this title. Anonymous
+      // viewers get nothing — a follow graph is what makes the extra statuses
+      // visible at all.
+      userId
+        ? getFriendMediaActivity(userId, rawItem.id)
+        : Promise.resolve<FriendMediaEntry[]>([]),
     ]);
   const relations: RelationView[] = [
     ...relationsFrom.map((relation) => ({
@@ -207,6 +221,7 @@ export default async function MediaDetailPage({
 
   return (
     <MediaDetailView
+      friendActivity={friendActivity}
       item={item}
       relations={relations}
       releaseEvents={releaseEvents}

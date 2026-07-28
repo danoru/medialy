@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { alpha } from "@mui/material/styles";
-import { MediaType } from "@prisma/client";
+import { MediaStatus, MediaType } from "@prisma/client";
 import MovieIcon from "@mui/icons-material/Movie";
 import TvIcon from "@mui/icons-material/Tv";
 import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
@@ -8,6 +8,13 @@ import MenuBookIcon from "@mui/icons-material/MenuBook";
 import CasinoIcon from "@mui/icons-material/Casino";
 import MusicNoteIcon from "@mui/icons-material/MusicNote";
 import TheaterComedyIcon from "@mui/icons-material/TheaterComedy";
+import BookmarkRoundedIcon from "@mui/icons-material/BookmarkRounded";
+import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
+import DoNotDisturbOnRoundedIcon from "@mui/icons-material/DoNotDisturbOnRounded";
+import InventoryRoundedIcon from "@mui/icons-material/Inventory2Rounded";
+import PauseCircleRoundedIcon from "@mui/icons-material/PauseCircleRounded";
+import PlayCircleRoundedIcon from "@mui/icons-material/PlayCircleRounded";
+import VisibilityOffRoundedIcon from "@mui/icons-material/VisibilityOffRounded";
 
 import { formatMediaType } from "@/lib/format";
 
@@ -93,6 +100,41 @@ export function mediaTypeIcon(
     case MediaType.MOVIE:
     default:
       return <MovieIcon fontSize={props.fontSize} />;
+  }
+}
+
+/**
+ * Icon for a tracking status. Type-agnostic on purpose — the *label* varies by
+ * media type (`statusLabel` in `lib/status-labels.ts`) but the glyph reads the
+ * same whether you're watching, playing, or reading something. Pair with the
+ * label (as text or a tooltip); the icon alone is not self-explanatory.
+ *
+ * `UNTRACKED` returns null: there is nothing to draw for "no status".
+ */
+export function statusIcon(
+  status: MediaStatus,
+  props: { fontSize?: "inherit" | "small" | "medium" | "large" } = {
+    fontSize: "small",
+  },
+): ReactNode {
+  switch (status) {
+    case MediaStatus.WATCHLIST:
+      return <BookmarkRoundedIcon fontSize={props.fontSize} />;
+    case MediaStatus.BACKLOG:
+      return <InventoryRoundedIcon fontSize={props.fontSize} />;
+    case MediaStatus.IN_PROGRESS:
+      return <PlayCircleRoundedIcon fontSize={props.fontSize} />;
+    case MediaStatus.COMPLETED:
+      return <CheckCircleRoundedIcon fontSize={props.fontSize} />;
+    case MediaStatus.PAUSED:
+      return <PauseCircleRoundedIcon fontSize={props.fontSize} />;
+    case MediaStatus.DROPPED:
+      return <DoNotDisturbOnRoundedIcon fontSize={props.fontSize} />;
+    case MediaStatus.NOT_INTERESTED:
+      return <VisibilityOffRoundedIcon fontSize={props.fontSize} />;
+    case MediaStatus.UNTRACKED:
+    default:
+      return null;
   }
 }
 

@@ -40,6 +40,7 @@ import {
   type RateResult,
 } from "@/app/media/actions";
 import { ActionToastButton } from "@/components/shared/Toasts";
+import { FriendMediaActivity } from "@/components/social/FriendMediaActivity";
 import { StarRating } from "@/components/media/StarRating";
 import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
@@ -57,6 +58,7 @@ import type {
 import { availableStatuses, statusLabel } from "@/lib/status-labels";
 import { useRef, useState, useTransition } from "react";
 import type { UserMediaFields } from "@/lib/db/user-media";
+import type { FriendMediaEntry } from "@/lib/social/visibility";
 import type { WatchAvailability } from "@/lib/tmdb";
 
 /**
@@ -127,11 +129,13 @@ export type MediaDetailViewItem = UserMediaFields & {
 };
 
 export function MediaDetailView({
+  friendActivity,
   item,
   relations,
   releaseEvents,
   userId,
 }: {
+  friendActivity: FriendMediaEntry[];
   item: MediaDetailViewItem;
   relations: RelationView[];
   releaseEvents: ReleaseEventView[];
@@ -463,6 +467,29 @@ export function MediaDetailView({
                 />
               ))}
             </Box>
+          </Box>
+        ) : null}
+
+        {/* FRIEND ACTIVITY ---------------------------------------------- */}
+        {/* Hidden entirely when nobody the viewer follows has touched this
+            item — an always-present empty section would be noise on most
+            pages. Discovery lives on /friends. */}
+        {friendActivity.length > 0 ? (
+          <Box>
+            <Stack
+              direction="row"
+              sx={{ alignItems: "baseline", gap: 1, flexWrap: "wrap" }}
+            >
+              <SectionTitle>Friend activity</SectionTitle>
+              <Typography color="text.secondary" sx={friendActivityCountSx}>
+                {friendActivity.length}{" "}
+                {friendActivity.length === 1 ? "person" : "people"} you follow
+              </Typography>
+            </Stack>
+            <FriendMediaActivity
+              entries={friendActivity}
+              mediaType={item.mediaType}
+            />
           </Box>
         ) : null}
 
@@ -1683,6 +1710,13 @@ const sectionTitleSx: SxProps<Theme> = {
   letterSpacing: "0.18em",
   mb: 1.25,
   textTransform: "uppercase",
+};
+
+// Matches SectionTitle's bottom margin so the count sits on its baseline
+// without dragging the row's height around.
+const friendActivityCountSx: SxProps<Theme> = {
+  fontSize: "0.875rem",
+  mb: 1.25,
 };
 
 function posterFrameSx(mediaType: MediaType): SxProps<Theme> {
