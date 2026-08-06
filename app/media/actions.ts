@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { MediaStatus, type MediaType, Prisma } from "@prisma/client";
 import {
+  clearComparisonsForMedia,
   findExistingMediaItem,
   mediaMutationDataWithUniqueTitle,
   replaceManualExternalRatings,
@@ -11,6 +12,11 @@ import {
   upsertMediaRelations,
   userMediaMutationData,
 } from "@/lib/media";
+import {
+  getMergePreview,
+  mergeMediaItems,
+  type MergePreview,
+} from "@/lib/media-merge";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
 import { queueToast } from "@/lib/toast";
@@ -162,6 +168,20 @@ function revalidateUserMediaViews(id?: string) {
   if (id) revalidatePath(`/media/${id}`);
 }
 
+/**
+ * Wider sweep for deletes and merges: an item disappearing can empty a
+ * collection, orphan a comparison queue, or clear the review queue, none of
+ * which `revalidateUserMediaViews` covers.
+ */
+function revalidateAfterCatalogChange(survivorId?: string) {
+  revalidateUserMediaViews(survivorId);
+  revalidatePath("/upcoming");
+  revalidatePath("/compare");
+  revalidatePath("/discover/collections");
+  revalidatePath("/admin/edits");
+  revalidatePath("/admin");
+}
+
 export type RateResult = {
   personalRating: number | null;
   /** Status the item is on now. */
@@ -273,17 +293,111 @@ export async function unarchiveMediaItem(id: string) {
   redirect(`/media/${id}`);
 }
 
+/**
+ * Hard-delete a catalog item and everything hanging off it — used to clear out
+ * duplicates, so it has to take every user's data with it, not just the
+ * admin's. Most relations cascade at the DB level (UserMedia, genres, tags,
+ * credits, external ratings, list items, notes, relations in both directions,
+ * release events, edit suggestions). `PairwiseComparison` is the exception:
+ * its FKs are ON DELETE RESTRICT, so the delete fails with a FK violation for
+ * any item that has ever been compared unless we clear those rows first.
+ *
+ * See `clearComparisonsForMedia` for why the comparison partners need fixing
+ * up rather than just having their rows deleted.
+ */
 export async function deleteMediaItem(id: string) {
   const user = await requireUser();
   if (!user.isAdmin) {
-    await queueToast("Only admins can delete shared catalog items.");
+    await queueToast("Only admins can delete shared catalog items.", "error");
     redirect(`/media/${id}`);
   }
-  await prisma.mediaItem.delete({ where: { id } });
-  revalidatePath("/library");
-  await queueToast("Media item deleted.");
+
+  const item = await prisma.mediaItem.findUnique({
+    where: { id },
+    select: { title: true },
+  });
+  if (!item) {
+    await queueToast("That media item no longer exists.", "error");
+    redirect("/library");
+  }
+
+  const partners = await prisma.$transaction(async (tx) => {
+    const affected = await clearComparisonsForMedia(tx, id);
+    await tx.mediaItem.delete({ where: { id } });
+    return affected;
+  });
+
+  // Sequential rather than Promise.all — this fans out over every partner item
+  // and we'd rather not open that many connections at once.
+  for (const { userId, mediaId } of partners) {
+    await recomputeMediaScores(mediaId, userId);
+  }
+
+  revalidateAfterCatalogChange();
+  await queueToast(`Deleted "${item.title}" and everything linked to it.`);
   redirect("/library");
 }
+
+/** Dry run behind the merge confirmation step. Admin-only: the counts describe
+ *  other people's libraries. */
+export async function previewMediaMerge(
+  duplicateId: string,
+  survivorId: string,
+): Promise<MergePreview | null> {
+  const user = await requireUser();
+  if (!user.isAdmin) return null;
+  return getMergePreview(duplicateId, survivorId);
+}
+
+/**
+ * Fold a duplicate entry into the one it duplicates, then delete it. See
+ * `lib/media-merge.ts` for how each colliding table is resolved.
+ */
+export async function mergeMediaItem(duplicateId: string, formData: FormData) {
+  const user = await requireUser();
+  if (!user.isAdmin) {
+    await queueToast("Only admins can merge shared catalog items.", "error");
+    redirect(`/media/${duplicateId}`);
+  }
+
+  const survivorId = String(formData.get("survivorId") ?? "").trim();
+  if (!survivorId) {
+    await queueToast("Pick an item to merge into first.", "error");
+    redirect(`/media/${duplicateId}/edit`);
+  }
+
+  const { result, partners } = await mergeMediaItems(duplicateId, survivorId);
+  if (!result.ok) {
+    await queueToast(MERGE_FAILURE_MESSAGE[result.reason], "error");
+    redirect(`/media/${duplicateId}/edit`);
+  }
+
+  // Statuses and ratings moved, so every user holding the survivor needs their
+  // personal score redone — plus the partners whose comparisons went away.
+  const survivorUsers = await prisma.userMedia.findMany({
+    where: { mediaId: survivorId },
+    select: { userId: true },
+  });
+  for (const { userId } of survivorUsers) {
+    await recomputeMediaScores(survivorId, userId);
+  }
+  for (const { userId, mediaId } of partners) {
+    await recomputeMediaScores(mediaId, userId);
+  }
+
+  revalidateAfterCatalogChange(survivorId);
+  await queueToast(
+    `Merged "${result.duplicateTitle}" into "${result.survivorTitle}".`,
+  );
+  redirect(`/media/${survivorId}`);
+}
+
+const MERGE_FAILURE_MESSAGE = {
+  missing: "One of those items no longer exists.",
+  "same-item": "An item can't be merged into itself.",
+  "type-mismatch":
+    "Those are different media types. Link them as related titles instead.",
+} as const;
 
 export async function addNote(id: string, formData: FormData) {
   const userId = await requireUserId();

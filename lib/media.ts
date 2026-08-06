@@ -564,6 +564,82 @@ export async function findExistingMediaItem(
   );
 }
 
+/** A `(user, surviving item)` pair whose comparison count we just reduced. */
+export type ComparisonPartner = { userId: string; mediaId: string };
+
+/**
+ * Delete every `PairwiseComparison` touching `mediaId` and walk back the
+ * `comparisonCount` of the items on the other side of those comparisons.
+ *
+ * Both deleting and merging an item destroy its comparison history — the FKs
+ * are `ON DELETE RESTRICT`, so the rows have to go before the item can, and
+ * the accumulated Elo on the *partner* items would otherwise keep claiming
+ * comparisons that no longer exist, permanently inflating their confidence.
+ * The partners' `pairwiseScore` is accumulated rather than derived and can't
+ * be unwound exactly; it re-converges as they're compared again.
+ *
+ * Returns the affected pairs so the caller can recompute their scores once the
+ * surrounding transaction has committed.
+ */
+export async function clearComparisonsForMedia(
+  tx: PrismaLike,
+  mediaId: string,
+): Promise<ComparisonPartner[]> {
+  const comparedWith = { OR: [{ winnerId: mediaId }, { loserId: mediaId }] };
+  const comparisons = await tx.pairwiseComparison.findMany({
+    where: comparedWith,
+    select: { userId: true, winnerId: true, loserId: true },
+  });
+
+  const affected = new Map<string, ComparisonPartner & { removed: number }>();
+  for (const comparison of comparisons) {
+    const otherId =
+      comparison.winnerId === mediaId
+        ? comparison.loserId
+        : comparison.winnerId;
+    if (otherId === mediaId) continue;
+    const key = `${comparison.userId}:${otherId}`;
+    const entry = affected.get(key);
+    if (entry) entry.removed += 1;
+    else
+      affected.set(key, {
+        userId: comparison.userId,
+        mediaId: otherId,
+        removed: 1,
+      });
+  }
+
+  await tx.pairwiseComparison.deleteMany({ where: comparedWith });
+
+  // Group by decrement amount so a heavily-compared item costs a couple of
+  // queries rather than two per partner (and blows the transaction timeout).
+  const byAmount = new Map<number, ComparisonPartner[]>();
+  for (const { userId, mediaId: partnerId, removed } of affected.values()) {
+    const pairs = byAmount.get(removed);
+    if (pairs) pairs.push({ userId, mediaId: partnerId });
+    else byAmount.set(removed, [{ userId, mediaId: partnerId }]);
+  }
+
+  for (const [amount, pairs] of byAmount) {
+    const where = { OR: pairs };
+    // Floor first: a count that somehow lags the stored rows must not go
+    // negative. Those rows drop to 0 and so fall out of the decrement below.
+    await tx.userMedia.updateMany({
+      where: { ...where, comparisonCount: { lt: amount } },
+      data: { comparisonCount: 0 },
+    });
+    await tx.userMedia.updateMany({
+      where: { ...where, comparisonCount: { gte: amount } },
+      data: { comparisonCount: { decrement: amount } },
+    });
+  }
+
+  return [...affected.values()].map(({ userId, mediaId: partnerId }) => ({
+    userId,
+    mediaId: partnerId,
+  }));
+}
+
 export function mediaTitleBase(value: string) {
   return value
     .trim()

@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Card, CardContent, Stack } from "@mui/material";
+import { Card, CardContent, Divider, Stack, Typography } from "@mui/material";
 import {
+  deleteMediaItem,
+  mergeMediaItem,
+  previewMediaMerge,
   searchMediaItemsForRelation,
   updateMediaItem,
 } from "@/app/media/actions";
+import { ConfirmMediaAction } from "@/components/media/ConfirmMediaAction";
 import { MediaForm } from "@/components/media/MediaForm";
+import { MergeMediaAction } from "@/components/media/MergeMediaAction";
 import {
   MediaConnectionsPanel,
   type RelationView,
@@ -106,6 +111,59 @@ export default async function EditMediaPage({
           />
         </CardContent>
       </Card>
+
+      {user?.isAdmin ? (
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={3}>
+              <Stack spacing={2}>
+                <Typography sx={{ fontWeight: 700 }} variant="h6">
+                  This is a duplicate
+                </Typography>
+                <Typography color="text.secondary" variant="body2">
+                  Move everything attached to this entry onto the item it
+                  duplicates, then delete it. Other people&rsquo;s statuses and
+                  ratings come along; where both entries have a value, the one
+                  you keep wins.
+                </Typography>
+                <Stack direction="row">
+                  <MergeMediaAction
+                    action={mergeMediaItem.bind(null, id)}
+                    duplicateTitle={item.title}
+                    previewAction={previewMediaMerge.bind(null, id)}
+                    searchAction={searchMediaItemsForRelation.bind(null, id)}
+                  />
+                </Stack>
+              </Stack>
+
+              <Divider />
+
+              <Stack spacing={2}>
+                <Typography sx={{ fontWeight: 700 }} variant="h6">
+                  Delete from catalog
+                </Typography>
+                <Typography color="text.secondary" variant="body2">
+                  Removes this item for everyone, along with all statuses,
+                  ratings, comparisons, notes, list entries and pending edit
+                  suggestions attached to it. Prefer merging if another entry
+                  covers the same thing — archive instead if you just want it
+                  out of your own library.
+                </Typography>
+                <Stack direction="row">
+                  <ConfirmMediaAction
+                    action={deleteMediaItem.bind(null, id)}
+                    actionLabel="Delete media item"
+                    confirmLabel="Delete permanently"
+                    description={`Permanently delete "${item.title}"? Everyone's statuses, ratings, comparisons, notes and list entries for it go too. This can't be undone.`}
+                    tone="danger"
+                    variant="delete"
+                  />
+                </Stack>
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
+      ) : null}
     </Stack>
   );
 }
