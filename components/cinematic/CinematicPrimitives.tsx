@@ -46,7 +46,9 @@ export const CinematicCard = styled(Card, {
   backgroundColor: theme.palette.background.paper,
   backgroundImage: `linear-gradient(180deg, ${alpha("#FFFFFF", 0.022)}, transparent 120px)`,
   border: `1px solid ${theme.palette.border.subtle}`,
-  borderLeft: accent ? `2px solid ${accent}` : `1px solid ${theme.palette.border.subtle}`,
+  borderLeft: accent
+    ? `2px solid ${accent}`
+    : `1px solid ${theme.palette.border.subtle}`,
   borderRadius: dashboardSurfaceRadius,
   boxShadow: accent
     ? `0 8px 28px rgba(0, 0, 0, 0.42), 0 1px 0 ${alpha("#FFFFFF", 0.03)} inset, -8px 0 24px -16px ${alpha(accent, 0.55)}`
@@ -83,12 +85,19 @@ export function DashboardSection({
   children,
   kicker,
   title,
+  titleVariant = "heading",
 }: {
   accent?: string;
   action?: ReactNode;
   children: ReactNode;
   kicker?: string;
   title: string;
+  /**
+   * `heading`: sentence-case title over a short accent underline (profile,
+   * public pages). `eyebrow`: uppercase title with a hairline rule running to
+   * the action — the dashboard's noir header treatment.
+   */
+  titleVariant?: "heading" | "eyebrow";
 }) {
   const theme = useTheme();
   const accentColor = accent ?? theme.palette.primary.main;
@@ -103,40 +112,68 @@ export function DashboardSection({
           "&:last-child": { pb: { xs: 2, md: 2.5 } },
         }}
       >
-        <Stack
-          direction="row"
-          sx={{ alignItems: "center", gap: 1, mb: 1.5 }}
-        >
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            {kicker ? (
-              <Typography variant="eyebrow" sx={{ display: "block", mb: 0.5 }}>
-                {kicker}
-              </Typography>
-            ) : null}
+        {titleVariant === "eyebrow" ? (
+          <Stack
+            direction="row"
+            sx={{ alignItems: "center", gap: 1.5, mb: 1.5 }}
+          >
             <Typography
               component="h2"
-              sx={{
-                color: "text.primary",
-                fontFamily: (t) => t.typography.h5.fontFamily,
-                fontSize: "0.9375rem",
-                fontWeight: 600,
-                letterSpacing: "-0.015em",
-              }}
+              variant="eyebrow"
+              // An explicit accent means the panel's contents are scoped to
+              // something the accent identifies (a media type), so the title
+              // wears it too. Panels on the default accent keep a neutral
+              // title, leaving peach to read as "interactive".
+              sx={{ color: accent, flexShrink: 0 }}
             >
               {title}
             </Typography>
             <Box
               sx={{
-                background: `linear-gradient(90deg, ${accentColor}, ${alpha(accentColor, 0)})`,
-                borderRadius: 1,
-                height: 2,
-                mt: 0.65,
-                width: 36,
+                bgcolor: "border.subtle",
+                flex: 1,
+                height: "1px",
+                minWidth: 24,
               }}
             />
-          </Box>
-          {action}
-        </Stack>
+            {action}
+          </Stack>
+        ) : (
+          <Stack direction="row" sx={{ alignItems: "center", gap: 1, mb: 1.5 }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              {kicker ? (
+                <Typography
+                  variant="eyebrow"
+                  sx={{ display: "block", mb: 0.5 }}
+                >
+                  {kicker}
+                </Typography>
+              ) : null}
+              <Typography
+                component="h2"
+                sx={{
+                  color: "text.primary",
+                  fontFamily: (t) => t.typography.h5.fontFamily,
+                  fontSize: "0.9375rem",
+                  fontWeight: 600,
+                  letterSpacing: "-0.015em",
+                }}
+              >
+                {title}
+              </Typography>
+              <Box
+                sx={{
+                  background: `linear-gradient(90deg, ${accentColor}, ${alpha(accentColor, 0)})`,
+                  borderRadius: 1,
+                  height: 2,
+                  mt: 0.65,
+                  width: 36,
+                }}
+              />
+            </Box>
+            {action}
+          </Stack>
+        )}
         <Box
           sx={{
             display: "flex",

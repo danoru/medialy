@@ -2,18 +2,11 @@
 
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
-import ReportProblemIcon from "@mui/icons-material/ReportProblem";
-import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import { useMemo, useState } from "react";
 import {
   Box,
   Button,
-  Chip,
-  LinearProgress,
   Stack,
   ToggleButton,
   ToggleButtonGroup,
@@ -23,17 +16,12 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha } from "@mui/material/styles";
 import type { MediaType } from "@prisma/client";
 import Link from "next/link";
-import {
-  CompactStatCard,
-  DashboardSection,
-} from "@/components/cinematic/CinematicPrimitives";
+import { DashboardSection } from "@/components/cinematic/CinematicPrimitives";
+import { ReleaseRadar } from "@/components/dashboard/ReleaseRadar";
 import { formatMediaType } from "@/lib/format";
-import { statusLabel } from "@/lib/status-labels";
 import type { MediaItemDTO } from "@/lib/types";
-import { formatUpcomingRelativeLabel } from "@/lib/upcoming";
 import { releaseYearLabel } from "@/lib/date-labels";
 import {
-  ACCENTS,
   mediaAccent,
   mediaTypeIcon,
   posterFallback,
@@ -46,11 +34,6 @@ import type { CollectionSummary } from "@/lib/db/collections";
 
 type DashboardData = {
   userName: string | null;
-  totalItems: number;
-  watchlistCount: number;
-  comparisonCount: number;
-  missingMetadataCount: number;
-  duplicateCount: number;
   recommendations: Array<{
     media: MediaItemDTO;
     score: number;
@@ -64,22 +47,6 @@ type DashboardData = {
       confidence: number;
     }>;
   }>;
-  genreInsights: Array<{
-    mediaType: MediaType;
-    totalCount: number;
-    completedCount: number;
-    ratedCount: number;
-    genres: Array<{
-      name: string;
-      count: number;
-      completedCount: number;
-      ratedCount: number;
-      averageScore: number;
-      share: number;
-      needsData: boolean;
-    }>;
-  }>;
-  mediaTypeCounts: Array<{ mediaType: MediaType; count: number }>;
   topItemsByMediaType: Array<{
     mediaType: MediaType;
     items: Array<{
@@ -91,115 +58,78 @@ type DashboardData = {
     mediaType: MediaType;
     items: MediaItemDTO[];
   }>;
-  watchlistItems: MediaItemDTO[];
-  health: {
-    missingGenres: number;
-    missingPosters: number;
-    missingReleaseDates: number;
-    lowComparisonItems: number;
-  };
 };
 
 const dashboardMediaTypes: MediaType[] = ["MOVIE", "TV_SHOW", "VIDEO_GAME"];
 
-type DashboardRecommendation = DashboardData["recommendations"][number];
+/** Featured collections fill a 2×2 grid; extras live behind "Browse all". */
+const FEATURED_COLLECTION_COUNT = 4;
 
+// 1b's header link: peach, arrowed, sitting at the end of the hairline rule.
+// The `.MuiButton-text` qualifier out-specifies the theme's text-button
+// override, which would otherwise pin these to text.primary.
 const panelActionSx: SxProps<Theme> = {
-  color: "text.secondary",
+  flexShrink: 0,
   fontSize: "0.875rem",
   fontWeight: 550,
   minHeight: 44,
   px: 1,
-  "&:hover": { color: "text.primary" },
+  "&.MuiButton-text": {
+    color: "primary.main",
+    "&:hover": { bgcolor: "transparent", color: "primary.light" },
+  },
 };
 
 export function DashboardClient({
   collections,
   data,
   isAuthenticated,
-  isAdmin,
 }: {
   collections: CollectionSummary[];
   data: DashboardData;
   isAuthenticated: boolean;
-  isAdmin: boolean;
 }) {
-  // Anonymous viewers see public quality/consensus signals only — match %,
-  // confidence %, and personal-status panels (watchlist, comparisons) all
-  // depend on a user's taste graph and are hidden when no one is signed in.
-  // System integrity is moderation surface area, so it's admin-only.
+  // Anonymous viewers see public quality signals only — match % and confidence %
+  // both read off a user's taste graph, so they're hidden when no one is signed in.
   const showPersonalSignals = isAuthenticated;
-  const showSystemIntegrity = isAdmin;
-  const initialTonightPickType =
-    dashboardMediaTypes.find((mediaType) =>
-      data.tonightPicksByMediaType.some(
-        (entry) => entry.mediaType === mediaType && entry.recommendations[0],
-      ),
-    ) ?? "MOVIE";
-  const [topMediaType, setTopMediaType] = useState<MediaType>("MOVIE");
-  const [tonightPickType, setTonightPickType] = useState<MediaType>(
-    initialTonightPickType,
-  );
-  const [upcomingMediaType, setUpcomingMediaType] =
-    useState<MediaType>("MOVIE");
-
-  const topItemsForType = useMemo(
+  // One switcher drives the whole page. It starts on the first type that has a
+  // pick to headline, so a library with no rated movies doesn't open on an
+  // empty hero.
+  const [mediaType, setMediaType] = useState<MediaType>(
     () =>
-      data.topItemsByMediaType.find((entry) => entry.mediaType === topMediaType)
-        ?.items ?? [],
-    [data.topItemsByMediaType, topMediaType],
+      dashboardMediaTypes.find((candidate) =>
+        data.tonightPicksByMediaType.some(
+          (entry) => entry.mediaType === candidate && entry.recommendations[0],
+        ),
+      ) ?? "MOVIE",
   );
 
-  const topItems = topItemsForType.slice(0, 10);
+  const topItems = useMemo(
+    () =>
+      (
+        data.topItemsByMediaType.find((entry) => entry.mediaType === mediaType)
+          ?.items ?? []
+      ).slice(0, 10),
+    [data.topItemsByMediaType, mediaType],
+  );
 
-  const upcomingItemsForType = useMemo(
+  const upcomingItems = useMemo(
     () =>
       data.upcomingItemsByMediaType.find(
-        (entry) => entry.mediaType === upcomingMediaType,
+        (entry) => entry.mediaType === mediaType,
       )?.items ?? [],
-    [data.upcomingItemsByMediaType, upcomingMediaType],
+    [data.upcomingItemsByMediaType, mediaType],
   );
 
-  const watchlistMatchByMediaId = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const rec of data.recommendations) {
-      map.set(rec.media.id, rec.score);
-    }
-    return map;
-  }, [data.recommendations]);
-
-  const tonightPicksByType = useMemo(() => {
-    const picks = new Map<MediaType, DashboardRecommendation>();
-
-    for (const entry of data.tonightPicksByMediaType) {
-      if (
-        entry.recommendations.length === 0 ||
-        !dashboardMediaTypes.includes(entry.mediaType)
-      ) {
-        continue;
-      }
-
-      picks.set(entry.mediaType, entry.recommendations[0]);
-    }
-
-    return picks;
-  }, [data.tonightPicksByMediaType]);
-
-  const tonightRecommendationsForType =
-    data.tonightPicksByMediaType.find(
-      (entry) => entry.mediaType === tonightPickType,
-    )?.recommendations ?? [];
-  const heroRecommendation = tonightPicksByType.get(tonightPickType);
-  const recommendationRailItems = tonightRecommendationsForType
-    .filter(
-      (recommendation) =>
-        recommendation.media.id !== heroRecommendation?.media.id,
-    )
-    .slice(0, 5);
-  const tonightPickCounts = dashboardMediaTypes.map((mediaType) => ({
-    mediaType,
-    count: tonightPicksByType.has(mediaType) ? 1 : 0,
-  }));
+  const tonightRecommendations =
+    data.tonightPicksByMediaType.find((entry) => entry.mediaType === mediaType)
+      ?.recommendations ?? [];
+  const heroRecommendation = tonightRecommendations[0];
+  const recommendationRailItems = tonightRecommendations.slice(1, 6);
+  // Panels whose contents follow the switcher wear the selected type's color —
+  // border, glow, and header. Featured collections is type-agnostic, so it
+  // stays on the default peach.
+  const typeAccent = mediaAccent(mediaType);
 
   return (
     <Stack spacing={2.5}>
@@ -221,51 +151,22 @@ export function DashboardClient({
               lineHeight: 1.1,
             }}
           >
-            {data.userName ? `Welcome back, ${data.userName}` : "Welcome to Medialy"}
+            {data.userName
+              ? `Welcome back, ${data.userName}`
+              : "Welcome to Medialy"}
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-            Your recommendations, watchlist, and library at a glance.
+            Tonight&apos;s pick, your rankings, and what&apos;s on the way.
           </Typography>
         </Box>
-        <Stack
-          direction="row"
+        <Box
           sx={{
-            flexWrap: "wrap",
-            gap: 1,
+            display: "flex",
             justifyContent: { xs: "flex-start", lg: "flex-end" },
           }}
         >
-          <CompactStatCard
-            accent={mediaAccent("MOVIE")}
-            icon={<LibraryBooksIcon fontSize="small" />}
-            label="Total items"
-            value={data.totalItems.toLocaleString()}
-          />
-          {showPersonalSignals ? (
-            <CompactStatCard
-              accent={mediaAccent("TV_SHOW")}
-              icon={<PlaylistAddCheckIcon fontSize="small" />}
-              label="Watchlist"
-              value={data.watchlistCount.toLocaleString()}
-            />
-          ) : null}
-          {showPersonalSignals ? (
-            <CompactStatCard
-              accent={mediaAccent("VIDEO_GAME")}
-              icon={<CompareArrowsIcon fontSize="small" />}
-              label="Comparisons"
-              value={data.comparisonCount.toLocaleString()}
-            />
-          ) : null}
-          {showSystemIntegrity ? (
-            <CompactStatCard
-              accent={ACCENTS.peach}
-              icon={<ReportProblemIcon fontSize="small" />}
-              label="Metadata gaps"
-              value={data.missingMetadataCount.toLocaleString()}
-            />
-          ) : null}
-        </Stack>
+          <MediaTypeTabs onChange={setMediaType} value={mediaType} />
+        </Box>
       </Stack>
 
       <Box
@@ -273,28 +174,12 @@ export function DashboardClient({
           display: "grid",
           gap: 2,
           gridTemplateAreas: {
-            xs: [
-              `"tonight"`,
-              `"top"`,
-              `"genre"`,
-              showPersonalSignals ? `"watch"` : null,
-              `"side"`,
-              showSystemIntegrity ? `"health"` : null,
-            ]
-              .filter(Boolean)
-              .join("\n"),
+            xs: `"tonight"\n"top"\n"collections"\n"upcoming"`,
             lg: [
               `"tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight tonight"`,
               `"top top top top top top top top top top top top"`,
-              showPersonalSignals
-                ? `"genre genre genre genre watch watch watch watch side side side side"`
-                : `"genre genre genre genre genre genre side side side side side side"`,
-              showSystemIntegrity
-                ? `"health health health health health health health health health health health health"`
-                : null,
-            ]
-              .filter(Boolean)
-              .join("\n"),
+              `"collections collections collections collections collections collections upcoming upcoming upcoming upcoming upcoming upcoming"`,
+            ].join("\n"),
           },
           gridTemplateColumns: { xs: "1fr", lg: "repeat(12, minmax(0, 1fr))" },
         }}
@@ -302,20 +187,21 @@ export function DashboardClient({
         <Box sx={{ gridArea: "tonight", minWidth: 0 }}>
           {heroRecommendation ? (
             <DiagonalPickStrip
-              counts={tonightPickCounts}
               confidence={heroRecommendation.confidence}
               hero={heroRecommendation.media}
               heroScore={heroRecommendation.score}
-              onTypeChange={setTonightPickType}
               showMatch={showPersonalSignals}
               upNext={recommendationRailItems.map((r) => ({
                 media: r.media,
                 score: r.score,
               }))}
-              value={tonightPickType}
             />
           ) : (
-            <DashboardSection title="Tonight's pick">
+            <DashboardSection
+              accent={typeAccent}
+              title="Tonight's pick"
+              titleVariant="eyebrow"
+            >
               <EmptyPanel
                 icon={<AutoAwesomeIcon />}
                 label="Add ratings to unlock a featured recommendation."
@@ -326,24 +212,21 @@ export function DashboardClient({
 
         <Box sx={{ gridArea: "top", minWidth: 0 }}>
           <DashboardSection
+            accent={typeAccent}
             action={
               <Button
-                href={`/canon?type=${topMediaType}`}
+                endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
+                href={`/canon?type=${mediaType}`}
                 size="small"
                 sx={panelActionSx}
               >
                 Open Canon
               </Button>
             }
-            title="Overall top 10"
+            title="Medialy Top 10"
+            titleVariant="eyebrow"
           >
-            <MediaTypeTabs
-              counts={data.mediaTypeCounts}
-              onChange={setTopMediaType}
-              showCounts={false}
-              value={topMediaType}
-            />
-            {topItemsForType.length > 0 ? (
+            {topItems.length > 0 ? (
               <Box
                 sx={{
                   alignContent: "center",
@@ -355,44 +238,32 @@ export function DashboardClient({
                     sm: "repeat(5, minmax(0, 1fr))",
                     lg: "repeat(10, minmax(0, 1fr))",
                   },
-                  mt: 1.5,
+                  mt: 0.5,
                 }}
               >
-                {topItems.map((recommendation) => {
-                  const releaseYear = releaseYearLabel(
-                    recommendation.media.releaseDate,
-                  );
-                  const meta = [
-                    shortMediaTypeLabel(recommendation.media.mediaType),
-                    releaseYear,
-                  ].filter((value): value is string => Boolean(value));
-                  return (
-                    <PosterTile
-                      item={recommendation.media}
-                      key={recommendation.media.id}
-                      meta={meta}
-                      scoreBadge={
-                        typeof recommendation.score === "number" ? (
-                          <PosterScoreBadge score={recommendation.score} />
-                        ) : undefined
-                      }
-                    />
-                  );
-                })}
+                {topItems.map((entry, index) => (
+                  <RankedPosterTile
+                    key={entry.media.id}
+                    item={entry.media}
+                    rank={index + 1}
+                    score={entry.score}
+                  />
+                ))}
               </Box>
             ) : (
               <EmptyPanel
                 icon={<PlaylistAddCheckIcon />}
-                label={`No ${formatMediaType(topMediaType).toLowerCase()} items yet.`}
+                label={`No ${formatMediaType(mediaType).toLowerCase()} items yet.`}
               />
             )}
           </DashboardSection>
         </Box>
 
-        <Box sx={{ gridArea: "genre", minWidth: 0 }}>
+        <Box sx={{ gridArea: "collections", minWidth: 0 }}>
           <DashboardSection
             action={
               <Button
+                endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
                 href="/discover/collections"
                 size="small"
                 sx={panelActionSx}
@@ -401,105 +272,35 @@ export function DashboardClient({
               </Button>
             }
             title="Featured collections"
+            titleVariant="eyebrow"
           >
             <FeaturedCollectionsPanel collections={collections} />
           </DashboardSection>
         </Box>
 
-        {showPersonalSignals ? (
-        <Box sx={{ gridArea: "watch", minWidth: 0 }}>
+        <Box sx={{ gridArea: "upcoming", minWidth: 0 }}>
           <DashboardSection
+            accent={typeAccent}
             action={
-              <Button href="/watchlist" size="small" sx={panelActionSx}>
-                Open watchlist
+              <Button
+                endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
+                href="/upcoming"
+                size="small"
+                sx={panelActionSx}
+              >
+                Full calendar
               </Button>
             }
-            title="Watchlist highlights"
+            title="Release Radar"
+            titleVariant="eyebrow"
           >
-            <Stack spacing={1} sx={{ flex: 1, mt: 0.5 }}>
-              {data.watchlistItems.length === 0 ? (
-                // This panel used to map an empty array with no fallback,
-                // rendering a heading over literal blank space.
-                <Typography color="text.secondary" variant="body2">
-                  Nothing on your watchlist yet.
-                </Typography>
-              ) : (
-                data.watchlistItems.slice(0, 5).map((item) => {
-                  // Prefer the Medialy Match score (0–100, "how strongly we
-                  // predict you'll like this"). Fall back to consensus when an
-                  // item is missing from the rec pool (e.g., release date filter).
-                  const match = watchlistMatchByMediaId.get(item.id);
-                  return (
-                    <MediaSignalRow
-                      href={`/media/${item.id}`}
-                      item={item}
-                      key={item.id}
-                      score={match ?? null}
-                      fallbackConsensus={item.computedConsensusScore}
-                      compact
-                    />
-                  );
-                })
-              )}
-            </Stack>
+            <ReleaseRadar items={upcomingItems} mediaType={mediaType} />
           </DashboardSection>
         </Box>
-        ) : null}
-
-        <Box
-          sx={{
-            display: "grid",
-            gap: 2,
-            gridArea: "side",
-            minWidth: 0,
-          }}
-        >
-          <Box sx={{ minWidth: 0 }}>
-            <DashboardSection
-              action={
-                <Button href="/upcoming" size="small" sx={panelActionSx}>
-                  Open upcoming
-                </Button>
-              }
-              title="Upcoming releases"
-            >
-              <MediaTypeTabs
-                counts={data.upcomingItemsByMediaType.map((entry) => ({
-                  mediaType: entry.mediaType,
-                  count: entry.items.length,
-                }))}
-                onChange={setUpcomingMediaType}
-                value={upcomingMediaType}
-              />
-              {upcomingItemsForType.length > 0 ? (
-                <Stack spacing={1} sx={{ mt: 1.5 }}>
-                  {upcomingItemsForType.slice(0, 6).map((item) => (
-                    <UpcomingRow item={item} key={item.id} />
-                  ))}
-                </Stack>
-              ) : (
-                <EmptyPanel
-                  icon={<CalendarMonthIcon />}
-                  label={`No upcoming ${formatMediaType(upcomingMediaType).toLowerCase()} dates yet.`}
-                />
-              )}
-            </DashboardSection>
-          </Box>
-        </Box>
-
-        {showSystemIntegrity ? (
-          <Box sx={{ gridArea: "health", minWidth: 0 }}>
-            <DataHealthStrip
-              duplicateCount={data.duplicateCount}
-              health={data.health}
-            />
-          </Box>
-        ) : null}
       </Box>
     </Stack>
   );
 }
-
 
 // Diagonal skew offset (px) applied to each slice's clip-path. Larger = more
 // dramatic angle. Slices after the featured one are pulled back by this same
@@ -507,23 +308,17 @@ export function DashboardClient({
 const DIAG_SKEW = 40;
 
 function DiagonalPickStrip({
-  counts,
   confidence,
   hero,
   heroScore,
-  onTypeChange,
   showMatch,
   upNext,
-  value,
 }: {
-  counts: Array<{ mediaType: MediaType; count: number }>;
   confidence: number;
   hero: MediaItemDTO;
   heroScore: number;
-  onTypeChange: (value: MediaType) => void;
   showMatch: boolean;
   upNext: Array<{ media: MediaItemDTO; score: number }>;
-  value: MediaType;
 }) {
   const heroYear = releaseYearLabel(hero.releaseDate);
   const heroMeta = [
@@ -583,27 +378,6 @@ function DiagonalPickStrip({
             zIndex: 1,
           }}
         />
-        {/* Tabs */}
-        <Box
-          sx={{
-            left: { xs: 16, sm: 20 },
-            maxWidth: { xs: "calc(100% - 96px)", sm: 420 },
-            position: "absolute",
-            top: { xs: 16, sm: 18 },
-            zIndex: 5,
-          }}
-        >
-          <MediaTypeTabs
-            counts={counts}
-            disabledMediaTypes={counts
-              .filter((entry) => entry.count === 0)
-              .map((entry) => entry.mediaType)}
-            onChange={onTypeChange}
-            onDark
-            showCounts={false}
-            value={value}
-          />
-        </Box>
         {showMatch ? (
           <ScoreBadge
             label="Match"
@@ -630,10 +404,11 @@ function DiagonalPickStrip({
         >
           <Typography
             sx={{
-              color: "rgba(255,255,255,0.72)",
+              color: heroAccent,
               fontSize: "0.875rem",
               fontWeight: 600,
               letterSpacing: "0.14em",
+              textShadow: "0 1px 10px rgba(0,0,0,0.8)",
               textTransform: "uppercase",
             }}
           >
@@ -778,7 +553,8 @@ function DiagonalPickStrip({
               <Typography
                 sx={{
                   color: "#FFFFFF",
-                  fontFamily: (theme) => theme.typography.displayHero.fontFamily,
+                  fontFamily: (theme) =>
+                    theme.typography.displayHero.fontFamily,
                   fontSize: "clamp(1rem, 1.5vw, 1.5rem)",
                   fontWeight: 650,
                   letterSpacing: "-0.015em",
@@ -900,6 +676,58 @@ function OnDarkChip({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * A top-10 poster with its rank set in display type above the artwork —
+ * №1 in the brand accent, the chasing pack in muted neutral so the shape of
+ * the ranking reads before any title does.
+ */
+function RankedPosterTile({
+  item,
+  rank,
+  score,
+}: {
+  item: MediaItemDTO;
+  rank: number;
+  score: number;
+}) {
+  // The page is already filtered to one media type, so the year alone carries
+  // the caption — repeating "Movie" ten times says nothing.
+  const releaseYear = releaseYearLabel(item.releaseDate);
+  return (
+    <Box sx={{ minWidth: 0, position: "relative", pt: 2.75 }}>
+      <Typography
+        component="span"
+        sx={{
+          color: (theme) =>
+            rank === 1
+              ? theme.palette.primary.main
+              : alpha(theme.palette.text.primary, 0.32),
+          fontFamily: (theme) => theme.typography.displayHero.fontFamily,
+          fontSize: "2.125rem",
+          fontWeight: 700,
+          left: 2,
+          letterSpacing: "-0.04em",
+          lineHeight: 1,
+          position: "absolute",
+          top: 0,
+          zIndex: 2,
+        }}
+      >
+        {rank}
+      </Typography>
+      <PosterTile
+        item={item}
+        meta={releaseYear ? [releaseYear] : undefined}
+        scoreBadge={
+          typeof score === "number" ? (
+            <PosterScoreBadge score={score} />
+          ) : undefined
+        }
+      />
+    </Box>
+  );
+}
+
 function FeaturedCollectionsPanel({
   collections,
 }: {
@@ -914,24 +742,29 @@ function FeaturedCollectionsPanel({
     );
   }
 
-  const single = collections.length === 1;
+  const featured = collections.slice(0, FEATURED_COLLECTION_COUNT);
   return (
     <Box
       sx={{
-        display: "flex",
+        display: "grid",
         flex: 1,
         gap: 1.5,
+        gridTemplateColumns: {
+          xs: "1fr",
+          sm: "repeat(2, minmax(0, 1fr))",
+        },
+        gridTemplateRows: { sm: "repeat(2, minmax(0, 1fr))" },
+        minHeight: 316,
         mt: 0.5,
-        overflowX: single ? "visible" : "auto",
-        pb: single ? 0 : 0.5,
-        scrollbarWidth: "thin",
       }}
     >
-      {collections.map((collection) => (
+      {featured.map((collection) => (
         <CollectionCoverCard
           collection={collection}
           key={collection.id}
-          single={single}
+          // A lone collection has no grid to balance against, so it takes the
+          // full width rather than sitting in a half-empty row.
+          fullWidth={featured.length === 1}
         />
       ))}
     </Box>
@@ -940,12 +773,19 @@ function FeaturedCollectionsPanel({
 
 function CollectionCoverCard({
   collection,
-  single,
+  fullWidth,
 }: {
   collection: CollectionSummary;
-  single: boolean;
+  fullWidth: boolean;
 }) {
-  const blurb = collection.description ?? collection.subtitle;
+  const blurb = collection.subtitle ?? collection.description;
+  const meta = [
+    `${collection.itemCount} ${collection.itemCount === 1 ? "item" : "items"}`,
+    blurb,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" · ");
+
   return (
     <Box
       component={Link}
@@ -962,16 +802,15 @@ function CollectionCoverCard({
         borderRadius: 2,
         color: "#FFFFFF",
         display: "flex",
-        flex: single ? "1 1 auto" : "0 0 auto",
         flexDirection: "column",
+        gridColumn: fullWidth ? "1 / -1" : undefined,
         justifyContent: "flex-end",
-        minHeight: 176,
+        minHeight: 150,
         overflow: "hidden",
         p: 1.5,
         position: "relative",
         textDecoration: "none",
         transition: "border-color 160ms ease, transform 160ms ease",
-        width: single ? "100%" : 240,
         "&:hover": {
           borderColor: "border.strong",
           transform: "translateY(-2px)",
@@ -979,12 +818,17 @@ function CollectionCoverCard({
       }}
     >
       {collection.featuredMonth ? (
-        <Chip
-          color="secondary"
-          label={`Featured · ${collection.featuredMonth}`}
-          size="small"
-          sx={{ alignSelf: "flex-start", mb: "auto" }}
-        />
+        <Typography
+          variant="eyebrow"
+          sx={{
+            color: "primary.main",
+            display: "block",
+            mb: "auto",
+            textShadow: "0 1px 8px rgba(0,0,0,0.7)",
+          }}
+        >
+          {`Featured · ${collection.featuredMonth}`}
+        </Typography>
       ) : null}
       <Typography
         sx={{
@@ -998,78 +842,41 @@ function CollectionCoverCard({
       >
         {collection.name}
       </Typography>
-      {blurb ? (
-        <Typography
-          sx={{
-            color: "rgba(255,255,255,0.82)",
-            display: "-webkit-box",
-            fontSize: "0.875rem",
-            lineHeight: 1.35,
-            mt: 0.5,
-            overflow: "hidden",
-            textShadow: "0 1px 8px rgba(0,0,0,0.6)",
-            WebkitBoxOrient: "vertical",
-            WebkitLineClamp: 3,
-          }}
-        >
-          {blurb}
-        </Typography>
-      ) : null}
+      <Typography
+        sx={{
+          color: "rgba(255,255,255,0.82)",
+          display: "-webkit-box",
+          fontSize: "0.875rem",
+          lineHeight: 1.35,
+          mt: 0.5,
+          overflow: "hidden",
+          textShadow: "0 1px 8px rgba(0,0,0,0.6)",
+          WebkitBoxOrient: "vertical",
+          WebkitLineClamp: 2,
+        }}
+      >
+        {meta}
+      </Typography>
     </Box>
   );
 }
 
 function MediaTypeTabs({
-  counts,
-  disabledMediaTypes = [],
   onChange,
-  onDark = false,
-  showCounts = true,
   value,
 }: {
-  counts: Array<{ mediaType: MediaType; count: number }>;
-  disabledMediaTypes?: MediaType[];
   onChange: (value: MediaType) => void;
-  onDark?: boolean;
-  showCounts?: boolean;
   value: MediaType;
 }) {
-  const countByType = new Map(
-    counts.map((entry) => [entry.mediaType, entry.count]),
-  );
-  const disabledTypes = new Set(disabledMediaTypes);
-
-  const rootSx: SxProps<Theme> = onDark
-    ? {
-        alignSelf: "flex-start",
-        bgcolor: "rgba(8,8,11,0.5)",
-        backdropFilter: "blur(8px)",
-        border: "1px solid rgba(255,255,255,0.14)",
-        borderRadius: 2,
-        display: "inline-flex",
-        gap: 0.25,
-        p: 0.35,
-        width: "max-content",
-        "& .MuiToggleButton-root": {
-          border: 0,
-          borderRadius: 1.5,
-          color: "rgba(255,255,255,0.7)",
-          gap: 0.6,
-          minHeight: 44,
-          px: 1,
-          py: 0.4,
-          textTransform: "none",
-          whiteSpace: "nowrap",
-          "&.Mui-disabled": { color: "rgba(255,255,255,0.28)" },
-          "&.Mui-selected": {
-            bgcolor: "rgba(255,255,255,0.18)",
-            color: "#FFFFFF",
-            "&:hover": { bgcolor: "rgba(255,255,255,0.24)" },
-          },
-        },
-      }
-    : {
-        alignSelf: "flex-start",
+  return (
+    <ToggleButtonGroup
+      aria-label="Media type"
+      exclusive
+      onChange={(_, nextValue: MediaType | null) => {
+        if (nextValue) onChange(nextValue);
+      }}
+      size="small"
+      sx={{
         bgcolor: "surface.1",
         border: "1px solid",
         borderColor: "border.subtle",
@@ -1088,7 +895,6 @@ function MediaTypeTabs({
           py: 0.4,
           textTransform: "none",
           whiteSpace: "nowrap",
-          "&.Mui-disabled": { color: "text.disabled" },
           "&.Mui-selected": {
             bgcolor: "background.paper",
             color: "text.primary",
@@ -1096,23 +902,13 @@ function MediaTypeTabs({
             "&:hover": { bgcolor: "background.paper" },
           },
         },
-      };
-
-  return (
-    <ToggleButtonGroup
-      exclusive
-      onChange={(_, nextValue: MediaType | null) => {
-        if (nextValue) onChange(nextValue);
       }}
-      size="small"
-      sx={rootSx}
       value={value}
     >
       {dashboardMediaTypes.map((mediaType) => {
         const accent = mediaAccent(mediaType);
         return (
           <ToggleButton
-            disabled={disabledTypes.has(mediaType)}
             key={mediaType}
             value={mediaType}
             sx={{
@@ -1132,163 +928,10 @@ function MediaTypeTabs({
             >
               {shortMediaTypeLabel(mediaType)}
             </Typography>
-            {showCounts ? (
-              <Typography
-                component="span"
-                sx={{ fontSize: "0.875rem", opacity: 0.7 }}
-              >
-                {countByType.get(mediaType) ?? 0}
-              </Typography>
-            ) : null}
           </ToggleButton>
         );
       })}
     </ToggleButtonGroup>
-  );
-}
-
-function UpcomingRow({ item }: { item: MediaItemDTO }) {
-  return (
-    <Stack
-      direction="row"
-      spacing={1.25}
-      sx={{
-        alignItems: "center",
-        bgcolor: "surface.1",
-        border: "1px solid",
-        borderColor: "border.subtle",
-        borderRadius: 2,
-        minHeight: 46,
-        px: 1.25,
-        py: 0.75,
-        transition: "border-color 160ms ease",
-        "&:hover": {
-          borderColor: "border.default",
-        },
-      }}
-    >
-      <Box
-        sx={{
-          alignItems: "center",
-          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.12),
-          borderRadius: 1.5,
-          color: "primary.main",
-          display: "flex",
-          flexShrink: 0,
-          height: 30,
-          justifyContent: "center",
-          width: 30,
-        }}
-      >
-        <CalendarMonthIcon sx={{ fontSize: 16 }} />
-      </Box>
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Link href={`/media/${item.id}`} style={{ textDecoration: "none" }}>
-          <Typography
-            noWrap
-            sx={{ color: "text.primary", fontSize: "0.875rem", fontWeight: 550 }}
-          >
-            {item.title}
-          </Typography>
-        </Link>
-      </Box>
-      <Box sx={{ minWidth: 92, textAlign: "right" }}>
-        <Typography
-          sx={{ color: "text.primary", fontSize: "0.875rem", fontWeight: 600 }}
-        >
-          {item.releaseDate
-            ? new Date(item.releaseDate).toLocaleDateString()
-            : "-"}
-        </Typography>
-        {item.releaseDate ? (
-          <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
-            {formatUpcomingRelativeLabel(item.releaseDate)}
-          </Typography>
-        ) : null}
-      </Box>
-    </Stack>
-  );
-}
-
-function DataHealthStrip({
-  duplicateCount,
-  health,
-}: {
-  duplicateCount: number;
-  health: DashboardData["health"];
-}) {
-  return (
-    <DashboardSection
-      action={
-        <Button href="/data-health" size="small" sx={panelActionSx}>
-          Review
-        </Button>
-      }
-      title="System integrity"
-    >
-      <Box
-        sx={{
-          display: "grid",
-          gap: 1,
-          gridTemplateColumns: {
-            xs: "1fr",
-            sm: "repeat(2, minmax(0, 1fr))",
-            lg: "repeat(5, minmax(0, 1fr))",
-          },
-          mt: 0.5,
-        }}
-      >
-        <HealthPill label="Missing genres" value={health.missingGenres} />
-        <HealthPill
-          label="Missing release dates"
-          value={health.missingReleaseDates}
-        />
-        <HealthPill label="Missing posters" value={health.missingPosters} />
-        <HealthPill label="Low comparisons" value={health.lowComparisonItems} />
-        <HealthPill label="Possible duplicates" value={duplicateCount} />
-      </Box>
-    </DashboardSection>
-  );
-}
-
-function HealthPill({ label, value }: { label: string; value: number }) {
-  return (
-    <Box
-      sx={{
-        alignItems: "center",
-        bgcolor: "surface.1",
-        border: "1px solid",
-        borderColor: "border.subtle",
-        borderRadius: 2,
-        display: "flex",
-        gap: 1,
-        minHeight: 38,
-        px: 1.25,
-      }}
-    >
-      <CheckCircleIcon
-        sx={{
-          color: value > 0 ? "warning.main" : "success.main",
-          fontSize: 16,
-        }}
-      />
-      <Typography
-        noWrap
-        color="text.secondary"
-        sx={{ flex: 1, fontSize: "0.875rem", minWidth: 0 }}
-      >
-        {label}
-      </Typography>
-      <Typography
-        sx={{
-          color: value > 0 ? "warning.main" : "success.main",
-          fontSize: "0.875rem",
-          fontWeight: 700,
-        }}
-      >
-        {value.toLocaleString()}
-      </Typography>
-    </Box>
   );
 }
 
@@ -1312,128 +955,6 @@ function EmptyPanel({ icon, label }: { icon: React.ReactNode; label: string }) {
       {icon}
       <Typography sx={{ fontSize: "0.875rem" }}>{label}</Typography>
     </Stack>
-  );
-}
-
-function MediaSignalRow({
-  compact = false,
-  href,
-  item,
-  score,
-  fallbackConsensus,
-}: {
-  compact?: boolean;
-  href: string;
-  item: MediaItemDTO;
-  /** 0–100 Medialy Match score. `null` when the item isn't in the rec pool. */
-  score: number | null;
-  /** 0–10 critic consensus to show when no match score is available. */
-  fallbackConsensus?: number | null;
-}) {
-  // Two presentations: match score shows "82%" with a bar at 82/100; consensus
-  // fallback shows "8.2" with the bar at 82. Either way the bar uses 0–100.
-  const usingMatch = score != null;
-  const displayValue = usingMatch
-    ? `${Math.round(score)}%`
-    : typeof fallbackConsensus === "number"
-      ? fallbackConsensus.toFixed(1)
-      : "—";
-  const normalized = usingMatch
-    ? Math.min(100, Math.max(0, Math.round(score)))
-    : typeof fallbackConsensus === "number"
-      ? Math.min(100, Math.max(0, Math.round(fallbackConsensus * 10)))
-      : 0;
-  const scoreLabel = usingMatch ? "Match" : "Critics";
-
-  return (
-    <Link
-      href={href}
-      style={{
-        color: "inherit",
-        display: "block",
-        textDecoration: "none",
-      }}
-    >
-      <Box
-        sx={{
-          bgcolor: "surface.1",
-          border: "1px solid",
-        borderColor: "border.subtle",
-          borderRadius: 2,
-          p: 1.25,
-          transition: "border-color 160ms ease",
-          "&:hover": {
-            borderColor: "border.default",
-          },
-          "& .MuiLinearProgress-root": {
-            bgcolor: (theme) => alpha(theme.palette.text.primary, 0.08),
-            borderRadius: 5,
-            height: 5,
-          },
-          "& .MuiLinearProgress-bar": {
-            bgcolor: "primary.main",
-            borderRadius: 5,
-          },
-        }}
-      >
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={1}
-          sx={{ alignItems: { sm: "center" } }}
-        >
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography
-              noWrap
-              sx={{ fontSize: "0.875rem", fontWeight: 600 }}
-            >
-              {item.title}
-            </Typography>
-            <Stack
-              direction="row"
-              sx={{ alignItems: "center", flexWrap: "wrap", gap: 0.75, mt: 0.5 }}
-            >
-              <Chip
-                label={formatMediaType(item.mediaType)}
-                size="small"
-                variant="outlined"
-              />
-              <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
-                {statusLabel(item.status, item.mediaType)}
-              </Typography>
-              {!compact &&
-                item.genres
-                  .slice(0, 2)
-                  .map((genre) => (
-                    <Chip
-                      key={genre}
-                      label={genre}
-                      size="small"
-                      variant="outlined"
-                    />
-                  ))}
-            </Stack>
-          </Box>
-          <Box sx={{ minWidth: { sm: 104 } }}>
-            <Stack
-              direction="row"
-              sx={{
-                alignItems: "center",
-                justifyContent: "space-between",
-                mb: 0.5,
-              }}
-            >
-              <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
-                {scoreLabel}
-              </Typography>
-              <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
-                {displayValue}
-              </Typography>
-            </Stack>
-            <LinearProgress value={normalized} variant="determinate" />
-          </Box>
-        </Stack>
-      </Box>
-    </Link>
   );
 }
 

@@ -3,7 +3,6 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { CATALOG_CACHE_TAG, CATALOG_REVALIDATE_SECONDS } from "@/lib/cache";
 import {
-  getDataHealthCounts,
   getFollowCompatibility,
   getGenreInsightsByMediaType,
 } from "@/lib/insights";
@@ -30,6 +29,14 @@ export const dashboardUpcomingOrderBy = [
   { releaseDate: "asc" },
   { title: "asc" },
 ] satisfies Prisma.MediaItemOrderByWithRelationInput[];
+
+/**
+ * Per media type. The dashboard lists only the nearest few but plots every
+ * release inside `UPCOMING_HORIZON_DAYS` on a strip, so the query has to reach
+ * past the visible rows. The window stays unbounded on purpose — a library
+ * whose next release is beyond the horizon still gets rows to show.
+ */
+export const DASHBOARD_UPCOMING_TAKE = 24;
 
 type DashboardRecommendationEntry = Awaited<
   ReturnType<typeof getRecommendations>
@@ -263,11 +270,6 @@ export async function getDashboardData() {
       { userMedia: { some: { userId, isArchived: false } } },
     ],
   };
-  const userMediaStatus = (statuses: Prisma.EnumMediaStatusFilter["in"]) => ({
-    userMedia: {
-      some: { userId, isArchived: false, status: { in: statuses } },
-    },
-  });
   const withUserAndTaxonomy = {
     genres: { include: { genre: true } },
     tags: { include: { tag: true } },
@@ -280,48 +282,22 @@ export async function getDashboardData() {
   ) => rows.map(mergeUserMedia);
 
   const [
-    totalItems,
-    watchlistCount,
-    comparisonCount,
     recommendations,
-    healthCounts,
     genreInsights,
     mediaTypeCounts,
-    watchlistItems,
     followCompatibility,
     followingCount,
     upcomingItemsByMediaType,
     overallTopItems,
     topRankingContext,
   ] = await Promise.all([
-    prisma.mediaItem.count({
-      where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
-    }),
-    prisma.mediaItem.count({
-      where: {
-        mediaType: visibleMediaTypeFilter(),
-        ...userMediaStatus(["WATCHLIST", "BACKLOG"]),
-      },
-    }),
-    prisma.pairwiseComparison.count({
-      where: { userId, winner: { mediaType: visibleMediaTypeFilter() } },
-    }),
     getRecommendations(),
-    getDataHealthCounts(),
     getGenreInsightsByMediaType(),
     prisma.mediaItem.groupBy({
       by: ["mediaType"],
       where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
       _count: { _all: true },
       orderBy: { mediaType: "asc" },
-    }),
-    prisma.mediaItem.findMany({
-      where: {
-        mediaType: visibleMediaTypeFilter(),
-        ...userMediaStatus(["WATCHLIST", "BACKLOG"]),
-      },
-      include: withUserAndTaxonomy,
-      take: 50,
     }),
     getFollowCompatibility(userId),
     user
@@ -334,7 +310,7 @@ export async function getDashboardData() {
           where: { ...getDashboardUpcomingWhere(today), mediaType },
           include: withUserAndTaxonomy,
           orderBy: dashboardUpcomingOrderBy,
-          take: 5,
+          take: DASHBOARD_UPCOMING_TAKE,
         }),
       })),
     ),
@@ -347,26 +323,6 @@ export async function getDashboardData() {
     buildOverallTopRankingContext(),
   ]);
 
-  // Watchlist items haven't been watched, so personal/pairwise scores are
-  // mostly null or at the default — sort by the Medialy Match score shown in
-  // the UI (falling back to consensus) so the top 5 reflect predicted fit.
-  const watchlistMatchByMediaId = new Map<string, number>();
-  for (const rec of recommendations) {
-    watchlistMatchByMediaId.set(rec.media.id, rec.score);
-  }
-  const mergedWatchlistItems = [...mergeAll(watchlistItems)]
-    .sort((a, b) => {
-      const aScore =
-        watchlistMatchByMediaId.get(a.id) ??
-        a.computedConsensusScore ??
-        -Infinity;
-      const bScore =
-        watchlistMatchByMediaId.get(b.id) ??
-        b.computedConsensusScore ??
-        -Infinity;
-      return bScore - aScore;
-    })
-    .slice(0, 5);
   const mergedOverallTopItems = mergeAll(overallTopItems);
   const mergedUpcomingByType = upcomingItemsByMediaType.map((entry) => ({
     mediaType: entry.mediaType,
@@ -382,14 +338,6 @@ export async function getDashboardData() {
 
   return {
     userName: user?.displayName ?? null,
-    totalItems,
-    watchlistCount,
-    comparisonCount,
-    missingMetadataCount:
-      healthCounts.missingGenres +
-      healthCounts.missingDates +
-      healthCounts.missingPosters,
-    duplicateCount: healthCounts.duplicateCandidates,
     topItemsByMediaType,
     recommendations: recommendations.slice(0, 18),
     tonightPicksByMediaType,
@@ -402,14 +350,7 @@ export async function getDashboardData() {
       mediaType: entry.mediaType,
       items: entry.items.map(toMediaItemDTO),
     })),
-    watchlistItems: mergedWatchlistItems.map(toMediaItemDTO),
     followCompatibility: followCompatibility.slice(0, 5),
     followingCount,
-    health: {
-      missingGenres: healthCounts.missingGenres,
-      missingReleaseDates: healthCounts.missingDates,
-      missingPosters: healthCounts.missingPosters,
-      lowComparisonItems: healthCounts.lowComparisonItems,
-    },
   };
 }

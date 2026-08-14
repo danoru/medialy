@@ -17,7 +17,6 @@ export default async function DashboardPage() {
     <DashboardClient
       collections={collections}
       data={JSON.parse(JSON.stringify(data))}
-      isAdmin={Boolean(user?.isAdmin)}
       isAuthenticated={Boolean(user)}
     />
   );
