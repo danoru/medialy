@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
 import { calculateComparisonRelevance } from "@/lib/scoring/comparisonRelevance";
 import { requireUserId } from "@/lib/user";
-import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
+import { mergeUserMedia, userMediaSelect } from "@/lib/db/user-media";
+import { LEAN_MEDIA_WITH_TAXONOMY_SELECT } from "@/lib/db/media-select";
 
 export type ComparisonSelectionItem = {
   id: string;
@@ -51,16 +52,24 @@ const COMPARISON_ELIGIBLE_STATUSES: MediaStatus[] = [
   "IN_PROGRESS",
 ];
 
+/**
+ * Candidate shape for the compare page. Lean apart from `description`, which
+ * the pair card renders as each title's blurb.
+ */
+function comparisonItemSelect(userId: string) {
+  return {
+    ...LEAN_MEDIA_WITH_TAXONOMY_SELECT,
+    description: true,
+    ...userMediaSelect(userId),
+  } as const;
+}
+
 export async function getComparisonPair(options: ComparisonPairOptions = {}) {
   const userId = await requireUserId("/compare");
   const focusRow = options.focusId
     ? await prisma.mediaItem.findUnique({
         where: { id: options.focusId },
-        include: {
-          genres: { include: { genre: true } },
-          tags: { include: { tag: true } },
-          ...userMediaInclude(userId),
-        },
+        select: comparisonItemSelect(userId),
       })
     : null;
   const focus = focusRow ? mergeUserMedia(focusRow) : null;
@@ -120,11 +129,7 @@ async function loadComparisonItems(
       ...(genre ? { genres: { some: { genre: { name: genre } } } } : {}),
       ...(tag ? { tags: { some: { tag: { name: tag } } } } : {}),
     },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
-      ...userMediaInclude(userId),
-    },
+    select: comparisonItemSelect(userId),
     orderBy: [{ updatedAt: "asc" }],
     take: 36,
   });

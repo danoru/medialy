@@ -39,7 +39,19 @@ export const DEFAULT_USER_MEDIA: UserMediaFields = {
   isArchived: false,
 };
 
-export type WithUserMedia<T> = T & { userMedia: UserMedia[] };
+export type WithUserMedia<T> = T & { userMedia: UserMediaFields[] };
+
+/** The eight `UserMediaFields` as a Prisma `select`, for projected reads. */
+const USER_MEDIA_FIELD_SELECT = {
+  status: true,
+  personalRating: true,
+  computedPersonalScore: true,
+  personalScoreConfidence: true,
+  pairwiseScore: true,
+  comparisonCount: true,
+  isFavorite: true,
+  isArchived: true,
+} as const;
 
 /**
  * Returns the Prisma `include` shape callers should use when loading a
@@ -63,11 +75,27 @@ export function userMediaInclude(userId: string | null) {
 }
 
 /**
+ * The `select` counterpart to `userMediaInclude` — same one-row-per-viewer
+ * semantics, but pulls only the eight fields `mergeUserMedia` flattens instead
+ * of the whole `UserMedia` row. Use this inside an explicit `select` (see
+ * `@/lib/db/media-select`); `userMediaInclude` only works inside an `include`.
+ */
+export function userMediaSelect(userId: string | null) {
+  return {
+    userMedia: {
+      where: { userId: userId ?? "__anonymous__" },
+      take: 1,
+      select: USER_MEDIA_FIELD_SELECT,
+    } as const,
+  };
+}
+
+/**
  * Flattens the user-scoped `UserMedia` row (loaded via `userMediaInclude`)
  * onto a `MediaItem` so callers can keep treating `status`, `personalRating`,
  * etc. as top-level fields. Drops the `userMedia` array from the result.
  */
-export function mergeUserMedia<T extends { userMedia: UserMedia[] }>(
+export function mergeUserMedia<T extends { userMedia: UserMediaFields[] }>(
   media: T,
 ): Omit<T, "userMedia"> & UserMediaFields {
   const { userMedia, ...rest } = media;

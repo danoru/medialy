@@ -12,7 +12,7 @@ import { getRecommendations } from "@/lib/recommendations";
 import type { MediaItemDTO } from "@/lib/types";
 import { getCurrentUser } from "@/lib/user";
 import { startOfToday } from "@/lib/upcoming";
-import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
+import { getCatalogWithUser } from "@/lib/db/catalog";
 import { bayesianShrunkMean } from "@/lib/scoring/affinity";
 import { TOP_RANKING } from "@/lib/scoring/config";
 
@@ -262,71 +262,54 @@ export async function getDashboardData() {
   // the per-user joins all collapse to defaults.
   const userId = user?.id ?? "__anonymous__";
 
-  // Item is "active" for this user if either there's no UserMedia row yet
-  // (defaults to UNTRACKED + not archived) or the row exists and isn't archived.
-  const activeForUser: Prisma.MediaItemWhereInput = {
-    OR: [
-      { userMedia: { none: { userId } } },
-      { userMedia: { some: { userId, isArchived: false } } },
-    ],
-  };
-  const withUserAndTaxonomy = {
-    genres: { include: { genre: true } },
-    tags: { include: { tag: true } },
-    ...userMediaInclude(userId),
-  } as const;
-  const mergeAll = <
-    T extends { userMedia: Parameters<typeof mergeUserMedia>[0]["userMedia"] },
-  >(
-    rows: T[],
-  ) => rows.map(mergeUserMedia);
-
+  // Everything below that used to be its own catalog query is now derived from
+  // the one shared (and cross-request cached) catalog read. The Overall Top
+  // pool *is* that catalog: it's intentionally global — no archive filter — so
+  // the viewer's archive state can't shape the ranking.
   const [
+    mergedOverallTopItems,
     recommendations,
     genreInsights,
-    mediaTypeCounts,
     followCompatibility,
     followingCount,
-    upcomingItemsByMediaType,
-    overallTopItems,
     topRankingContext,
   ] = await Promise.all([
+    getCatalogWithUser(userId),
     getRecommendations(),
     getGenreInsightsByMediaType(),
-    prisma.mediaItem.groupBy({
-      by: ["mediaType"],
-      where: { mediaType: visibleMediaTypeFilter(), ...activeForUser },
-      _count: { _all: true },
-      orderBy: { mediaType: "asc" },
-    }),
     getFollowCompatibility(userId),
     user
       ? prisma.userFollow.count({ where: { followerId: userId } })
       : Promise.resolve(0),
-    Promise.all(
-      VISIBLE_MEDIA_TYPES.map(async (mediaType) => ({
-        mediaType,
-        items: await prisma.mediaItem.findMany({
-          where: { ...getDashboardUpcomingWhere(today), mediaType },
-          include: withUserAndTaxonomy,
-          orderBy: dashboardUpcomingOrderBy,
-          take: DASHBOARD_UPCOMING_TAKE,
-        }),
-      })),
-    ),
-    // Overall Top 10 candidate pool is intentionally global — no
-    // `activeForUser` filter, so the viewer's archive state can't shape it.
-    prisma.mediaItem.findMany({
-      where: { mediaType: visibleMediaTypeFilter() },
-      include: withUserAndTaxonomy,
-    }),
     buildOverallTopRankingContext(),
   ]);
 
-  const mergedOverallTopItems = mergeAll(overallTopItems);
-  const mergedUpcomingByType = upcomingItemsByMediaType.map((entry) => ({
-    mediaType: entry.mediaType,
-    items: mergeAll(entry.items),
+  // An item is "active" for this user when it isn't archived — which, on merged
+  // rows, covers both the "no UserMedia row yet" and "row exists" cases the old
+  // relation filter spelled out.
+  const activeItems = mergedOverallTopItems.filter((item) => !item.isArchived);
+  const mediaTypeCounts = VISIBLE_MEDIA_TYPES.map((mediaType) => ({
+    mediaType,
+    _count: {
+      _all: activeItems.filter((item) => item.mediaType === mediaType).length,
+    },
+  })).sort((first, second) => first.mediaType.localeCompare(second.mediaType));
+
+  // Same window and ordering as the old per-type queries
+  // (`getDashboardUpcomingWhere` + `dashboardUpcomingOrderBy` + take).
+  const upcomingPool = mergedOverallTopItems
+    .filter((item) => item.releaseDate != null && item.releaseDate >= today)
+    .sort(
+      (first, second) =>
+        (first.releaseDate?.getTime() ?? 0) -
+          (second.releaseDate?.getTime() ?? 0) ||
+        first.title.localeCompare(second.title),
+    );
+  const mergedUpcomingByType = VISIBLE_MEDIA_TYPES.map((mediaType) => ({
+    mediaType,
+    items: upcomingPool
+      .filter((item) => item.mediaType === mediaType)
+      .slice(0, DASHBOARD_UPCOMING_TAKE),
   }));
 
   const topItemsByMediaType = getDashboardOverallTopItemsByMediaType(

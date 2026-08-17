@@ -27,3 +27,21 @@ export const CATALOG_CACHE_TAG = "catalog";
  * on Canon / the dashboard "top" lists.
  */
 export const CATALOG_REVALIDATE_SECONDS = 300;
+
+/**
+ * Staleness bound for the full catalog read in `@/lib/db/catalog`.
+ *
+ * Longer than the window above because the payload is far larger: Canon and the
+ * ranking aggregates are a few KB, while the whole catalog is on the order of a
+ * megabyte or two. Each expiry costs one full re-read, so the window sets the
+ * ceiling on catalog egress — at ~2 MB a refresh, five minutes would allow
+ * ~8.6k refreshes a month (over the free tier's 5 GB on its own) whereas thirty
+ * minutes caps it near 1.4k. Under this app's real traffic the practical cost is
+ * closer to one refresh per browsing session either way; the longer window is
+ * headroom against growth, not a tax on today.
+ *
+ * The trade is that an edit to *shared* catalog metadata (title, poster, genres)
+ * can take this long to show up on the dashboard and Discover. Per-user data —
+ * status, ratings, archive — is never cached and updates immediately.
+ */
+export const FULL_CATALOG_REVALIDATE_SECONDS = 1800;

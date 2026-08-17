@@ -84,7 +84,16 @@ export default async function ComparePage({
       }),
       prisma.pairwiseComparison.findMany({
         where: historyWhere,
-        include: { winner: true, loser: true },
+        // The history rows render titles and links only — no need to drag two
+        // full MediaItem rows (description + metadata) per comparison.
+        select: {
+          id: true,
+          context: true,
+          notes: true,
+          createdAt: true,
+          winner: { select: { id: true, title: true } },
+          loser: { select: { id: true, title: true } },
+        },
         orderBy: { createdAt: "desc" },
         take: 12,
       }),
@@ -115,7 +124,13 @@ export default async function ComparePage({
         },
         orderBy: { name: "asc" },
       }),
-      focusId ? prisma.mediaItem.findUnique({ where: { id: focusId } }) : null,
+      focusId
+        ? prisma.mediaItem.findUnique({
+            where: { id: focusId },
+            select: { id: true, title: true },
+          })
+        : null,
+      // Populates the history filter dropdown — labels only.
       prisma.mediaItem.findMany({
         where: {
           ...comparisonEligibleWhere(userId),
@@ -124,6 +139,7 @@ export default async function ComparePage({
             { comparisonsLost: { some: {} } },
           ],
         },
+        select: { id: true, title: true },
         orderBy: { title: "asc" },
       }),
     ]);

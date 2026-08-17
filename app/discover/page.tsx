@@ -9,7 +9,7 @@ import {
   Tabs,
   Typography,
 } from "@mui/material";
-import type { MediaItem, MediaType } from "@prisma/client";
+import type { MediaType } from "@prisma/client";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { formatMediaType } from "@/lib/format";
 import { alpha } from "@mui/material/styles";
@@ -28,7 +28,6 @@ import {
   type CollectionSummary,
 } from "@/lib/db/collections";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
-import { prisma } from "@/lib/prisma";
 import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
 import { bayesianShrunkMean } from "@/lib/scoring/affinity";
 import { TOP_RANKING } from "@/lib/scoring/config";
@@ -37,52 +36,17 @@ import {
   isDiscoverSubgenreForGenre,
 } from "@/lib/taxonomy";
 import { getCurrentUser } from "@/lib/user";
-import { DEFAULT_USER_MEDIA, userMediaInclude } from "@/lib/db/user-media";
-import type { UserMedia } from "@prisma/client";
-
-function mergeUserMediaInline<T extends { userMedia: UserMedia[] }>(row: T) {
-  const { userMedia, ...rest } = row;
-  const um = userMedia[0];
-  return {
-    ...(rest as Omit<T, "userMedia">),
-    status: um?.status ?? DEFAULT_USER_MEDIA.status,
-    personalRating: um?.personalRating ?? null,
-    computedPersonalScore: um?.computedPersonalScore ?? null,
-    personalScoreConfidence:
-      um?.personalScoreConfidence ?? DEFAULT_USER_MEDIA.personalScoreConfidence,
-    pairwiseScore: um?.pairwiseScore ?? DEFAULT_USER_MEDIA.pairwiseScore,
-    comparisonCount: um?.comparisonCount ?? DEFAULT_USER_MEDIA.comparisonCount,
-    isFavorite: um?.isFavorite ?? false,
-    isArchived: um?.isArchived ?? false,
-  };
-}
+import {
+  getCatalogWithUser,
+  type CatalogItemWithUser,
+} from "@/lib/db/catalog";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Discover" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-type DiscoveryItem = MediaItem & {
-  status: import("@prisma/client").MediaStatus;
-  personalRating: number | null;
-  computedPersonalScore: number | null;
-  personalScoreConfidence: number;
-  pairwiseScore: number;
-  comparisonCount: number;
-  isFavorite: boolean;
-  isArchived: boolean;
-  genres: Array<{ genre: { name: string } }>;
-  tags: Array<{
-    tag: {
-      name: string;
-      status: string;
-      category: string;
-      discoverable: boolean;
-      mediaTypesJson: string | null;
-      countryCode: string | null;
-    };
-  }>;
-};
+type DiscoveryItem = CatalogItemWithUser;
 
 type GenreWorld = {
   name: string;
@@ -135,42 +99,24 @@ export default async function TopListsPage({
   const currentUser = await getCurrentUser();
   const userId = currentUser?.id ?? null;
   const isAdmin = currentUser?.isAdmin ?? false;
-  const archivedFilter =
-    userId == null
-      ? {}
-      : {
-          OR: [
-            { userMedia: { none: { userId } } },
-            { userMedia: { some: { userId, isArchived: false } } },
-          ],
-        };
-  const rawDiscoverItems = await prisma.mediaItem.findMany({
-    where: {
-      mediaType: selectedType,
-      ...archivedFilter,
-      ...(requestedCountry
-        ? {
-            tags: {
-              some: {
-                tag: {
-                  category: "COUNTRY",
-                  countryCode: requestedCountry,
-                  discoverable: true,
-                  status: "APPROVED",
-                },
-              },
-            },
-          }
-        : {}),
-    },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
-      ...userMediaInclude(userId),
-    },
-  });
-  const discoverItems: DiscoveryItem[] = rawDiscoverItems
-    .map((row) => mergeUserMediaInline(row))
+  // Reads the shared cached catalog instead of its own per-type scan; the type,
+  // archive and country filters below are the JS equivalents of the `where`
+  // clauses this used to send.
+  const catalog = await getCatalogWithUser(userId);
+  const discoverItems: DiscoveryItem[] = catalog
+    .filter((item) => item.mediaType === selectedType)
+    .filter((item) => userId == null || !item.isArchived)
+    .filter(
+      (item) =>
+        !requestedCountry ||
+        item.tags.some(
+          (entry) =>
+            entry.tag.category === "COUNTRY" &&
+            entry.tag.countryCode === requestedCountry &&
+            entry.tag.discoverable &&
+            entry.tag.status === "APPROVED",
+        ),
+    )
     .sort(
       (a, b) =>
         (b.computedPersonalScore ?? -Infinity) -

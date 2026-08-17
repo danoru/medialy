@@ -1,4 +1,9 @@
-import { ImportStatus, type Prisma, type PrismaClient } from "@prisma/client";
+import {
+  ImportStatus,
+  type MediaType,
+  type Prisma,
+  type PrismaClient,
+} from "@prisma/client";
 import ExcelJS from "exceljs";
 import {
   addImportedCredits,
@@ -605,11 +610,16 @@ export async function importMediaRowsWithSource(
 ): Promise<ImportResult> {
   const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
+  const mediaIndex = new ImportMediaIndex();
   let importedCount = 0;
 
   for (const [index, input] of rows.entries()) {
     try {
-      const { media, isNew } = await upsertImportedMedia(input, userId);
+      const { media, isNew } = await upsertImportedMedia(
+        input,
+        userId,
+        mediaIndex,
+      );
       await writeImportedRelations(media.id, input, isNew);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
@@ -646,6 +656,7 @@ export async function importLetterboxdRows(
 ): Promise<ImportResult> {
   const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
+  const mediaIndex = new ImportMediaIndex();
   let importedCount = 0;
 
   for (const [index, input] of rows.entries()) {
@@ -653,6 +664,7 @@ export async function importLetterboxdRows(
       const { media, isNew } = await upsertImportedMedia(
         input,
         userId,
+        mediaIndex,
         "fill-blanks",
       );
       await writeImportedRelations(media.id, input, isNew);
@@ -693,6 +705,7 @@ export async function importJsonExport(
   const bundle = input as MedialyExport;
   const userId = await requireUserId();
   const errors: ImportResult["errors"] = [];
+  const mediaIndex = new ImportMediaIndex();
   let importedCount = 0;
 
   for (const [index, raw] of bundle.media.entries()) {
@@ -738,7 +751,11 @@ export async function importJsonExport(
         developers: jsonCreditNames(item.credits, "DEVELOPER"),
         publishers: jsonCreditNames(item.credits, "PUBLISHER"),
       });
-      const { media, isNew } = await upsertImportedMedia(input, userId);
+      const { media, isNew } = await upsertImportedMedia(
+        input,
+        userId,
+        mediaIndex,
+      );
       await writeImportedRelations(media.id, input, isNew);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
@@ -828,10 +845,11 @@ async function writeImportedRelations(
 async function upsertImportedMedia(
   input: MediaFormInput,
   userId: string,
+  index: ImportMediaIndex,
   userMediaStrategy: UserMediaStrategy = "overwrite",
 ): Promise<{ media: { id: string }; isNew: boolean }> {
   return prisma.$transaction(async (tx) => {
-    const existing = await findExistingImportedMedia(tx, input);
+    const existing = await findExistingImportedMedia(tx, input, index);
 
     if (existing) {
       const current = await tx.mediaItem.findUnique({
@@ -842,6 +860,7 @@ async function upsertImportedMedia(
         where: { id: existing.id },
         data: merged,
       });
+      index.register(updated);
       await upsertUserMediaWithStrategy(
         tx,
         userId,
@@ -852,8 +871,11 @@ async function upsertImportedMedia(
       return { media: updated, isNew: false };
     }
 
-    const data = await mediaMutationDataWithUniqueTitle(tx, input);
+    const data = await mediaMutationDataWithUniqueTitle(tx, input, undefined, {
+      candidates: await index.candidatesFor(tx, input.mediaType),
+    });
     const created = await tx.mediaItem.create({ data });
+    index.register(created);
     await upsertUserMediaWithStrategy(
       tx,
       userId,
@@ -952,20 +974,62 @@ async function upsertUserMediaWithStrategy(
   await upsertUserMedia(userId, mediaId, data, tx);
 }
 
+export type ImportCandidate = {
+  id: string;
+  title: string;
+  mediaType: MediaType;
+  externalUrl: string | null;
+  releaseDate: Date | null;
+};
+
+/**
+ * Per-import cache of the rows an incoming row is matched against.
+ *
+ * Dedupe matching is fuzzy (URL, then strict title+year, then subtitle-tolerant)
+ * so it can't be expressed as a `where` clause — it needs the candidate list in
+ * memory. Loading that list per row meant a 500-row CSV ran 500 full-table
+ * scans; this loads it once per media type instead.
+ *
+ * Rows created or updated during the import are registered back into the cache,
+ * so a file containing the same title twice still collapses to one item exactly
+ * as it did when every row re-queried the table.
+ */
+export class ImportMediaIndex {
+  private byType = new Map<MediaType, ImportCandidate[]>();
+
+  async candidatesFor(client: PrismaLike, mediaType: MediaType) {
+    const cached = this.byType.get(mediaType);
+    if (cached) return cached;
+    const rows = await client.mediaItem.findMany({
+      where: { mediaType },
+      select: {
+        id: true,
+        title: true,
+        mediaType: true,
+        externalUrl: true,
+        releaseDate: true,
+      },
+    });
+    this.byType.set(mediaType, rows);
+    return rows;
+  }
+
+  /** Record a row this import just wrote so later rows can match against it. */
+  register(item: ImportCandidate) {
+    const list = this.byType.get(item.mediaType);
+    if (!list) return;
+    const existingAt = list.findIndex((row) => row.id === item.id);
+    if (existingAt >= 0) list[existingAt] = item;
+    else list.push(item);
+  }
+}
+
 async function findExistingImportedMedia(
   client: PrismaLike,
   input: MediaFormInput,
+  index: ImportMediaIndex,
 ) {
-  const candidates = await client.mediaItem.findMany({
-    where: { mediaType: input.mediaType },
-    select: {
-      id: true,
-      title: true,
-      mediaType: true,
-      externalUrl: true,
-      releaseDate: true,
-    },
-  });
+  const candidates = await index.candidatesFor(client, input.mediaType);
   const externalUrl = input.externalUrl?.trim();
 
   const byUrl = candidates.find(

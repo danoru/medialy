@@ -3,7 +3,7 @@ import { Box, Button, Grid, Stack, Typography } from "@mui/material";
 import { prisma } from "@/lib/prisma";
 import { requireUserId } from "@/lib/user";
 import { getFollowingIds, getDiscoverableUsers } from "@/lib/social/follows";
-import { getUserOverlap } from "@/lib/social/overlap";
+import { getUserOverlaps } from "@/lib/social/overlap";
 import { getActivityFeed } from "@/lib/social/feed";
 import { ActivityFeed } from "@/components/social/ActivityFeed";
 import { FollowCard } from "@/components/social/FollowCard";
@@ -30,12 +30,14 @@ export default async function FriendsPage() {
       })
     : [];
 
-  const overlaps = await Promise.all(
-    followingUsers.map(async (user) => ({
-      user,
-      overlap: await getUserOverlap(viewerId, user.id),
-    })),
+  const overlapByUser = await getUserOverlaps(
+    viewerId,
+    followingUsers.map((user) => user.id),
   );
+  const overlaps = followingUsers.map((user) => ({
+    user,
+    overlap: overlapByUser.get(user.id)!,
+  }));
 
   // Sort by compatibility desc, fallback to displayName.
   overlaps.sort(

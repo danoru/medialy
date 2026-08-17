@@ -35,7 +35,12 @@ import { StatePanel } from "@/components/shared/StatePanel";
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 import { UpcomingRowActions } from "@/components/upcoming/UpcomingRowActions";
 import { getCurrentUser } from "@/lib/user";
-import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
+import { mergeUserMedia, userMediaSelect } from "@/lib/db/user-media";
+import {
+  LEAN_MEDIA_SELECT,
+  LEAN_MEDIA_WITH_TAXONOMY_SELECT,
+  leanGenreSelect,
+} from "@/lib/db/media-select";
 import {
   UpcomingCalendar,
   type CalendarRelease,
@@ -102,10 +107,9 @@ export default async function UpcomingPage({
       releaseDate: dateFilter,
       ...archivedFilter,
     },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
-      ...userMediaInclude(userId),
+    select: {
+      ...LEAN_MEDIA_WITH_TAXONOMY_SELECT,
+      ...userMediaSelect(userId),
     },
     orderBy: [{ releaseDate: releaseOrder }, { title: "asc" }],
   });
@@ -121,9 +125,10 @@ export default async function UpcomingPage({
     },
     include: {
       media: {
-        include: {
-          genres: { include: { genre: true } },
-          ...userMediaInclude(userId),
+        select: {
+          ...LEAN_MEDIA_SELECT,
+          genres: leanGenreSelect,
+          ...userMediaSelect(userId),
         },
       },
     },

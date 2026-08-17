@@ -1,5 +1,4 @@
 import type {
-  MediaItem,
   MediaStatus,
   MediaType,
   Prisma,
@@ -36,7 +35,25 @@ const includeTaxonomy = {
   credits: { include: { contributor: true }, orderBy: { order: "asc" } },
 } as const;
 
-type MediaWithTaxonomy = MediaItem & {
+/**
+ * The shape `toMediaItemDTO` consumes. Scalars beyond the identifying three are
+ * optional so rows loaded through the lean catalog projections in
+ * `@/lib/db/media-select` (which drop `description`/`metadataJson`) satisfy it
+ * just as well as a fully-hydrated `MediaItem` does.
+ */
+type MediaWithTaxonomy = {
+  id: string;
+  title: string;
+  mediaType: MediaType;
+  originalTitle?: string | null;
+  description?: string | null;
+  releaseDate?: Date | string | null;
+  posterUrl?: string | null;
+  externalUrl?: string | null;
+  metadataJson?: string | null;
+  computedConsensusScore?: number | null;
+  consensusConfidence?: number | null;
+  updatedAt?: Date | string;
   genres: Array<{ genre: { name: string } }>;
   tags: Array<{
     tag: { name: string; status: "APPROVED" | "PENDING" | "REJECTED" };
@@ -530,14 +547,22 @@ export function userMediaMutationData(input: MediaFormInput) {
   return data;
 }
 
+/** Rows `uniqueMediaTitle` needs to detect and resolve title collisions. */
+export type TitleCandidate = {
+  id: string;
+  title: string;
+  releaseDate: Date | null;
+};
+
 export async function mediaMutationDataWithUniqueTitle(
   client: PrismaLike,
   input: MediaFormInput,
   excludeId?: string,
+  options: { candidates?: TitleCandidate[] } = {},
 ) {
   return {
     ...mediaMutationData(input),
-    title: await uniqueMediaTitle(client, input, excludeId),
+    title: await uniqueMediaTitle(client, input, excludeId, options.candidates),
   };
 }
 
@@ -662,11 +687,16 @@ async function uniqueMediaTitle(
   client: PrismaLike,
   input: MediaFormInput,
   excludeId?: string,
+  // Bulk callers (imports) pass a list they already hold, so a batch of rows
+  // doesn't re-scan the table once per row.
+  candidates?: TitleCandidate[],
 ) {
-  const items = await client.mediaItem.findMany({
-    where: { mediaType: input.mediaType },
-    select: { id: true, title: true, releaseDate: true },
-  });
+  const items =
+    candidates ??
+    (await client.mediaItem.findMany({
+      where: { mediaType: input.mediaType },
+      select: { id: true, title: true, releaseDate: true },
+    }));
   const inputKey = mediaTitleKey(input.title, input.mediaType);
   const collisions = items.filter(
     (item) =>

@@ -1,6 +1,11 @@
 import { MediaType } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import {
+  leanCreditsSelect,
+  leanGenreSelect,
+  leanTagSelect,
+} from "@/lib/db/media-select";
 import { AFFINITY_TUNING } from "@/lib/scoring/config";
 import { saturate } from "@/lib/scoring/affinity";
 import { calculateMedialyMatch } from "@/lib/scoring/medialyMatch";
@@ -42,10 +47,13 @@ export async function getMediaItemMatch(
 
   const item = await prisma.mediaItem.findUnique({
     where: { id: mediaId },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { where: { tag: { status: "APPROVED" } }, include: { tag: true } },
-      credits: { include: { contributor: true } },
+    select: {
+      id: true,
+      mediaType: true,
+      computedConsensusScore: true,
+      genres: leanGenreSelect,
+      tags: { where: { tag: { status: "APPROVED" } }, ...leanTagSelect },
+      credits: leanCreditsSelect,
     },
   });
   if (!item) return null;
@@ -175,14 +183,14 @@ async function findSimilarTitleGroups(
         { computedPersonalScore: { gte: 8 } },
       ],
     },
-    include: {
+    select: {
+      computedPersonalScore: true,
+      personalRating: true,
       media: {
-        include: {
-          genres: { include: { genre: true } },
-          tags: {
-            where: { tag: { status: "APPROVED" } },
-            include: { tag: true },
-          },
+        select: {
+          title: true,
+          genres: leanGenreSelect,
+          tags: { where: { tag: { status: "APPROVED" } }, ...leanTagSelect },
         },
       },
     },

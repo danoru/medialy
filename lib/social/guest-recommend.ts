@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
+import { leanGenreSelect, leanTagSelect } from "@/lib/db/media-select";
 
 /**
  * Stateless "recommend something to a guest" flow.
@@ -43,10 +44,8 @@ export async function recommendForGuest({
   // 1) Pull the seeds' genres & tags — these define the guest's "taste shape".
   const seeds = await prisma.mediaItem.findMany({
     where: { id: { in: seedMediaIds } },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
-    },
+    // Only the taste shape (genre + tag names) is read off the seeds.
+    select: { genres: leanGenreSelect, tags: leanTagSelect },
   });
 
   const guestGenres = new Map<string, number>();
@@ -82,10 +81,17 @@ export async function recommendForGuest({
         },
       },
     },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
-      userMedia: { where: { userId: viewerId }, take: 1 },
+    select: {
+      id: true,
+      title: true,
+      posterUrl: true,
+      genres: leanGenreSelect,
+      tags: leanTagSelect,
+      userMedia: {
+        where: { userId: viewerId },
+        take: 1,
+        select: { status: true, personalRating: true },
+      },
     },
     take: 500,
   });

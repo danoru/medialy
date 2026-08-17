@@ -23,7 +23,13 @@ import {
 } from "@/lib/media-types";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { getCurrentUserId } from "@/lib/user";
-import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
+import {
+  DEFAULT_USER_MEDIA,
+  mergeUserMedia,
+  userMediaSelect,
+  type UserMediaFields,
+} from "@/lib/db/user-media";
+import { LEAN_MEDIA_WITH_TAXONOMY_SELECT } from "@/lib/db/media-select";
 import { sortMediaTitleRows, type SortDirection } from "@/lib/media-sort";
 import { alpha } from "@mui/material/styles";
 import {
@@ -398,17 +404,9 @@ function toRatingsListItem(item: MediaListItem): MediaRatingsListItem {
   };
 }
 
-type RawMediaListItem = Awaited<
-  ReturnType<
-    typeof prisma.mediaItem.findMany<{
-      include: {
-        genres: { include: { genre: true } };
-        tags: { include: { tag: true } };
-        userMedia: { where: { userId: string }; take: 1 };
-      };
-    }>
-  >
->[number];
+type RawMediaListItem = Prisma.MediaItemGetPayload<{
+  select: typeof LEAN_MEDIA_WITH_TAXONOMY_SELECT;
+}> & { userMedia: UserMediaFields[] };
 
 type MediaListItem = ReturnType<typeof mergeUserMedia<RawMediaListItem>>;
 
@@ -432,11 +430,10 @@ async function findMediaPageItems({
   userId: string | null;
 }) {
   const skip = (page - 1) * PAGE_SIZE;
-  const include = {
-    genres: { include: { genre: true } },
-    tags: { include: { tag: true } },
-    ...userMediaInclude(userId),
-  } satisfies Prisma.MediaItemInclude;
+  const select = {
+    ...LEAN_MEDIA_WITH_TAXONOMY_SELECT,
+    ...userMediaSelect(userId),
+  } satisfies Prisma.MediaItemSelect;
 
   if (sort === "title") {
     const titleRows = await prisma.mediaItem.findMany({
@@ -450,7 +447,7 @@ async function findMediaPageItems({
     if (pageIds.length === 0) return { items: [], total: titleRows.length };
 
     const pageItems = await prisma.mediaItem.findMany({
-      include,
+      select,
       where: { id: { in: pageIds } },
     });
     const itemsById = new Map(
@@ -466,22 +463,62 @@ async function findMediaPageItems({
   }
 
   // Sorts that touch fields on the joined `UserMedia` row can't be ordered in
-  // SQL via Prisma's relation orderBy, so we load matching items, merge, then
-  // sort + paginate in memory.
+  // SQL via Prisma's relation orderBy, so the ranking happens in memory. Only
+  // the sort key is loaded for the full match set — the taxonomy joins are then
+  // hydrated for the one page being shown, the same two-step the title sort
+  // above uses. (An `orderBy` on UserMedia wouldn't work here: items the user
+  // has never touched have no row and would drop out of the list.)
   if (PER_USER_SORTS.has(sort)) {
-    const allItems = await prisma.mediaItem.findMany({ include, where });
-    const merged = allItems.map(mergeUserMedia);
-    merged.sort((a, b) => compareByUserField(a, b, sort, direction));
+    const keyRows = await prisma.mediaItem.findMany({
+      where,
+      select: {
+        id: true,
+        title: true,
+        userMedia: {
+          where: { userId: userId ?? "__anonymous__" },
+          take: 1,
+          select: {
+            pairwiseScore: true,
+            computedPersonalScore: true,
+            personalRating: true,
+          },
+        },
+      },
+    });
+
+    const ranked = keyRows
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        pairwiseScore: row.userMedia[0]?.pairwiseScore ?? DEFAULT_USER_MEDIA.pairwiseScore,
+        computedPersonalScore: row.userMedia[0]?.computedPersonalScore ?? null,
+        personalRating: row.userMedia[0]?.personalRating ?? null,
+      }))
+      .sort((a, b) => compareByUserField(a, b, sort, direction));
+
+    const pageIds = ranked.slice(skip, skip + PAGE_SIZE).map((row) => row.id);
+    if (pageIds.length === 0) return { items: [], total: ranked.length };
+
+    const pageItems = await prisma.mediaItem.findMany({
+      select,
+      where: { id: { in: pageIds } },
+    });
+    const itemsById = new Map(
+      pageItems.map((item) => [item.id, mergeUserMedia(item)]),
+    );
+
     return {
-      items: merged.slice(skip, skip + PAGE_SIZE),
-      total: merged.length,
+      items: pageIds
+        .map((id) => itemsById.get(id))
+        .filter((item): item is MediaListItem => Boolean(item)),
+      total: ranked.length,
     };
   }
 
   const [total, items] = await Promise.all([
     prisma.mediaItem.count({ where }),
     prisma.mediaItem.findMany({
-      include,
+      select,
       orderBy: orderBy(sort, direction),
       skip,
       take: PAGE_SIZE,
@@ -492,13 +529,21 @@ async function findMediaPageItems({
   return { items: items.map(mergeUserMedia), total };
 }
 
+/** The fields the per-user sorts rank on — all a sort key row needs to carry. */
+type UserSortKey = {
+  title: string;
+  pairwiseScore: number;
+  computedPersonalScore: number | null;
+  personalRating: number | null;
+};
+
 function compareByUserField(
-  a: MediaListItem,
-  b: MediaListItem,
+  a: UserSortKey,
+  b: UserSortKey,
   sort: string,
   direction: SortDirection,
 ) {
-  const valueOf = (item: MediaListItem) => {
+  const valueOf = (item: UserSortKey) => {
     if (sort === "pairwiseScore") return item.pairwiseScore;
     if (sort === "computedPersonalScore")
       return item.computedPersonalScore ?? -Infinity;

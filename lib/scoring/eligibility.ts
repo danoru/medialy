@@ -175,6 +175,61 @@ export function recommendationEligibilityWhere(
 }
 
 /**
+ * The in-memory twin of `recommendationEligibilityWhere`, for callers that read
+ * the catalog through the shared cached fetch (`@/lib/db/catalog`) and so can't
+ * push the filter into SQL.
+ *
+ * It must stay behaviourally identical to the query builder above, which is why
+ * it lives here rather than reusing `isEligibleForRecommendation`: that one is
+ * the *explainer* (it reports a reason, and treats "releases later today" as
+ * ineligible), whereas the query admits anything released before tomorrow. Same
+ * intent, deliberately different boundary — don't collapse the two.
+ *
+ * Expects the per-user fields already merged onto the item, so an item the user
+ * has never touched carries `DEFAULT_USER_MEDIA` and passes the user-scoped
+ * half exactly as the SQL `userMedia: { none: ... }` branch does.
+ */
+export function matchesRecommendationEligibility(
+  item: {
+    status: MediaStatus;
+    isArchived: boolean;
+    personalRating?: number | null;
+    releaseDate?: Date | string | null;
+  },
+  options: EligibilityOptions & { userId?: string } = {},
+): boolean {
+  const now = options.now ?? new Date();
+  const tomorrow = startOfToday(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  if (!options.includeUpcoming && item.releaseDate != null) {
+    const release =
+      item.releaseDate instanceof Date
+        ? item.releaseDate
+        : new Date(item.releaseDate);
+    if (release.getTime() >= tomorrow.getTime()) return false;
+  }
+
+  // Mirrors the early return in the query builder: without a user there are no
+  // per-user rows to filter on, so the date rule is the whole filter.
+  if (!options.userId) return true;
+
+  if (!options.includeArchived && item.isArchived) return false;
+
+  const excludedStatuses = DEFAULT_EXCLUDED_STATUSES.filter((status) => {
+    if (status === "COMPLETED" && options.includeCompleted) return false;
+    if (status === "IN_PROGRESS" && options.includeInProgress) return false;
+    if (status === "DROPPED" && options.includeDropped) return false;
+    return true;
+  });
+  if (excludedStatuses.includes(item.status)) return false;
+
+  if (!options.includeRated && item.personalRating != null) return false;
+
+  return true;
+}
+
+/**
  * Modulates how much we trust an explicit personal rating given the user's
  * engagement. A 9 from a COMPLETED item is *experience*; a 9 from a
  * WATCHLIST item is *expectation*. This is NOT a status-as-score signal; it

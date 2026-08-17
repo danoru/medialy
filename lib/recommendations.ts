@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserId } from "@/lib/user";
-import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { calculateMedialyMatch } from "@/lib/scoring/medialyMatch";
 import {
+  matchesRecommendationEligibility,
   recommendationEligibilityWhere,
   type EligibilityOptions,
 } from "@/lib/scoring/eligibility";
+import { getCatalogItems, getCatalogWithUser } from "@/lib/db/catalog";
 import { calculateRatingCompatibility } from "@/lib/scoring/compatibility";
 import { AFFINITY_TUNING } from "@/lib/scoring/config";
 import {
@@ -44,21 +45,20 @@ export async function getRecommendations(
   // per-user joins consistently return defaults.
   const userId =
     userIdOverride ?? (await getCurrentUserId()) ?? "__anonymous__";
-  const rawItems = await prisma.mediaItem.findMany({
-    where: {
-      mediaType: visibleMediaTypeFilter(),
-      ...recommendationEligibilityWhere({ ...eligibility, userId }),
-    },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { where: { tag: { status: "APPROVED" } }, include: { tag: true } },
-      credits: { include: { contributor: true } },
-      ...userMediaInclude(userId),
-    },
-  });
 
-  const items = rawItems
-    .map(mergeUserMedia)
+  // Reads the shared cached catalog rather than its own full-table scan, so a
+  // dashboard render pays for the catalog once. Eligibility and the APPROVED
+  // tag filter therefore move from SQL into JS — `matchesRecommendationEligibility`
+  // is the exact twin of the `where` clause this used to build.
+  const catalog = await getCatalogWithUser(userId);
+  const items = catalog
+    .filter((item) =>
+      matchesRecommendationEligibility(item, { ...eligibility, userId }),
+    )
+    .map((item) => ({
+      ...item,
+      tags: item.tags.filter((entry) => entry.tag.status === "APPROVED"),
+    }))
     .sort(
       (a, b) =>
         (b.computedPersonalScore ?? -Infinity) -
@@ -222,30 +222,39 @@ export async function getAffinityMaps(
   userId: string,
   options: { excludeMediaId?: string } = {},
 ): Promise<AffinityMaps> {
-  const completed = await prisma.userMedia.findMany({
-    where: {
-      userId,
-      isArchived: false,
-      status: "COMPLETED",
-      media: { mediaType: visibleMediaTypeFilter() },
-      OR: [
-        { computedPersonalScore: { gte: 8 } },
-        { personalRating: { gte: 8 } },
-        { pairwiseScore: { gte: 1150 } },
-      ],
-      ...(options.excludeMediaId
-        ? { mediaId: { not: options.excludeMediaId } }
-        : {}),
-    },
-    include: {
-      media: {
-        include: {
-          genres: { include: { genre: true } },
-          tags: { include: { tag: true } },
-          credits: { include: { contributor: true } },
-        },
+  // The taxonomy this reads is already in the shared cached catalog, so only
+  // the thin per-user rows are fetched and the media side is joined in memory.
+  // The media-type filter stays in SQL — it narrows rows without sending any
+  // extra columns.
+  const [ratedRows, catalog] = await Promise.all([
+    prisma.userMedia.findMany({
+      where: {
+        userId,
+        isArchived: false,
+        status: "COMPLETED",
+        media: { mediaType: visibleMediaTypeFilter() },
+        OR: [
+          { computedPersonalScore: { gte: 8 } },
+          { personalRating: { gte: 8 } },
+          { pairwiseScore: { gte: 1150 } },
+        ],
+        ...(options.excludeMediaId
+          ? { mediaId: { not: options.excludeMediaId } }
+          : {}),
       },
-    },
+      select: {
+        mediaId: true,
+        computedPersonalScore: true,
+        personalRating: true,
+      },
+    }),
+    getCatalogItems(),
+  ]);
+
+  const catalogById = new Map(catalog.map((item) => [item.id, item]));
+  const completed = ratedRows.flatMap((row) => {
+    const media = catalogById.get(row.mediaId);
+    return media ? [{ ...row, media }] : [];
   });
 
   // First pass: collect per-feature rating accumulators + provenance.

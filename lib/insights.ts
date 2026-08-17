@@ -11,7 +11,9 @@ import type {
 } from "@/lib/types";
 import { normalizeComparableTitle } from "@/lib/text-normalization";
 import { getCurrentUserId } from "@/lib/user";
-import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
+import { mergeUserMedia, userMediaSelect } from "@/lib/db/user-media";
+import { LEAN_MEDIA_WITH_TAXONOMY_SELECT } from "@/lib/db/media-select";
+import { getCatalogWithUser } from "@/lib/db/catalog";
 import { getFollowingIds, getUserProfiles } from "@/lib/social/follows";
 import { calculateRatingCompatibility } from "@/lib/scoring/compatibility";
 import { bayesianShrunkMean } from "@/lib/scoring/affinity";
@@ -80,35 +82,22 @@ export async function getGenreInsightsByMediaType(
 ): Promise<MediaTypeGenreInsights[]> {
   const resolvedUserId =
     userId === undefined ? await getCurrentUserId() : userId;
-  const archivedFilter =
+
+  // Shares the dashboard's cached catalog read. The old archive filter (no
+  // UserMedia row, or one that isn't archived) is just `!isArchived` once the
+  // per-user fields are merged on.
+  const catalog = await getCatalogWithUser(resolvedUserId);
+  const items =
     resolvedUserId == null
-      ? {}
-      : {
-          OR: [
-            { userMedia: { none: { userId: resolvedUserId } } },
-            { userMedia: { some: { userId: resolvedUserId, isArchived: false } } },
-          ],
-        };
-  const rawItems = await prisma.mediaItem.findMany({
-    where: {
-      mediaType: visibleMediaTypeFilter(),
-      ...archivedFilter,
-    },
-    include: {
-      genres: { include: { genre: true } },
-      ...userMediaInclude(resolvedUserId),
-    },
-    orderBy: [{ title: "asc" }],
-  });
-  const items = rawItems.map(mergeUserMedia);
+      ? catalog
+      : catalog.filter((item) => !item.isArchived);
   const recentCutoff = new Date();
   recentCutoff.setDate(recentCutoff.getDate() - 90);
 
-  // Fetch source counts for consensus shrinkage. Cheap aggregate; we only need
-  // the items we're about to rank.
+  // Source counts for consensus shrinkage. A bare groupBy over the whole table
+  // is smaller on the wire than sending every catalog id up as an `IN` list.
   const sourceCountRows = await prisma.externalRating.groupBy({
     by: ["mediaId"],
-    where: { mediaId: { in: items.map((item) => item.id) } },
     _count: { _all: true },
   });
   const sourceCountByMediaId = new Map(
@@ -401,10 +390,9 @@ export async function getDataHealthReport(
       mediaType: visibleMediaTypeFilter(),
       ...archivedFilter,
     },
-    include: {
-      genres: { include: { genre: true } },
-      tags: { include: { tag: true } },
-      ...userMediaInclude(resolvedUserId),
+    select: {
+      ...LEAN_MEDIA_WITH_TAXONOMY_SELECT,
+      ...userMediaSelect(resolvedUserId),
     },
     orderBy: { title: "asc" },
   });

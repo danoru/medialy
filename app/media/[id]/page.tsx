@@ -78,15 +78,17 @@ export default async function MediaDetailPage({
   const userIdFilter = userId ?? "__anonymous__";
   const rawItem = await prisma.mediaItem.findUnique({
     include: {
+      // Only the opponent's title is rendered, so don't pull 20 whole
+      // MediaItem rows (each carrying description + metadataJson) for it.
       comparisonsLost: {
         where: { userId: userIdFilter },
-        include: { winner: true },
+        include: { winner: { select: { title: true } } },
         orderBy: { createdAt: "desc" },
         take: 10,
       },
       comparisonsWon: {
         where: { userId: userIdFilter },
-        include: { loser: true },
+        include: { loser: { select: { title: true } } },
         orderBy: { createdAt: "desc" },
         take: 10,
       },
