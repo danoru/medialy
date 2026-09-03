@@ -95,15 +95,62 @@ export const RADAR_TOP_PADDING = 30;
  */
 const RADAR_ORIGIN_CLEARANCE = 60;
 
-/** Outer edge — lands exactly {@link RADAR_TOP_PADDING} from the plot's top. */
-const RADAR_OUTER_RADIUS = 440;
+/**
+ * Outer edge — the 90-day ring.
+ *
+ * Deliberately larger than the plot's usable height (470 − 30 = 440), so the
+ * outermost ring runs off the top of the box and meets the *right* edge
+ * instead. That widening is what gives the far band the full plot width to
+ * spread across rather than a cramped corner; the trade is a narrower angular
+ * wedge out there, which {@link maxAngleForRadius} already enforces so points
+ * still clear the top padding.
+ */
+const RADAR_OUTER_RADIUS = 660;
 
 /**
- * Minimum gap (design px) enforced between any two plotted marks — comfortably
- * more than the largest dot, so neighbours read as separate marks with clear
- * space between them rather than a blob.
+ * Blip diameter (design px) by band, nearest first.
+ *
+ * Distance from the origin already encodes "how soon" — size doubles down on
+ * it, so the releases worth looking at first are the largest marks and the
+ * 90-day band recedes. Index-aligned with {@link RADAR_RINGS}.
  */
-export const RADAR_MIN_SEPARATION = 34;
+export const RADAR_BLIP_SIZES = [48, 40, 32];
+
+/** Diameter (design px) of the blip for a release `days` out. */
+export function radarBlipSize(days: number): number {
+  const band = RADAR_RINGS.findIndex((ring) => days <= ring.days);
+  return RADAR_BLIP_SIZES[band === -1 ? RADAR_BLIP_SIZES.length - 1 : band];
+}
+
+/**
+ * Air (design px) the search tries to leave between two blips.
+ *
+ * Generous, because angle carries no meaning on this plot — only distance
+ * does — so there is no cost to spreading marks out and a real cost to
+ * packing them: a blip's caption is drawn beside it on hover, and neighbours
+ * sitting a few px away end up under each other's captions, which makes them
+ * awkward to point at. Spending the free axis on breathing room is the whole
+ * reason it's free.
+ */
+export const RADAR_BLIP_PADDING = 26;
+
+/**
+ * How far a blip may drift outward past its band's ring when the arc is full,
+ * and the step it drifts in. Kept small on purpose: a blip that wandered far
+ * enough to cross the next ring would read as the wrong band.
+ */
+const RADAR_MAX_BUMP = 18;
+const RADAR_BUMP_STEP = 6;
+
+/** Keep a blip's box inside the plot. The bottom limit also clears the ring
+ * day labels and the "TONIGHT" caption along the baseline. */
+const RADAR_EDGE_PADDING = 6;
+const RADAR_BOTTOM_LIMIT = RADAR_HEIGHT - 44;
+
+/** Clearance score for a placement that falls outside the plot. Finite, not
+ * `-Infinity`, so the search can still rank hopeless candidates against each
+ * other and pick the least bad one. */
+const RADAR_OFF_PLOT_CLEARANCE = -999;
 
 /** Angular search when a seed angle collides: ±(steps × step size). */
 const RADAR_PLACEMENT_STEP_DEG = 2;
@@ -138,17 +185,24 @@ export const RADAR_RINGS = [30, 60, 90].map((days) => ({
 }));
 
 /**
- * Deterministic pseudo-random unit value from a string (FNV-1a 32-bit) —
- * stable across renders, and across server/client hydration, so a release
- * always lands in the same spot without needing `Math.random`.
+ * Where the nth date group is aimed, as a fraction of the usable arc.
+ *
+ * The golden ratio's fractional part, taken modulo 1 — the standard
+ * low-discrepancy sequence. Its point here is that *consecutive* terms land
+ * far apart, and consecutive date groups are exactly the pairs that need it:
+ * their radii differ by only a few px, so angle is the only thing keeping
+ * them off each other.
+ *
+ * This replaced hashing each date independently. A hash is stable but not
+ * *spread* — nothing stops three neighbouring dates hashing into the same
+ * corner, and with marks this size that read as one clump while most of the
+ * arc sat empty. Indexing by position keeps the layout deterministic across
+ * renders and across server/client hydration, without `Math.random`.
  */
-function hashUnit(id: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < id.length; i++) {
-    hash ^= id.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0) / 0x100000000;
+const GOLDEN_RATIO_CONJUGATE = 0.618033988749895;
+
+function seedFraction(groupIndex: number): number {
+  return (groupIndex * GOLDEN_RATIO_CONJUGATE) % 1;
 }
 
 /** Floor is set so even an innermost point clears the "TONIGHT" label that
@@ -161,11 +215,13 @@ export type RadarDatedItem = UpcomingDatedItem & { id: string };
 /** One release, placed. */
 export type RadarPoint<T> = {
   item: T;
-  /** Design-space px — see {@link RADAR_WIDTH}. */
+  /** Centre of the blip, in design-space px — see {@link RADAR_WIDTH}. */
   x: number;
   y: number;
   /** Days until release. Same-date releases share this exactly. */
   days: number;
+  /** Blip diameter in design-space px — see {@link radarBlipSize}. */
+  size: number;
 };
 
 /**
@@ -182,34 +238,71 @@ function maxAngleForRadius(radius: number): number {
 
 /**
  * Angular separation (deg) that puts two points at `radius` exactly
- * {@link RADAR_MIN_SEPARATION} apart, from the chord formula
- * `chord = 2·r·sin(Δ/2)`.
+ * `separation` apart, from the chord formula `chord = 2·r·sin(Δ/2)`.
  */
-function requiredGapDeg(radius: number): number {
+function requiredGapDeg(radius: number, separation: number): number {
   if (radius <= 0) return 0;
-  const halfChord = Math.min(1, RADAR_MIN_SEPARATION / (2 * radius));
+  const halfChord = Math.min(1, separation / (2 * radius));
   return (2 * Math.asin(halfChord) * 180) / Math.PI;
 }
 
 /**
- * Lays releases out radially around "tonight": distance from the origin tracks
- * days-until-release (see {@link radarRadiusForDays}), and angle comes from a
- * stable hash of the release date, so the layout never jitters between renders.
+ * Centre-to-centre distance to reserve on the arc for two adjacent blips of
+ * diameter `size`.
  *
- * Hashing alone isn't enough. Releases sharing a date share a radius *exactly*,
- * so their only separation is angular — and nothing stops two hashing next to
- * each other. Left unchecked that draws dots on top of one another (four movies
- * sharing a date rendered as a single 3px-wide smudge). Placing them one at a
- * time and nudging on collision doesn't fix it either: first-fit fragments the
- * arc, so the last item of a group finds no gap even when the ring has room for
- * all of them.
+ * The blips collide as *boxes* (below), so the worst case is corner-to-corner
+ * — the box diagonal. Reserving the full diagonal over-books the arc though,
+ * because the marks are drawn as circles and two circles side by side never
+ * meet at their boxes' corners; 80% of it plus the padding is the amount that
+ * actually keeps them apart without pushing half the band off the ring.
+ */
+function blipSeparation(size: number): number {
+  return Math.hypot(size, size) * 0.8 + RADAR_BLIP_PADDING;
+}
+
+/**
+ * Gap (design px) between two axis-aligned square blips — negative once they
+ * overlap. Chebyshev rather than Euclidean: two boxes are clear as soon as
+ * they are separated on *either* axis, which is exactly the condition that
+ * matters for tiles laid out on an arc.
+ */
+function boxGap(
+  a: { x: number; y: number; size: number },
+  x: number,
+  y: number,
+  size: number,
+): number {
+  const half = (a.size + size) / 2;
+  return Math.max(Math.abs(a.x - x) - half, Math.abs(a.y - y) - half);
+}
+
+/**
+ * Lays releases out radially around "tonight": distance from the origin tracks
+ * days-until-release (see {@link radarRadiusForDays}). Angle carries no
+ * meaning at all — it is a free axis, spent entirely on keeping marks apart —
+ * so dates are aimed around the arc by {@link seedFraction}, which spreads
+ * them deterministically instead of leaving placement to chance.
+ *
+ * Aiming alone isn't enough. Releases sharing a date share a radius *exactly*,
+ * so their only separation is angular. Left unchecked that draws marks on top
+ * of one another (four movies sharing a date rendered as a single smudge).
+ * Placing them one at a time and nudging on collision doesn't fix it either:
+ * first-fit fragments the arc, so the last item of a group finds no gap even
+ * when the ring has room for all of them.
  *
  * So same-date releases are placed as a group: the arc they need is measured up
- * front and laid out evenly, centred on the date's hashed angle (shifted inward
+ * front and laid out evenly, centred on the group's seed angle (shifted inward
  * if that would overflow the usable range, compressed if the ring is genuinely
  * saturated). Each point then walks outward from that seed until it clears
  * everything already placed, resolving the residual collisions between
  * *adjacent* dates, whose radii are only a pixel or two apart.
+ *
+ * Marks are poster blips, not dots, so they take real area: each is a
+ * {@link radarBlipSize} square that must clear its neighbours *and* the plot's
+ * edges. When no angle on the ring works, the blip drifts outward in
+ * {@link RADAR_BUMP_STEP} steps and the whole angular sweep is retried from the
+ * wider ring, which has more arc to spend. If nothing ever comes clear the
+ * best-scoring candidate is accepted rather than dropping the release.
  *
  * Items without a release date, or outside the horizon, are dropped.
  */
@@ -234,6 +327,24 @@ export function layoutReleaseRadar<T extends RadarDatedItem>(
   });
 
   const placed: Array<RadarPoint<T>> = [];
+  /** Counts date groups, not items — a date is aimed as a unit. */
+  let groupIndex = 0;
+
+  /** How much air a blip centred here would have. Off-plot placements score
+   * {@link RADAR_OFF_PLOT_CLEARANCE} so they lose to anything that fits. */
+  function clearanceAt(x: number, y: number, size: number): number {
+    let gap = Infinity;
+    for (const other of placed) {
+      gap = Math.min(gap, boxGap(other, x, y, size));
+    }
+    const half = size / 2;
+    const inside =
+      y + half <= RADAR_BOTTOM_LIMIT &&
+      y - half >= RADAR_EDGE_PADDING &&
+      x - half >= RADAR_EDGE_PADDING &&
+      x + half <= RADAR_WIDTH - RADAR_EDGE_PADDING;
+    return inside ? gap : Math.min(gap, RADAR_OFF_PLOT_CLEARANCE);
+  }
 
   for (let start = 0; start < dated.length; ) {
     let end = start + 1;
@@ -241,56 +352,63 @@ export function layoutReleaseRadar<T extends RadarDatedItem>(
     const group = dated.slice(start, end);
     start = end;
 
+    const seedAt = seedFraction(groupIndex++);
     const { days } = group[0];
-    const radius = radarRadiusForDays(days, horizonDays);
-    const maxAngleDeg = maxAngleForRadius(radius);
-    const minAngleDeg = Math.min(RADAR_MIN_ANGLE_DEG, maxAngleDeg);
-    const spanDeg = maxAngleDeg - minAngleDeg;
-
-    // Lay the group out evenly, centred on its hashed angle. When the arc
-    // can't hold them all at full separation, spread across the whole span
-    // and accept the crowding — better than piling them on one spot.
-    const idealGapDeg = requiredGapDeg(radius);
-    const fits = idealGapDeg * (group.length - 1) <= spanDeg;
-    const gapDeg =
-      fits || group.length < 2 ? idealGapDeg : spanDeg / (group.length - 1);
-    const groupSpanDeg = gapDeg * (group.length - 1);
-    const centreDeg = minAngleDeg + hashUnit(`${days}`) * spanDeg;
-    const seedStartDeg = Math.min(
-      maxAngleDeg - groupSpanDeg,
-      Math.max(minAngleDeg, centreDeg - groupSpanDeg / 2),
-    );
+    const size = radarBlipSize(days);
+    const separation = blipSeparation(size);
+    const ringRadius = radarRadiusForDays(days, horizonDays);
 
     group.forEach(({ item }, index) => {
-      const seedDeg = seedStartDeg + index * gapDeg;
-
       let bestX = RADAR_ORIGIN.x;
       let bestY = RADAR_ORIGIN.y;
       let bestClearance = -Infinity;
 
-      for (const offsetDeg of offsetsDeg) {
-        const angleDeg = Math.min(
-          maxAngleDeg,
-          Math.max(minAngleDeg, seedDeg + offsetDeg),
-        );
-        const angleRad = (angleDeg * Math.PI) / 180;
-        const x = RADAR_ORIGIN.x + radius * Math.cos(angleRad);
-        const y = RADAR_ORIGIN.y - radius * Math.sin(angleRad);
+      search: for (
+        let bump = 0;
+        bump <= RADAR_MAX_BUMP;
+        bump += RADAR_BUMP_STEP
+      ) {
+        const radius = ringRadius + bump;
+        const maxAngleDeg = maxAngleForRadius(radius);
+        const minAngleDeg = Math.min(RADAR_MIN_ANGLE_DEG, maxAngleDeg);
+        const spanDeg = maxAngleDeg - minAngleDeg;
 
-        let clearance = Infinity;
-        for (const other of placed) {
-          clearance = Math.min(clearance, Math.hypot(other.x - x, other.y - y));
-        }
+        // Lay the group out evenly, centred on the group's seed angle. When the arc
+        // can't hold them all at full separation, spread across the whole span
+        // and accept the crowding — better than piling them on one spot.
+        const idealGapDeg = requiredGapDeg(radius, separation);
+        const fits = idealGapDeg * (group.length - 1) <= spanDeg;
+        const gapDeg =
+          fits || group.length < 2 ? idealGapDeg : spanDeg / (group.length - 1);
+        const groupSpanDeg = gapDeg * (group.length - 1);
+        const centreDeg = minAngleDeg + seedAt * spanDeg;
+        const seedDeg =
+          Math.min(
+            maxAngleDeg - groupSpanDeg,
+            Math.max(minAngleDeg, centreDeg - groupSpanDeg / 2),
+          ) +
+          index * gapDeg;
 
-        if (clearance > bestClearance) {
-          bestClearance = clearance;
-          bestX = x;
-          bestY = y;
+        for (const offsetDeg of offsetsDeg) {
+          const angleDeg = Math.min(
+            maxAngleDeg,
+            Math.max(minAngleDeg, seedDeg + offsetDeg),
+          );
+          const angleRad = (angleDeg * Math.PI) / 180;
+          const x = RADAR_ORIGIN.x + radius * Math.cos(angleRad);
+          const y = RADAR_ORIGIN.y - radius * Math.sin(angleRad);
+
+          const clearance = clearanceAt(x, y, size);
+          if (clearance > bestClearance) {
+            bestClearance = clearance;
+            bestX = x;
+            bestY = y;
+          }
+          if (clearance >= RADAR_BLIP_PADDING) break search;
         }
-        if (clearance >= RADAR_MIN_SEPARATION) break;
       }
 
-      placed.push({ item, x: bestX, y: bestY, days });
+      placed.push({ item, x: bestX, y: bestY, days, size });
     });
   }
 

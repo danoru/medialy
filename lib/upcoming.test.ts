@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   formatUpcomingRelativeLabel,
   layoutReleaseRadar,
-  RADAR_MIN_SEPARATION,
+  RADAR_BLIP_PADDING,
+  RADAR_HEIGHT,
   RADAR_ORIGIN,
   RADAR_TOP_PADDING,
+  RADAR_WIDTH,
+  radarBlipSize,
   radarRadiusForDays,
   recentlyReleasedSince,
   sortUpcomingItems,
@@ -21,6 +24,25 @@ function radarItem(id: string, title: string, date: string) {
 
 function distanceFromOrigin(point: { x: number; y: number }) {
   return Math.hypot(point.x - RADAR_ORIGIN.x, point.y - RADAR_ORIGIN.y);
+}
+
+type PlacedBlip = { x: number; y: number; size: number };
+
+/** Air between two blips' boxes — matches the Chebyshev rule the layout uses,
+ * so a negative result means they visibly overlap. */
+function blipGap(a: PlacedBlip, b: PlacedBlip) {
+  const half = (a.size + b.size) / 2;
+  return Math.max(Math.abs(a.x - b.x) - half, Math.abs(a.y - b.y) - half);
+}
+
+function closestGap(points: PlacedBlip[]) {
+  let closest = Infinity;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      closest = Math.min(closest, blipGap(points[i], points[j]));
+    }
+  }
+  return closest;
 }
 
 describe("sortUpcomingItems", () => {
@@ -79,7 +101,15 @@ describe("recentlyReleasedSince", () => {
 describe("radarRadiusForDays", () => {
   it("spans the full radius across the horizon", () => {
     expect(radarRadiusForDays(0)).toBe(60);
-    expect(radarRadiusForDays(90)).toBe(440);
+    expect(radarRadiusForDays(90)).toBe(660);
+  });
+
+  it("pushes the 90-day ring out to the plot's right edge", () => {
+    // The outer ring deliberately overshoots the plot's height so the far
+    // band spreads along the full width instead of bunching in a corner.
+    expect(RADAR_ORIGIN.x + radarRadiusForDays(90)).toBeGreaterThan(
+      RADAR_WIDTH - 40,
+    );
   });
 
   it("gives every equal stretch of time an equal area to occupy", () => {
@@ -100,7 +130,22 @@ describe("radarRadiusForDays", () => {
 
   it("clamps outside the 0–90 domain", () => {
     expect(radarRadiusForDays(-10)).toBe(60);
-    expect(radarRadiusForDays(200)).toBe(440);
+    expect(radarRadiusForDays(200)).toBe(660);
+  });
+});
+
+describe("radarBlipSize", () => {
+  it("shrinks band by band, so nearer releases read largest", () => {
+    expect(radarBlipSize(0)).toBe(48);
+    expect(radarBlipSize(30)).toBe(48);
+    expect(radarBlipSize(31)).toBe(40);
+    expect(radarBlipSize(60)).toBe(40);
+    expect(radarBlipSize(61)).toBe(32);
+    expect(radarBlipSize(90)).toBe(32);
+  });
+
+  it("falls back to the outermost size past the horizon", () => {
+    expect(radarBlipSize(400)).toBe(32);
   });
 });
 
@@ -164,13 +209,7 @@ describe("layoutReleaseRadar", () => {
     );
 
     expect(points).toHaveLength(4);
-    for (let i = 0; i < points.length; i++) {
-      for (let j = i + 1; j < points.length; j++) {
-        expect(
-          Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y),
-        ).toBeGreaterThanOrEqual(RADAR_MIN_SEPARATION);
-      }
-    }
+    expect(closestGap(points)).toBeGreaterThanOrEqual(RADAR_BLIP_PADDING);
   });
 
   it("separates a realistic dense slate across the whole horizon", () => {
@@ -197,17 +236,71 @@ describe("layoutReleaseRadar", () => {
       now,
     );
 
+    // The target spacing isn't always reachable — this slate puts four
+    // releases on one date low on the plot, where the arc simply isn't long
+    // enough. What must never give is the marks overlapping: the layout
+    // falls back to the roomiest angle it found rather than stacking them.
     expect(points).toHaveLength(dates.length);
-    let closest = Infinity;
-    for (let i = 0; i < points.length; i++) {
-      for (let j = i + 1; j < points.length; j++) {
-        closest = Math.min(
-          closest,
-          Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y),
-        );
-      }
+    expect(closestGap(points)).toBeGreaterThan(0);
+  });
+
+  it("hits the full target spacing on a slate with room for it", () => {
+    const dates = [
+      "2026-05-16",
+      "2026-05-24",
+      "2026-06-04",
+      "2026-06-19",
+      "2026-07-02",
+      "2026-07-14",
+      "2026-07-28",
+      "2026-08-09",
+    ];
+    const points = layoutReleaseRadar(
+      dates.map((date, i) => radarItem(`item-${i}`, `Release ${i}`, date)),
+      now,
+    );
+
+    expect(closestGap(points)).toBeGreaterThanOrEqual(RADAR_BLIP_PADDING);
+  });
+
+  it("sizes each blip for the band it lands in", () => {
+    const points = layoutReleaseRadar(
+      [
+        radarItem("soon", "Soon", "2026-05-20"),
+        radarItem("mid", "Mid", "2026-06-20"),
+        radarItem("far", "Far", "2026-07-20"),
+      ],
+      now,
+    );
+
+    expect(points.map((point) => point.size)).toEqual([48, 40, 32]);
+  });
+
+  it("keeps every blip's box inside the plot", () => {
+    const dates = [
+      "2026-05-14",
+      "2026-05-14",
+      "2026-05-26",
+      "2026-06-10",
+      "2026-06-10",
+      "2026-06-10",
+      "2026-07-01",
+      "2026-08-05",
+      "2026-08-05",
+      "2026-08-11",
+    ];
+    const points = layoutReleaseRadar(
+      dates.map((date, i) => radarItem(`item-${i}`, `Release ${i}`, date)),
+      now,
+    );
+
+    for (const point of points) {
+      const half = point.size / 2;
+      expect(point.x - half).toBeGreaterThanOrEqual(0);
+      expect(point.x + half).toBeLessThanOrEqual(RADAR_WIDTH);
+      expect(point.y - half).toBeGreaterThanOrEqual(0);
+      expect(point.y + half).toBeLessThanOrEqual(RADAR_HEIGHT);
     }
-    expect(closest).toBeGreaterThanOrEqual(RADAR_MIN_SEPARATION);
   });
 
   it("caps far-out points so they never cross the top padding", () => {
