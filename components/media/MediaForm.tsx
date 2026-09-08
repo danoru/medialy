@@ -4,7 +4,9 @@ import {
   Alert,
   Autocomplete,
   Button,
+  Checkbox,
   Divider,
+  FormControlLabel,
   Grid,
   MenuItem,
   Snackbar,
@@ -22,6 +24,7 @@ import {
   creditsForRole,
 } from "@/lib/credits";
 import {
+  manualRatingRemoveField,
   manualRatingsForMediaType,
   type ManualExternalRatingDef,
 } from "@/lib/external-ratings";
@@ -272,21 +275,40 @@ export function MediaForm({
               value={tags}
             />
           </Grid>
-          {manualRatingDefs.map((def: ManualExternalRatingDef) => (
-            <Grid key={def.source} size={{ xs: 12, md: 6 }}>
-              <TextField
-                defaultValue={initialRatingValues.get(def.source) ?? ""}
-                fullWidth
-                helperText={`Score on a 0–${def.scale} scale. Leave blank to remove.`}
-                label={def.label}
-                name={def.field}
-                slotProps={{
-                  htmlInput: { min: 0, max: def.scale, step: 1 },
-                }}
-                type="number"
-              />
-            </Grid>
-          ))}
+          {manualRatingDefs.map((def: ManualExternalRatingDef) => {
+            const existing = initialRatingValues.get(def.source);
+            return (
+              <Grid key={def.source} size={{ xs: 12, md: 6 }}>
+                <TextField
+                  defaultValue={existing ?? ""}
+                  fullWidth
+                  helperText={
+                    existing
+                      ? `Score on a 0–${def.scale} scale. Blank leaves the saved score alone.`
+                      : `Score on a 0–${def.scale} scale.`
+                  }
+                  label={def.label}
+                  name={def.field}
+                  slotProps={{
+                    htmlInput: { min: 0, max: def.scale, step: 1 },
+                  }}
+                  type="number"
+                />
+                {/* Clearing a score is deliberate now. Blanking the field used
+                    to delete it, which turned every stale form into a way to
+                    lose curated data. */}
+                {existing ? (
+                  <FormControlLabel
+                    control={
+                      <Checkbox name={manualRatingRemoveField(def.source)} />
+                    }
+                    label={`Remove saved ${def.label} score`}
+                    slotProps={{ typography: { variant: "body2" } }}
+                  />
+                ) : null}
+              </Grid>
+            );
+          })}
           <Grid size={{ xs: 12 }}>
             <TextField
               defaultValue={item?.description ?? ""}

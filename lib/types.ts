@@ -89,6 +89,14 @@ export type MediaFormInput = {
   }>;
   externalRatings?: ExternalRatingInput[];
   /**
+   * Sources the user explicitly asked to clear.
+   *
+   * A *blank* score field means "leave whatever is there alone", not "delete" —
+   * so a stale form, or a suggestion snapshot that predates a score, can never
+   * silently drop curated data. Removing a score is now a deliberate act.
+   */
+  externalRatingRemovals?: ExternalRatingSource[];
+  /**
    * The complete desired set of relations / re-releases for this item.
    *
    * `undefined` means "this caller doesn't manage connections" (CSV import) and

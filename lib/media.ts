@@ -10,7 +10,7 @@ import {
   replaceMediaCredits,
   type CreditDTO,
 } from "@/lib/credits";
-import { manualRatingsForMediaType } from "@/lib/external-ratings";
+import { planManualExternalRatingWrites } from "@/lib/external-ratings";
 import { prisma } from "@/lib/prisma";
 import {
   mergeUserMedia,
@@ -477,37 +477,49 @@ export async function addImportedCredits(
  * from `input.externalRatings` is deleted; present ones are upserted. Other
  * sources (e.g. IMDB, TMDB) that aren't user-editable are left untouched.
  */
+/**
+ * Apply the manually-editable external scores from a form submit.
+ *
+ * This used to delete any source whose field arrived blank, which made every
+ * edit a potential data-loss event: a stale form, or an approved suggestion
+ * whose snapshot predated a fetched score, would silently wipe it. Now a blank
+ * field means "no opinion" and only an explicit removal deletes.
+ *
+ * The upshot is that this function can no longer destroy a score the caller
+ * didn't deliberately name.
+ */
 export async function replaceManualExternalRatings(
   mediaId: string,
-  input: Pick<MediaFormInput, "mediaType" | "externalRatings">,
+  input: Pick<
+    MediaFormInput,
+    "mediaType" | "externalRatings" | "externalRatingRemovals"
+  >,
 ) {
-  const applicable = manualRatingsForMediaType(input.mediaType);
-  if (applicable.length === 0) return;
-
-  const provided = new Map(
-    (input.externalRatings ?? []).map((rating) => [rating.source, rating]),
+  const writes = planManualExternalRatingWrites(
+    input.mediaType,
+    input.externalRatings,
+    input.externalRatingRemovals,
   );
 
-  for (const def of applicable) {
-    const next = provided.get(def.source);
-    if (next) {
+  for (const write of writes) {
+    if (write.action === "upsert") {
       await prisma.externalRating.upsert({
-        where: { mediaId_source: { mediaId, source: def.source } },
+        where: { mediaId_source: { mediaId, source: write.source } },
         create: {
           mediaId,
-          source: def.source,
-          score: next.score,
-          scale: next.scale,
+          source: write.source,
+          score: write.score,
+          scale: write.scale,
         },
         update: {
-          score: next.score,
-          scale: next.scale,
+          score: write.score,
+          scale: write.scale,
           fetchedAt: new Date(),
         },
       });
     } else {
       await prisma.externalRating.deleteMany({
-        where: { mediaId, source: def.source },
+        where: { mediaId, source: write.source },
       });
     }
   }

@@ -23,7 +23,14 @@ import {
 const SYSTEM_USER_EMAIL = "metadata-backfill@medialy.local";
 const SYSTEM_USER_NAME = "MedialyBot";
 
-/** Fields a backfill is allowed to propose. Everything else is left alone. */
+/**
+ * Fields a backfill is allowed to propose. Everything else is left alone.
+ *
+ * `externalRatings` is a *complete* list, not a delta — see the note above
+ * about payloads being full snapshots. Propose the item's existing manual
+ * scores with your one change applied, in the same source-sorted order
+ * `snapshotMediaItem` produces, or the diff will report phantom changes.
+ */
 export type BackfillProposal = Partial<
   Pick<
     EditSuggestionSnapshot,
@@ -33,6 +40,7 @@ export type BackfillProposal = Partial<
     | "metadataJson"
     | "genres"
     | "tags"
+    | "externalRatings"
   >
 >;
 

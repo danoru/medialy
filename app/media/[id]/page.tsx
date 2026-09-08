@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MediaType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUserId } from "@/lib/user";
+import { getCurrentUser, getCurrentUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { calculateCommunityAverage } from "@/lib/scoring/communityAverage";
 import { calculateConsensusScore } from "@/lib/scoring/consensus";
@@ -95,7 +95,10 @@ export default async function MediaDetailPage({
       externalRatings: { orderBy: [{ source: "asc" }] },
       genres: { include: { genre: true } },
       credits: { include: { contributor: true }, orderBy: { order: "asc" } },
-      notes: { where: { userId: userIdFilter }, orderBy: { updatedAt: "desc" } },
+      notes: {
+        where: { userId: userIdFilter },
+        orderBy: { updatedAt: "desc" },
+      },
       tags: { include: { tag: true } },
       ...userMediaInclude(userId),
     },
@@ -118,37 +121,37 @@ export default async function MediaDetailPage({
     matchSummary,
     friendActivity,
   ] = await Promise.all([
-      Promise.all([
-        prisma.mediaRelation.findMany({
-          where: { fromId: rawItem.id },
-          include: { to: { select: otherSelect } },
-          orderBy: { createdAt: "asc" },
-        }),
-        prisma.mediaRelation.findMany({
-          where: { toId: rawItem.id },
-          include: { from: { select: otherSelect } },
-          orderBy: { createdAt: "asc" },
-        }),
-        prisma.mediaReleaseEvent.findMany({
-          where: { mediaId: rawItem.id },
-          orderBy: { date: "asc" },
-        }),
-      ]),
-      // Community average: mean of other Medialy users' computedPersonalScore.
-      // Distinct from Consensus (external sources only). Always excludes the
-      // viewing user so they don't see their own score reflected back.
-      prisma.userMedia.findMany({
-        where: { mediaId: rawItem.id, ...(userId ? { NOT: { userId } } : {}) },
-        select: { computedPersonalScore: true },
+    Promise.all([
+      prisma.mediaRelation.findMany({
+        where: { fromId: rawItem.id },
+        include: { to: { select: otherSelect } },
+        orderBy: { createdAt: "asc" },
       }),
-      getMediaItemMatch(rawItem.id, userId),
-      // What people the viewer follows have done with this title. Anonymous
-      // viewers get nothing — a follow graph is what makes the extra statuses
-      // visible at all.
-      userId
-        ? getFriendMediaActivity(userId, rawItem.id)
-        : Promise.resolve<FriendMediaEntry[]>([]),
-    ]);
+      prisma.mediaRelation.findMany({
+        where: { toId: rawItem.id },
+        include: { from: { select: otherSelect } },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.mediaReleaseEvent.findMany({
+        where: { mediaId: rawItem.id },
+        orderBy: { date: "asc" },
+      }),
+    ]),
+    // Community average: mean of other Medialy users' computedPersonalScore.
+    // Distinct from Consensus (external sources only). Always excludes the
+    // viewing user so they don't see their own score reflected back.
+    prisma.userMedia.findMany({
+      where: { mediaId: rawItem.id, ...(userId ? { NOT: { userId } } : {}) },
+      select: { computedPersonalScore: true },
+    }),
+    getMediaItemMatch(rawItem.id, userId),
+    // What people the viewer follows have done with this title. Anonymous
+    // viewers get nothing — a follow graph is what makes the extra statuses
+    // visible at all.
+    userId
+      ? getFriendMediaActivity(userId, rawItem.id)
+      : Promise.resolve<FriendMediaEntry[]>([]),
+  ]);
   const relations: RelationView[] = [
     ...relationsFrom.map((relation) => ({
       id: relation.id,
@@ -221,10 +224,21 @@ export default async function MediaDetailPage({
     platforms,
   } as unknown as MediaDetailViewItem;
 
+  // Unresolved backfill conflicts are admin-actionable, so only an admin pays
+  // for the count. `getCurrentUser` is React.cache'd and already resolved by
+  // the layout, so the gate itself costs nothing.
+  const viewer = await getCurrentUser();
+  const pendingSuggestionCount = viewer?.isAdmin
+    ? await prisma.mediaEditSuggestion.count({
+        where: { mediaId: id, status: "PENDING" },
+      })
+    : 0;
+
   return (
     <MediaDetailView
       friendActivity={friendActivity}
       item={item}
+      pendingSuggestionCount={pendingSuggestionCount}
       relations={relations}
       releaseEvents={releaseEvents}
       userId={userId}

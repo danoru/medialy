@@ -131,12 +131,15 @@ export type MediaDetailViewItem = UserMediaFields & {
 export function MediaDetailView({
   friendActivity,
   item,
+  pendingSuggestionCount = 0,
   relations,
   releaseEvents,
   userId,
 }: {
   friendActivity: FriendMediaEntry[];
   item: MediaDetailViewItem;
+  /** Unresolved edit suggestions for this item. Admin-only; 0 for everyone else. */
+  pendingSuggestionCount?: number;
   relations: RelationView[];
   releaseEvents: ReleaseEventView[];
   userId: string | null;
@@ -252,7 +255,10 @@ export function MediaDetailView({
                 <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
                   Poster missing
                 </Typography>
-                <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
+                <Typography
+                  color="text.secondary"
+                  sx={{ fontSize: "0.875rem" }}
+                >
                   Add artwork to improve this page.
                 </Typography>
               </Stack>
@@ -332,7 +338,11 @@ export function MediaDetailView({
                 </Tooltip>
                 {inlineMatchReasons.length > 0 ? (
                   <>
-                    <Divider flexItem orientation="vertical" sx={matchDividerSx} />
+                    <Divider
+                      flexItem
+                      orientation="vertical"
+                      sx={matchDividerSx}
+                    />
                     <Stack spacing={0.5}>
                       {inlineMatchReasons.map((line) => (
                         <Typography key={line} sx={matchReasonSx}>
@@ -784,6 +794,28 @@ export function MediaDetailView({
         ) : null}
 
         {/* IMPROVE DATA CALLOUT ----------------------------------------- */}
+        {/* A backfill found data that disagrees with what's on this item. It
+            changed nothing; it queued the disagreement for review. Surfaced
+            here so an unresolved conflict doesn't depend on remembering to
+            check the admin queue. */}
+        {pendingSuggestionCount > 0 ? (
+          <Box sx={dataCalloutSx}>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography sx={calloutTitleSx}>
+                {pendingSuggestionCount === 1
+                  ? "1 suggested change"
+                  : `${pendingSuggestionCount} suggested changes`}
+              </Typography>
+              <Typography color="text.secondary" sx={metadataTextSx}>
+                Awaiting review. Nothing has been changed on this item.
+              </Typography>
+            </Box>
+            <Button href="/admin/edits" size="small" variant="text">
+              Review
+            </Button>
+          </Box>
+        ) : null}
+
         {missingFields.length > 0 ? (
           <Box sx={dataCalloutSx}>
             <Box sx={{ minWidth: 0 }}>
@@ -1266,7 +1298,10 @@ function platformBadge(label: string, bg: string): ReactElement {
 
 function platformIcon(name: string): ReactElement {
   const value = name.toLowerCase();
-  if (value.includes("playstation") || /(^|[^a-z])ps\d?([^a-z]|$)/.test(value)) {
+  if (
+    value.includes("playstation") ||
+    /(^|[^a-z])ps\d?([^a-z]|$)/.test(value)
+  ) {
     return platformBadge("PS", "#0072CE");
   }
   if (value.includes("xbox")) {
@@ -1301,7 +1336,11 @@ function platformIcon(name: string): ReactElement {
   ) {
     return <PhoneAndroidRoundedIcon />;
   }
-  if (value.includes("web") || value.includes("browser") || value.includes("tv")) {
+  if (
+    value.includes("web") ||
+    value.includes("browser") ||
+    value.includes("tv")
+  ) {
     return <TvRoundedIcon />;
   }
   return <DevicesOtherRoundedIcon />;

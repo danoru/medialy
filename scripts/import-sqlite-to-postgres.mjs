@@ -16,6 +16,16 @@ const prisma = new PrismaClient();
 const sqlitePath = resolve(process.argv[2] ?? "prisma/dev.db");
 const force = process.argv.includes("--force");
 
+/**
+ * `--force` deletes every app table before importing. That is unrecoverable
+ * without a database backup, and it is far too easy to reach for while
+ * iterating on scripts — so it now takes a second, deliberate flag naming the
+ * exact phrase. Nothing is deleted until both are present.
+ */
+const CONFIRM_PHRASE = "DELETE-ALL-POSTGRES-DATA";
+const confirmArg = process.argv.find((arg) => arg.startsWith("--confirm="));
+const confirmed = confirmArg?.split("=").slice(1).join("=") === CONFIRM_PHRASE;
+
 if (!existsSync(sqlitePath)) {
   console.error(`SQLite database not found: ${sqlitePath}`);
   process.exit(1);
@@ -112,12 +122,40 @@ async function ensureTargetIsEmptyOrForced() {
   );
   const populatedTables = counts.filter(([, count]) => count > 0);
 
-  if (populatedTables.length === 0 || force) return;
+  if (populatedTables.length === 0) return;
 
-  console.error("Postgres already has data. Re-run with --force to replace it:");
+  if (!force) {
+    console.error(
+      "Postgres already has data. Re-run with --force to replace it:",
+    );
+    for (const [table, count] of populatedTables) {
+      console.error(`- ${table}: ${count}`);
+    }
+    process.exit(1);
+  }
+
+  if (confirmed) return;
+
+  // --force on a populated database, without confirmation. Show the damage.
+  const total = populatedTables.reduce((sum, [, count]) => sum + count, 0);
+  console.error(
+    `Refusing to delete ${total} existing rows across ${populatedTables.length} tables:`,
+  );
   for (const [table, count] of populatedTables) {
     console.error(`- ${table}: ${count}`);
   }
+  console.error(
+    `
+This is not recoverable without a database backup. Every row above is
+` +
+      `replaced by the contents of the SQLite file, so anything entered since
+` +
+      `that snapshot is lost. If that is genuinely what you want, re-run with:
+
+` +
+      `  --force --confirm=${CONFIRM_PHRASE}
+`,
+  );
   process.exit(1);
 }
 

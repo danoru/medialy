@@ -15,10 +15,10 @@ import { recomputeMediaScores } from "@/lib/scoring/recompute";
 import { splitGenresAndTags } from "@/lib/taxonomy";
 import {
   fetchProviderDetails,
+  isProviderSource,
   isSearchableMediaType,
   searchProviders,
-  type ProviderCandidate,
-  type ProviderSource,
+  type ProviderSearchOutcome,
 } from "@/lib/metadata/providers";
 
 /**
@@ -43,7 +43,7 @@ import {
 export async function searchMediaProviders(
   query: string,
   mediaType: string | null,
-): Promise<ProviderCandidate[]> {
+): Promise<ProviderSearchOutcome> {
   await requireUser();
   const type = isSearchableMediaType(mediaType) ? mediaType : null;
   return searchProviders(query, type);
@@ -52,12 +52,12 @@ export async function searchMediaProviders(
 export async function addMediaFromProvider(formData: FormData) {
   const user = await requireUser();
 
-  const source = String(formData.get("source") ?? "") as ProviderSource;
+  const source = String(formData.get("source") ?? "");
   const sourceId = String(formData.get("sourceId") ?? "");
   const rawType = String(formData.get("mediaType") ?? "");
 
   if (
-    (source !== "tmdb" && source !== "rawg") ||
+    !isProviderSource(source) ||
     !sourceId ||
     !isSearchableMediaType(rawType)
   ) {

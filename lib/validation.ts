@@ -16,7 +16,10 @@ import type {
   MediaRelationInput,
   MediaReleaseEventInput,
 } from "@/lib/types";
-import { parseManualExternalRatings } from "@/lib/external-ratings";
+import {
+  parseManualExternalRatings,
+  parseManualExternalRatingRemovals,
+} from "@/lib/external-ratings";
 import { normalizeSearchText } from "@/lib/text-normalization";
 import {
   MAX_GENRES_PER_ITEM,
@@ -139,6 +142,10 @@ export function mediaFormInputFromFormData(formData: FormData): MediaFormInput {
     tags: parseSelectedTags(formData.get("tags")),
     credits: parseCreditsFromFormData(formData, mediaType),
     externalRatings: parseManualExternalRatings(formData, mediaType),
+    externalRatingRemovals: parseManualExternalRatingRemovals(
+      formData,
+      mediaType,
+    ),
     relations: parseStagedRelations(formData.get("relationsJson")),
     releaseEvents: parseStagedReleaseEvents(formData.get("releaseEventsJson")),
   };

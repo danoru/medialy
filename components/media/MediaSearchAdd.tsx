@@ -2,6 +2,7 @@
 
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -16,7 +17,11 @@ import {
   addMediaFromProvider,
   searchMediaProviders,
 } from "@/app/media/new/actions";
-import type { ProviderCandidate } from "@/lib/metadata/providers";
+import type {
+  ProviderCandidate,
+  ProviderIssue,
+  ProviderSearchOutcome,
+} from "@/lib/metadata/providers";
 import { formatMediaType } from "@/lib/format";
 import { SEARCHABLE_MEDIA_TYPES } from "@/lib/metadata/providers";
 
@@ -30,15 +35,14 @@ import { SEARCHABLE_MEDIA_TYPES } from "@/lib/metadata/providers";
 export function MediaSearchAdd({ manualHref }: { manualHref: string }) {
   const [query, setQuery] = useState("");
   const [mediaType, setMediaType] = useState<MediaType | "">("");
-  const [results, setResults] = useState<ProviderCandidate[] | null>(null);
+  const [outcome, setOutcome] = useState<ProviderSearchOutcome | null>(null);
   const [searching, startSearch] = useTransition();
   const [adding, startAdd] = useTransition();
 
   const runSearch = () => {
     if (query.trim().length < 2) return;
     startSearch(async () => {
-      const found = await searchMediaProviders(query, mediaType || null);
-      setResults(found);
+      setOutcome(await searchMediaProviders(query, mediaType || null));
     });
   };
 
@@ -108,10 +112,14 @@ export function MediaSearchAdd({ manualHref }: { manualHref: string }) {
         </Stack>
       ) : null}
 
-      {!searching && results != null ? (
-        results.length > 0 ? (
+      {!searching && outcome != null && outcome.issues.length > 0 ? (
+        <Alert severity="warning">{issueMessage(outcome.issues)}</Alert>
+      ) : null}
+
+      {!searching && outcome != null ? (
+        outcome.candidates.length > 0 ? (
           <Stack spacing={1}>
-            {results.map((candidate) => (
+            {outcome.candidates.map((candidate) => (
               <ResultRow
                 candidate={candidate}
                 disabled={adding}
@@ -126,8 +134,9 @@ export function MediaSearchAdd({ manualHref }: { manualHref: string }) {
               Nothing found for “{query}”.
             </Typography>
             <Typography color="text.secondary" variant="body2">
-              Check the spelling, or enter the details yourself — an admin will
-              review it before it joins the catalog.
+              {outcome.issues.length > 0
+                ? "Some searches couldn’t run, so this may not be the whole picture. You can still enter the details yourself — an admin will review it before it joins the catalog."
+                : "Check the spelling, or enter the details yourself — an admin will review it before it joins the catalog."}
             </Typography>
             <Button
               href={manualHref}
@@ -141,6 +150,25 @@ export function MediaSearchAdd({ manualHref }: { manualHref: string }) {
       ) : null}
     </Stack>
   );
+}
+
+/**
+ * A missing API key and a genuine miss look identical in a list of zero
+ * results, so name the searches that couldn't run. The wording stays
+ * user-facing — "isn't configured", not "RAWG_API_KEY is unset" — but it's
+ * enough of a signal to send an operator to the env vars rather than to the
+ * spelling of the title they just typed.
+ */
+function issueMessage(issues: ProviderIssue[]) {
+  const types = issues.map((issue) => formatMediaType(issue.mediaType));
+  const list =
+    types.length > 1
+      ? `${types.slice(0, -1).join(", ")} and ${types[types.length - 1]}`
+      : types[0];
+
+  return issues.every((issue) => issue.reason === "not_configured")
+    ? `${list} search isn’t configured on this server, so those results are missing.`
+    : `${list} search is temporarily unavailable, so those results are missing.`;
 }
 
 function ResultRow({

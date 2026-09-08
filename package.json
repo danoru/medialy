@@ -20,6 +20,7 @@
     "metadata:backfill": "tsx scripts/backfill-metadata.ts",
     "ratings:fetch": "node scripts/enrich-ratings.mjs",
     "ratings:recompute": "tsx scripts/recompute-ratings.ts",
+    "opencritic:fetch": "tsx scripts/enrich-opencritic.ts",
     "tags:cleanup:dry-run": "tsx scripts/cleanup-tags.ts",
     "tags:cleanup": "tsx scripts/cleanup-tags.ts --apply",
     "taxonomy:report": "tsx scripts/report-taxonomy-issues.ts",
