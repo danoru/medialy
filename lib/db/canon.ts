@@ -279,7 +279,7 @@ export function toCanonCandidate(
     title: row.title,
     mediaType: row.mediaType,
     posterUrl: row.posterUrl,
-    year: row.releaseDate ? new Date(row.releaseDate).getFullYear() : null,
+    year: row.releaseDate ? new Date(row.releaseDate).getUTCFullYear() : null,
     genres: [...genres],
     subgenres,
     leadCredit: pickLeadCredit(mediaType, row.credits ?? []),

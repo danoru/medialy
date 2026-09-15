@@ -64,19 +64,20 @@ describe("sortUpcomingItems", () => {
 describe("upcoming labels", () => {
   const now = new Date("2026-05-13T15:30:00");
 
+  // Release dates are stored as UTC midnight (what `new Date("YYYY-MM-DD")`
+  // yields), so the label must read the UTC calendar date regardless of the
+  // viewer's timezone offset.
   it("formats relative date labels from the start of today", () => {
+    expect(formatUpcomingRelativeLabel("2026-05-13", now)).toBe("Today");
+    expect(formatUpcomingRelativeLabel("2026-05-14", now)).toBe("Tomorrow");
+    expect(formatUpcomingRelativeLabel("2026-05-25", now)).toBe("In 12 days");
+    expect(formatUpcomingRelativeLabel("2026-05-10", now)).toBe("3 days ago");
+  });
+
+  it("does not shift a stored calendar date by the local timezone offset", () => {
     expect(
-      formatUpcomingRelativeLabel(new Date("2026-05-13T23:00:00"), now),
-    ).toBe("Today");
-    expect(
-      formatUpcomingRelativeLabel(new Date("2026-05-14T00:00:00"), now),
+      formatUpcomingRelativeLabel(new Date("2026-05-14T00:00:00.000Z"), now),
     ).toBe("Tomorrow");
-    expect(
-      formatUpcomingRelativeLabel(new Date("2026-05-25T00:00:00"), now),
-    ).toBe("In 12 days");
-    expect(
-      formatUpcomingRelativeLabel(new Date("2026-05-10T00:00:00"), now),
-    ).toBe("3 days ago");
   });
 
   it("returns local midnight for start of today", () => {

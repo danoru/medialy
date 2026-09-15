@@ -18,6 +18,7 @@ import Link from "next/link";
 import type { MediaType, RelationKind, ReleaseKind } from "@prisma/client";
 import { useState, useTransition } from "react";
 import { formatMediaType } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/date-labels";
 import {
   RELATION_FORWARD_LABEL,
   RELATION_INVERSE_LABEL,
@@ -344,7 +345,7 @@ function ReleaseEventsSection({
                 sx={{ ml: "auto", whiteSpace: "nowrap" }}
                 variant="body2"
               >
-                {new Date(event.date).toLocaleDateString()}
+                {formatCalendarDate(event.date)}
               </Typography>
               {canEdit ? (
                 <IconButton

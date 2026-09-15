@@ -46,6 +46,7 @@ import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
 import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
 import { formatMediaType, mediaTypeNoun } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/date-labels";
 import {
   RELATION_FORWARD_LABEL,
   RELATION_INVERSE_LABEL,
@@ -192,13 +193,11 @@ export function MediaDetailView({
 
   const genres = item.genres.map((entry) => entry.genre.name);
   const tags = item.tags.map((entry) => entry.tag.name);
-  const releaseLabel = item.releaseDate
-    ? item.releaseDate.toLocaleDateString(undefined, {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
-    : null;
+  const releaseLabel = formatCalendarDate(item.releaseDate, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
   const yearLabel = item.releaseDate
     ? String(item.releaseDate.getUTCFullYear())
     : null;
@@ -563,7 +562,7 @@ export function MediaDetailView({
                         sx={{ ml: "auto", whiteSpace: "nowrap" }}
                         variant="body2"
                       >
-                        {new Date(event.date).toLocaleDateString()}
+                        {formatCalendarDate(event.date)}
                       </Typography>
                     </Box>
                   ))}

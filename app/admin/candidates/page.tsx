@@ -18,6 +18,7 @@ import {
 } from "@/app/upcoming/actions";
 import { prisma } from "@/lib/prisma";
 import { formatMediaType } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/date-labels";
 import {
   isVisibleMediaType,
   VISIBLE_MEDIA_TYPES,
@@ -192,7 +193,7 @@ function CandidateRow({ candidate }: { candidate: ReleaseCandidateItem }) {
         <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.6, mt: 0.8 }}>
           <Chip
             label={
-              candidate.releaseDate?.toLocaleDateString() ?? "Date unknown"
+              formatCalendarDate(candidate.releaseDate) ?? "Date unknown"
             }
             size="small"
           />

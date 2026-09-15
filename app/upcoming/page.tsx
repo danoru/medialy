@@ -15,6 +15,11 @@ import Link from "next/link";
 import type { MediaStatus, MediaType, ReleaseKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatMediaType } from "@/lib/format";
+import {
+  calendarIsoDate,
+  calendarMonthKey,
+  formatCalendarDate,
+} from "@/lib/date-labels";
 import { statusLabel } from "@/lib/status-labels";
 import { RELEASE_KIND_LABEL } from "@/lib/media-relations";
 import {
@@ -172,7 +177,7 @@ export default async function UpcomingPage({
   const calendarReleases: CalendarRelease[] = entries.map((entry) => ({
     id: entry.id,
     title: entry.title,
-    date: isoDate(entry.releaseDate),
+    date: calendarIsoDate(entry.releaseDate),
     mediaType: entry.mediaType,
     posterUrl: entry.posterUrl,
     genres: entry.genres,
@@ -182,8 +187,8 @@ export default async function UpcomingPage({
   }));
 
   const initialMonth = entries[0]?.releaseDate
-    ? monthKey(entries[0].releaseDate)
-    : monthKey(now);
+    ? calendarMonthKey(entries[0].releaseDate)
+    : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
   return (
     <Stack spacing={2.5}>
@@ -309,7 +314,7 @@ function ReleaseRow({
   return (
     <Stack
       direction={{ xs: "column", sm: "row" }}
-      id={`date-${isoDate(releaseDate)}`}
+      id={`date-${calendarIsoDate(releaseDate)}`}
       spacing={1.5}
       sx={{
         alignItems: { sm: "center" },
@@ -365,7 +370,7 @@ function ReleaseRow({
             sx={{ whiteSpace: "nowrap" }}
             variant="body2"
           >
-            {releaseDate.toLocaleDateString()}
+            {formatCalendarDate(releaseDate)}
           </Typography>
           <Typography
             color="text.secondary"
@@ -421,19 +426,6 @@ function modeHref(type: MediaType, mode: "upcoming" | "released") {
   return mode === "released"
     ? `/upcoming?type=${type}&mode=released`
     : `/upcoming?type=${type}`;
-}
-
-function isoDate(value: Date | string) {
-  const date = value instanceof Date ? value : new Date(value);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function monthKey(value: Date | string) {
-  const date = value instanceof Date ? value : new Date(value);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
 function stringParam(value: string | string[] | undefined) {

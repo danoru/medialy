@@ -1,3 +1,5 @@
+import { calendarDateToLocal } from "@/lib/date-labels";
+
 export type UpcomingDatedItem = {
   title: string;
   releaseDate?: Date | string | null;
@@ -32,7 +34,7 @@ export function recentlyReleasedSince(
 
 export function daysFromToday(date: Date | string, now = new Date()) {
   const today = startOfToday(now);
-  const target = startOfToday(new Date(date));
+  const target = calendarDateToLocal(date);
 
   return Math.round((target.getTime() - today.getTime()) / DAY_MS);
 }

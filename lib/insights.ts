@@ -402,7 +402,7 @@ export async function getDataHealthReport(
 
   for (const item of dtos) {
     const year = item.releaseDate
-      ? new Date(item.releaseDate).getFullYear()
+      ? new Date(item.releaseDate).getUTCFullYear()
       : "unknown";
     const key = `${normalizeComparableTitle(item.title)}::${item.mediaType}::${year}`;
     duplicateGroups.set(key, [...(duplicateGroups.get(key) ?? []), item]);
@@ -485,7 +485,7 @@ export async function getDataHealthCounts(
   const dupGroups = new Map<string, number>();
   for (const item of dupRows) {
     const year = item.releaseDate
-      ? new Date(item.releaseDate).getFullYear()
+      ? new Date(item.releaseDate).getUTCFullYear()
       : "unknown";
     const key = `${normalizeComparableTitle(item.title)}::${item.mediaType}::${year}`;
     dupGroups.set(key, (dupGroups.get(key) ?? 0) + 1);
