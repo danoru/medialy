@@ -4,31 +4,25 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import { useMemo, useState } from "react";
-import {
-  Box,
-  Button,
-  Stack,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from "@mui/material";
+import { Box, Button, Stack, Typography } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha } from "@mui/material/styles";
 import type { MediaType } from "@prisma/client";
 import Link from "next/link";
-import { DashboardSection } from "@/components/cinematic/CinematicPrimitives";
+import {
+  DashboardSection,
+  panelActionSx,
+} from "@/components/cinematic/CinematicPrimitives";
+import {
+  MediaTypeTabs,
+  SWITCHER_MEDIA_TYPES,
+} from "@/components/dashboard/MediaTypeTabs";
 import { ReleaseRadar } from "@/components/dashboard/ReleaseRadar";
+import { RankedPosterTile } from "@/components/media/RankedPosterTile";
 import { formatMediaType } from "@/lib/format";
 import type { MediaItemDTO } from "@/lib/types";
 import { releaseYearLabel } from "@/lib/date-labels";
-import {
-  mediaAccent,
-  mediaTypeIcon,
-  posterFallback,
-  shortMediaTypeLabel,
-} from "@/lib/media-ui-helpers";
-import { PosterTile } from "@/components/media/PosterCard";
-import { ScoreBadge as PosterScoreBadge } from "@/components/media/ScoreDisplay";
+import { mediaAccent, posterFallback } from "@/lib/media-ui-helpers";
 import CollectionsBookmarkIcon from "@mui/icons-material/CollectionsBookmark";
 import type { CollectionSummary } from "@/lib/db/collections";
 
@@ -60,25 +54,8 @@ type DashboardData = {
   }>;
 };
 
-const dashboardMediaTypes: MediaType[] = ["MOVIE", "TV_SHOW", "VIDEO_GAME"];
-
 /** Featured collections fill a 2×2 grid; extras live behind "Browse all". */
 const FEATURED_COLLECTION_COUNT = 4;
-
-// 1b's header link: peach, arrowed, sitting at the end of the hairline rule.
-// The `.MuiButton-text` qualifier out-specifies the theme's text-button
-// override, which would otherwise pin these to text.primary.
-const panelActionSx: SxProps<Theme> = {
-  flexShrink: 0,
-  fontSize: "0.875rem",
-  fontWeight: 550,
-  minHeight: 44,
-  px: 1,
-  "&.MuiButton-text": {
-    color: "primary.main",
-    "&:hover": { bgcolor: "transparent", color: "primary.light" },
-  },
-};
 
 export function DashboardClient({
   collections,
@@ -97,7 +74,7 @@ export function DashboardClient({
   // empty hero.
   const [mediaType, setMediaType] = useState<MediaType>(
     () =>
-      dashboardMediaTypes.find((candidate) =>
+      SWITCHER_MEDIA_TYPES.find((candidate) =>
         data.tonightPicksByMediaType.some(
           (entry) => entry.mediaType === candidate && entry.recommendations[0],
         ),
@@ -676,58 +653,6 @@ function OnDarkChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-/**
- * A top-10 poster with its rank set in display type above the artwork —
- * №1 in the brand accent, the chasing pack in muted neutral so the shape of
- * the ranking reads before any title does.
- */
-function RankedPosterTile({
-  item,
-  rank,
-  score,
-}: {
-  item: MediaItemDTO;
-  rank: number;
-  score: number;
-}) {
-  // The page is already filtered to one media type, so the year alone carries
-  // the caption — repeating "Movie" ten times says nothing.
-  const releaseYear = releaseYearLabel(item.releaseDate);
-  return (
-    <Box sx={{ minWidth: 0, position: "relative", pt: 2.75 }}>
-      <Typography
-        component="span"
-        sx={{
-          color: (theme) =>
-            rank === 1
-              ? theme.palette.primary.main
-              : alpha(theme.palette.text.primary, 0.32),
-          fontFamily: (theme) => theme.typography.displayHero.fontFamily,
-          fontSize: "2.125rem",
-          fontWeight: 700,
-          left: 2,
-          letterSpacing: "-0.04em",
-          lineHeight: 1,
-          position: "absolute",
-          top: 0,
-          zIndex: 2,
-        }}
-      >
-        {rank}
-      </Typography>
-      <PosterTile
-        item={item}
-        meta={releaseYear ? [releaseYear] : undefined}
-        scoreBadge={
-          typeof score === "number" ? (
-            <PosterScoreBadge score={score} />
-          ) : undefined
-        }
-      />
-    </Box>
-  );
-}
-
 function FeaturedCollectionsPanel({
   collections,
 }: {
@@ -858,80 +783,6 @@ function CollectionCoverCard({
         {meta}
       </Typography>
     </Box>
-  );
-}
-
-function MediaTypeTabs({
-  onChange,
-  value,
-}: {
-  onChange: (value: MediaType) => void;
-  value: MediaType;
-}) {
-  return (
-    <ToggleButtonGroup
-      aria-label="Media type"
-      exclusive
-      onChange={(_, nextValue: MediaType | null) => {
-        if (nextValue) onChange(nextValue);
-      }}
-      size="small"
-      sx={{
-        bgcolor: "surface.1",
-        border: "1px solid",
-        borderColor: "border.subtle",
-        borderRadius: 2,
-        display: "inline-flex",
-        gap: 0.25,
-        p: 0.35,
-        width: "max-content",
-        "& .MuiToggleButton-root": {
-          border: 0,
-          borderRadius: 1.5,
-          color: "text.secondary",
-          gap: 0.6,
-          minHeight: 44,
-          px: 1,
-          py: 0.4,
-          textTransform: "none",
-          whiteSpace: "nowrap",
-          "&.Mui-selected": {
-            bgcolor: "background.paper",
-            color: "text.primary",
-            boxShadow: (theme) => theme.shadows[1],
-            "&:hover": { bgcolor: "background.paper" },
-          },
-        },
-      }}
-      value={value}
-    >
-      {dashboardMediaTypes.map((mediaType) => {
-        const accent = mediaAccent(mediaType);
-        return (
-          <ToggleButton
-            key={mediaType}
-            value={mediaType}
-            sx={{
-              borderLeft: `2px solid ${alpha(accent, 0.35)} !important`,
-              "& svg": { color: accent },
-              "&.Mui-selected": {
-                bgcolor: `${alpha(accent, 0.18)} !important`,
-                borderLeft: `2px solid ${accent} !important`,
-                color: `${accent} !important`,
-              },
-            }}
-          >
-            {mediaTypeIcon(mediaType)}
-            <Typography
-              component="span"
-              sx={{ fontSize: "0.875rem", fontWeight: 550 }}
-            >
-              {shortMediaTypeLabel(mediaType)}
-            </Typography>
-          </ToggleButton>
-        );
-      })}
-    </ToggleButtonGroup>
   );
 }
 

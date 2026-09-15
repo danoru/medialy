@@ -2,8 +2,24 @@
 import type { ReactNode } from "react";
 import { Box, Card, CardContent, Stack, Typography } from "@mui/material";
 import type { CardProps } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha, styled, useTheme } from "@mui/material/styles";
 import { ACCENTS } from "@/lib/media-ui-helpers";
+
+// 1b's header link: peach, arrowed, sitting at the end of the hairline rule.
+// The `.MuiButton-text` qualifier out-specifies the theme's text-button
+// override, which would otherwise pin these to text.primary.
+export const panelActionSx: SxProps<Theme> = {
+  flexShrink: 0,
+  fontSize: "0.875rem",
+  fontWeight: 550,
+  minHeight: 44,
+  px: 1,
+  "&.MuiButton-text": {
+    color: "primary.main",
+    "&:hover": { bgcolor: "transparent", color: "primary.light" },
+  },
+};
 
 // Legacy token export. These now serve as fallback constants for code that
 // still imports `noirTokens` directly. Prefer reading from the MUI theme
