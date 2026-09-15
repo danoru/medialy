@@ -20,8 +20,10 @@ import type { ReactElement, ReactNode } from "react";
 import {
   Box,
   Button,
+  Checkbox,
   Chip,
   Divider,
+  FormControlLabel,
   MenuItem,
   Stack,
   TextField,
@@ -32,6 +34,7 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha } from "@mui/material/styles";
 import {
   addNote,
+  setMediaCompletedAt,
   setMediaWatched,
   toggleFavoriteMediaItem,
   updateMediaRating,
@@ -46,7 +49,7 @@ import { Sparkline } from "@/components/shared/Sparkline";
 import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
 import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
 import { formatMediaType, mediaTypeNoun } from "@/lib/format";
-import { formatCalendarDate } from "@/lib/date-labels";
+import { calendarIsoDate, formatCalendarDate } from "@/lib/date-labels";
 import {
   RELATION_FORWARD_LABEL,
   RELATION_INVERSE_LABEL,
@@ -356,6 +359,9 @@ export function MediaDetailView({
 
             {userId ? (
               <ActionRow
+                completedAt={item.completedAt}
+                completedAtAction={setMediaCompletedAt.bind(null, item.id)}
+                completedAtUnsure={item.completedAtUnsure}
                 editHref={`/media/${item.id}/edit`}
                 favoriteAction={toggleFavoriteMediaItem.bind(null, item.id)}
                 isFavorite={item.isFavorite}
@@ -843,7 +849,18 @@ export function MediaDetailView({
 // Letterboxd-style: the two things you actually came to do — say you watched it
 // and say how much you liked it — are always visible, one tap each. No dialog.
 // The status select is the escape hatch for everything that isn't "watched".
+function todayLocalIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function ActionRow({
+  completedAt,
+  completedAtAction,
+  completedAtUnsure,
   editHref,
   favoriteAction,
   isFavorite,
@@ -855,6 +872,9 @@ function ActionRow({
   statusAction,
   title,
 }: {
+  completedAt: Date | string | null;
+  completedAtAction: (formData: FormData) => void | Promise<void>;
+  completedAtUnsure: boolean;
   editHref: string;
   favoriteAction: () => void | Promise<void>;
   isFavorite: boolean;
@@ -870,13 +890,33 @@ function ActionRow({
   const [watched, setWatched] = useState(status === "COMPLETED");
   const [selectedStatus, setSelectedStatus] = useState<MediaStatus>(status);
   const statusFormRef = useRef<HTMLFormElement>(null);
+  const completedAtFormRef = useRef<HTMLFormElement>(null);
+  const [completedAtValue, setCompletedAtValue] = useState(
+    completedAt ? calendarIsoDate(completedAt) : "",
+  );
+  const [completedAtUnsureValue, setCompletedAtUnsureValue] =
+    useState(completedAtUnsure);
 
   const watchedLabel = statusLabel("COMPLETED", mediaType);
+
+  // The server stamps today's date when a status write lands on COMPLETED
+  // (see `writeStatus` in app/media/actions.ts). Mirror that here so the
+  // date field doesn't sit empty until the next page load.
+  const defaultCompletedAtToday = (nextStatus: MediaStatus) => {
+    if (
+      nextStatus === "COMPLETED" &&
+      !completedAtValue &&
+      !completedAtUnsureValue
+    ) {
+      setCompletedAtValue(todayLocalIsoDate());
+    }
+  };
 
   const toggleWatched = () => {
     const next = !watched;
     setWatched(next);
     setSelectedStatus(next ? "COMPLETED" : "UNTRACKED");
+    defaultCompletedAtToday(next ? "COMPLETED" : "UNTRACKED");
     startTransition(async () => {
       await setMediaWatched(mediaId, next);
     });
@@ -942,6 +982,7 @@ function ActionRow({
             const next = event.target.value as MediaStatus;
             setSelectedStatus(next);
             setWatched(next === "COMPLETED");
+            defaultCompletedAtToday(next);
             window.requestAnimationFrame(() => {
               statusFormRef.current?.requestSubmit();
             });
@@ -958,6 +999,64 @@ function ActionRow({
           ))}
         </TextField>
       </Box>
+
+      {selectedStatus === "COMPLETED" ? (
+        <Box action={completedAtAction} component="form" ref={completedAtFormRef}>
+          <Stack
+            direction="row"
+            sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}
+          >
+            <TextField
+              disabled={completedAtUnsureValue}
+              label={`${statusLabel("COMPLETED", mediaType)} on`}
+              name="completedAt"
+              onChange={(event) => {
+                const value = event.target.value;
+                setCompletedAtValue(value);
+                if (value === "" || /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                  window.requestAnimationFrame(() => {
+                    completedAtFormRef.current?.requestSubmit();
+                  });
+                }
+              }}
+              size="small"
+              slotProps={{
+                htmlInput: { max: todayLocalIsoDate() },
+                inputLabel: { shrink: true },
+              }}
+              sx={{ maxWidth: 260 }}
+              type="date"
+              value={completedAtValue}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={completedAtUnsureValue}
+                  name="unsure"
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setCompletedAtUnsureValue(checked);
+                    if (checked) {
+                      setCompletedAtValue("");
+                    }
+                    window.requestAnimationFrame(() => {
+                      completedAtFormRef.current?.requestSubmit();
+                    });
+                  }}
+                />
+              }
+              label="Not sure"
+            />
+          </Stack>
+          <Typography color="text.secondary" variant="body2">
+            {completedAtValue
+              ? null
+              : completedAtUnsureValue
+                ? "No date, and that's fine."
+                : "Add the date if you remember it, or tick Not sure."}
+          </Typography>
+        </Box>
+      ) : null}
     </Stack>
   );
 }

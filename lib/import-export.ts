@@ -19,6 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
 import { requireUserId } from "@/lib/user";
 import { upsertUserMedia } from "@/lib/db/user-media";
+import { parseCompletedAtInput } from "@/lib/completion";
 import type {
   CsvMediaRow,
   ImportPreview,
@@ -259,6 +260,7 @@ export async function buildMediaCsvExport() {
     "publishers",
     "description",
     "externalUrl",
+    "completedAt",
   ];
   const rows = items.map((item) => {
     const um = item.userMedia[0];
@@ -276,6 +278,7 @@ export async function buildMediaCsvExport() {
       creditNames(item.credits, "PUBLISHER"),
       item.description ?? "",
       item.externalUrl ?? "",
+      formatDate(um?.completedAt ?? null),
     ]
       .map(csvEscape)
       .join(",");
@@ -426,6 +429,11 @@ export function mediaInputFromLetterboxdRow(
     externalUrl: sanitizeExternalUrl(uri),
     metadataJson: JSON.stringify(metadata),
     personalRating: rating ? parseLetterboxdRating(rating) : null,
+    // Letterboxd's "Date" is when the row was logged — for watched.csv and
+    // ratings.csv that is the day you marked it watched, which is the closest
+    // thing to a completion date an export carries.
+    completedAt:
+      role === "watchlist" ? null : (parseCompletedAtInput(addedDate) ?? null),
     isFavorite: false,
     genres: [],
     tags: [],
@@ -502,6 +510,7 @@ function mergeLetterboxdInputs(
     personalRating: next.personalRating ?? previous.personalRating,
     externalUrl: next.externalUrl || previous.externalUrl,
     releaseDate: next.releaseDate ?? previous.releaseDate,
+    completedAt: next.completedAt ?? previous.completedAt,
   };
 }
 
@@ -959,17 +968,34 @@ async function upsertUserMediaWithStrategy(
 
   const existing = await tx.userMedia.findUnique({
     where: { userId_mediaId: { userId, mediaId } },
-    select: { status: true, personalRating: true, isFavorite: true },
+    select: {
+      status: true,
+      personalRating: true,
+      isFavorite: true,
+      completedAt: true,
+      completedAtUnsure: true,
+    },
   });
   const incoming = userMediaMutationData(input);
+  const status =
+    existing && existing.status !== "UNTRACKED" ? existing.status : incoming.status;
+  // Fill a blank completion date only; a date the user set, or an explicit
+  // "not sure", is theirs to keep.
+  const completedAt =
+    status === "COMPLETED" &&
+    incoming.completedAt != null &&
+    !existing?.completedAt &&
+    !existing?.completedAtUnsure
+      ? incoming.completedAt
+      : undefined;
   const data = {
-    status:
-      existing && existing.status !== "UNTRACKED" ? existing.status : incoming.status,
+    status,
     personalRating:
       existing && existing.personalRating != null
         ? existing.personalRating
         : incoming.personalRating,
     isFavorite: existing ? existing.isFavorite || incoming.isFavorite : incoming.isFavorite,
+    ...(completedAt ? { completedAt } : {}),
   };
   await upsertUserMedia(userId, mediaId, data, tx);
 }

@@ -44,6 +44,10 @@ export type MediaItemDTO = {
   comparisonCount: number;
   isFavorite: boolean;
   isArchived: boolean;
+  /** Calendar date you finished it (UTC midnight), or null. See `lib/completion.ts`. */
+  completedAt?: Date | string | null;
+  /** You explicitly said you are not sure when you finished it. */
+  completedAtUnsure?: boolean;
   updatedAt?: Date | string;
   genres: string[];
   tags: string[];
@@ -80,6 +84,11 @@ export type MediaFormInput = {
   personalRating?: number | null;
   /** Import-only. The edit/create form does not collect this. */
   isFavorite?: boolean;
+  /**
+   * Import-only: the date a source says you finished it (Letterboxd's diary
+   * "Date"), as UTC midnight. Only written alongside a COMPLETED status.
+   */
+  completedAt?: Date | null;
   genres: string[];
   tags: string[];
   credits?: Array<{

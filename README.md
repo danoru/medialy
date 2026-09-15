@@ -32,6 +32,7 @@ npm run prisma:deploy
 npm run candidates:fetch
 npm run upcoming:fetch
 npm run posters:backfill
+npm run completed-at:backfill -- --user <userId>
 npm run ratings:fetch
 npm run opencritic:fetch
 ```
@@ -115,6 +116,10 @@ practice:
 - **Imports fill blanks too.** Re-importing a Letterboxd CSV with no description
   will not clear the description you wrote, and genres/tags/credits are merged
   additively into existing items rather than replacing them.
+- **`completed-at:backfill` fills blanks only.** It stamps `UserMedia.completedAt`
+  from a single user's historical Letterboxd diary dates and is dry-run by
+  default; it never touches a row that already has a date or was marked "not
+  sure".
 
 Two commands _are_ destructive by design, and both say so before acting:
 

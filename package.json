@@ -18,6 +18,7 @@
     "prisma:migrate": "prisma migrate dev",
     "posters:backfill": "tsx scripts/backfill-posters.ts",
     "metadata:backfill": "tsx scripts/backfill-metadata.ts",
+    "completed-at:backfill": "tsx scripts/backfill-completed-at.ts",
     "ratings:fetch": "node scripts/enrich-ratings.mjs",
     "ratings:recompute": "tsx scripts/recompute-ratings.ts",
     "opencritic:fetch": "tsx scripts/enrich-opencritic.ts",

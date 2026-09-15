@@ -113,6 +113,13 @@ model UserMedia {
   comparisonCount         Int         @default(0)
   isFavorite              Boolean     @default(false)
   isArchived              Boolean     @default(false)
+  /// Calendar date (UTC midnight) the user finished this title. Stamped with
+  /// today when a row becomes COMPLETED; editable afterwards. Null when
+  /// undated or when the user said they are not sure (see below).
+  completedAt             DateTime?
+  /// The user explicitly answered "not sure" for `completedAt`. Distinguishes
+  /// a deliberate unknown from a row that was never asked.
+  completedAtUnsure       Boolean     @default(false)
   createdAt               DateTime    @default(now())
   updatedAt               DateTime    @updatedAt
 
@@ -125,6 +132,7 @@ model UserMedia {
   @@index([userId, status])
   @@index([userId, pairwiseScore])
   @@index([userId, computedPersonalScore])
+  @@index([userId, completedAt])
 }
 
 model ExternalRating {

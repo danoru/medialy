@@ -22,6 +22,9 @@ export type UserMediaFields = {
   comparisonCount: number;
   isFavorite: boolean;
   isArchived: boolean;
+  /** See `lib/completion.ts`. */
+  completedAt: Date | null;
+  completedAtUnsure: boolean;
 };
 
 /**
@@ -37,11 +40,13 @@ export const DEFAULT_USER_MEDIA: UserMediaFields = {
   comparisonCount: 0,
   isFavorite: false,
   isArchived: false,
+  completedAt: null,
+  completedAtUnsure: false,
 };
 
 export type WithUserMedia<T> = T & { userMedia: UserMediaFields[] };
 
-/** The eight `UserMediaFields` as a Prisma `select`, for projected reads. */
+/** The `UserMediaFields` as a Prisma `select`, for projected reads. */
 const USER_MEDIA_FIELD_SELECT = {
   status: true,
   personalRating: true,
@@ -51,6 +56,8 @@ const USER_MEDIA_FIELD_SELECT = {
   comparisonCount: true,
   isFavorite: true,
   isArchived: true,
+  completedAt: true,
+  completedAtUnsure: true,
 } as const;
 
 /**
@@ -110,6 +117,8 @@ export function mergeUserMedia<T extends { userMedia: UserMediaFields[] }>(
         comparisonCount: row.comparisonCount,
         isFavorite: row.isFavorite,
         isArchived: row.isArchived,
+        completedAt: row.completedAt,
+        completedAtUnsure: row.completedAtUnsure,
       }
     : { ...DEFAULT_USER_MEDIA };
 

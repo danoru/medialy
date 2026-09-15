@@ -24,7 +24,11 @@ import {
   mediaFormInputFromFormData,
   parseOptionalRating,
 } from "@/lib/validation";
-import { upsertUserMedia } from "@/lib/db/user-media";
+import { DEFAULT_USER_MEDIA, upsertUserMedia } from "@/lib/db/user-media";
+import {
+  completionFromForm,
+  completionPatchForStatus,
+} from "@/lib/completion";
 import { requireUser, requireUserId } from "@/lib/user";
 import { inputToSnapshot, snapshotMediaItem } from "@/lib/edit-suggestions";
 import { statusAfterRating } from "@/lib/status-rules";
@@ -207,7 +211,7 @@ export async function updateMediaRating(
 
   const existing = await prisma.userMedia.findUnique({
     where: { userId_mediaId: { userId, mediaId: id } },
-    select: { status: true },
+    select: { status: true, completedAt: true, completedAtUnsure: true },
   });
   const previousStatus: MediaStatus = existing?.status ?? "UNTRACKED";
 
@@ -218,7 +222,16 @@ export async function updateMediaRating(
 
   await upsertUserMedia(userId, id, {
     personalRating,
-    ...(promoted ? { status: promoted } : {}),
+    ...(promoted
+      ? {
+          status: promoted,
+          ...completionPatchForStatus(
+            previousStatus,
+            promoted,
+            existing ?? DEFAULT_USER_MEDIA,
+          ),
+        }
+      : {}),
   });
   await recomputeMediaScores(id, userId);
   revalidateUserMediaViews(id);
@@ -239,7 +252,7 @@ export async function updateMediaStatus(id: string, formData: FormData) {
   }
 
   const userId = await requireUserId();
-  await upsertUserMedia(userId, id, { status });
+  await writeStatus(userId, id, status);
   revalidateUserMediaViews(id);
 }
 
@@ -247,7 +260,7 @@ export async function updateMediaStatus(id: string, formData: FormData) {
 export async function setMediaStatus(id: string, status: MediaStatus) {
   if (!isMediaStatus(status)) return;
   const userId = await requireUserId();
-  await upsertUserMedia(userId, id, { status });
+  await writeStatus(userId, id, status);
   revalidateUserMediaViews(id);
 }
 
@@ -258,9 +271,52 @@ export async function setMediaStatus(id: string, status: MediaStatus) {
  */
 export async function setMediaWatched(id: string, watched: boolean) {
   const userId = await requireUserId();
-  await upsertUserMedia(userId, id, {
-    status: watched ? "COMPLETED" : "UNTRACKED",
+  await writeStatus(userId, id, watched ? "COMPLETED" : "UNTRACKED");
+  revalidateUserMediaViews(id);
+}
+
+/**
+ * Every status write goes through here so the completion date follows the
+ * status: becoming COMPLETED stamps today, leaving it clears the date.
+ */
+async function writeStatus(userId: string, mediaId: string, status: MediaStatus) {
+  const existing = await prisma.userMedia.findUnique({
+    where: { userId_mediaId: { userId, mediaId } },
+    select: { status: true, completedAt: true, completedAtUnsure: true },
   });
+  await upsertUserMedia(userId, mediaId, {
+    status,
+    ...completionPatchForStatus(
+      existing?.status ?? "UNTRACKED",
+      status,
+      existing ?? DEFAULT_USER_MEDIA,
+    ),
+  });
+}
+
+/**
+ * The "Completed on" control: a calendar date (`completedAt`, "YYYY-MM-DD"),
+ * or "not sure" (`unsure` checked), or blank to leave the title undated.
+ */
+export async function setMediaCompletedAt(id: string, formData: FormData) {
+  const resolved = completionFromForm({
+    completedAt: formData.get("completedAt"),
+    unsure: formData.get("unsure") != null,
+  });
+  if ("error" in resolved) {
+    await queueToast(resolved.error, "error");
+    return;
+  }
+  const userId = await requireUserId();
+  const existing = await prisma.userMedia.findUnique({
+    where: { userId_mediaId: { userId, mediaId: id } },
+    select: { status: true },
+  });
+  if (existing?.status !== "COMPLETED") {
+    await queueToast("Mark it as finished first.", "error");
+    return;
+  }
+  await upsertUserMedia(userId, id, resolved);
   revalidateUserMediaViews(id);
 }
 

@@ -550,12 +550,18 @@ export function userMediaMutationData(input: MediaFormInput) {
     status?: MediaStatus;
     personalRating?: number | null;
     isFavorite?: boolean;
+    completedAt?: Date | null;
   } = {};
   if (input.status !== undefined) data.status = input.status;
   if (input.personalRating !== undefined) {
     data.personalRating = input.personalRating;
   }
   if (input.isFavorite !== undefined) data.isFavorite = input.isFavorite;
+  // A completion date only makes sense on a completed title; an import that
+  // says "watched on the 3rd" but lands as WATCHLIST keeps the date out.
+  if (input.completedAt != null && input.status === "COMPLETED") {
+    data.completedAt = input.completedAt;
+  }
   return data;
 }
 
