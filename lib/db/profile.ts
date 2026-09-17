@@ -45,11 +45,18 @@ const tileSelect = {
 
 export type ProfileRanked = { media: ProfileTile; score: number | null };
 
+/**
+ * Everything the page's media-type switcher drives. Each panel that shows
+ * titles is scoped here, so flipping to TV changes the whole page, not just
+ * the banner.
+ */
 export type ProfileTypeSection = {
   mediaType: MediaType;
-  /** Your top-ranked title of this type, or null before any comparison. */
-  hero: (ProfileRanked & { wins: number; losses: number }) | null;
+  /** Your highest-scored title of this type, or null before any rating. */
+  hero: ProfileRanked | null;
   topItems: ProfileRanked[];
+  favorites: ProfileTile[];
+  recentActivity: ProfileActivity[];
   ratings: RatingHistogram;
 };
 
@@ -71,8 +78,6 @@ export type ProfileData = {
     /** Every pairwise comparison you have made. */
     compared: number;
   };
-  favorites: ProfileTile[];
-  recentActivity: ProfileActivity[];
   byType: ProfileTypeSection[];
   taste: {
     lenses: LensShare[];
@@ -149,18 +154,22 @@ export async function getProfileData(): Promise<ProfileData> {
         },
       },
     }),
-    prisma.pairwiseComparison.findMany({
-      where: { userId: user.id, winner: { mediaType } },
-      orderBy: { createdAt: "desc" },
-      take: ACTIVITY_SHOWN,
-      select: {
-        id: true,
-        createdAt: true,
-        context: true,
-        winner: { select: tileSelect },
-        loser: { select: tileSelect },
-      },
-    }),
+    Promise.all(
+      VISIBLE_MEDIA_TYPES.map((type) =>
+        prisma.pairwiseComparison.findMany({
+          where: { userId: user.id, winner: { mediaType: type } },
+          orderBy: { createdAt: "desc" },
+          take: ACTIVITY_SHOWN,
+          select: {
+            id: true,
+            createdAt: true,
+            context: true,
+            winner: { select: tileSelect },
+            loser: { select: tileSelect },
+          },
+        }),
+      ),
+    ),
     prisma.pairwiseComparison.groupBy({
       by: ["context"],
       where: { userId: user.id, winner: { mediaType } },
@@ -216,82 +225,46 @@ export async function getProfileData(): Promise<ProfileData> {
     compared: comparisonCount,
   };
 
-  const favorites = library
-    .filter((row) => row.isFavorite)
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-    .slice(0, FAVORITES_SHOWN)
-    .map((row) => row.media);
-
-  const recentActivity = mergeActivity(
-    library,
-    recentComparisons,
-    ACTIVITY_SHOWN,
-  );
-
-  // Per-type ranking and ratings. The ranking is your pairwise ladder, but a
-  // title that has only won once or twice hasn't earned the top spot yet, so
-  // titles with enough comparisons rank ahead of the rest whatever their
-  // score. The badge shows the refined personal score when one exists.
-  const byTypeBase = VISIBLE_MEDIA_TYPES.map((type) => {
+  // Per-type panels. The ranking is your personal score — the refined score
+  // where one exists (comparisons already feed it), else the raw rating — so
+  // it is the same number the badge shows and it moves as you compare more.
+  const byType: ProfileTypeSection[] = VISIBLE_MEDIA_TYPES.map((type, index) => {
     const rows = library.filter((row) => row.media.mediaType === type);
-    const settled = (row: { comparisonCount: number }) =>
-      row.comparisonCount >= RANKED_COMPARISON_TARGET ? 1 : 0;
     const topItems = rows
-      .filter((row) => row.comparisonCount > 0)
-      .sort(
-        (a, b) =>
-          settled(b) - settled(a) || b.pairwiseScore - a.pairwiseScore,
-      )
-      .slice(0, TOP_SHOWN)
       .map((row) => ({
         media: row.media,
         score: row.computedPersonalScore ?? row.personalRating ?? null,
-      }));
+        pairwiseScore: row.pairwiseScore,
+      }))
+      .filter((entry): entry is typeof entry & { score: number } => entry.score != null)
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.pairwiseScore - a.pairwiseScore ||
+          a.media.title.localeCompare(b.media.title),
+      )
+      .slice(0, TOP_SHOWN)
+      .map(({ media, score }) => ({ media, score }));
     return {
       mediaType: type,
+      hero: topItems[0] ?? null,
       topItems,
+      favorites: rows
+        .filter((row) => row.isFavorite)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        .slice(0, FAVORITES_SHOWN)
+        .map((row) => row.media),
+      recentActivity: mergeActivity(
+        rows,
+        recentComparisons[index] ?? [],
+        ACTIVITY_SHOWN,
+      ),
       ratings: buildRatingHistogram(
         rows.map((row) => ({
           rating: row.personalRating,
           consensus: row.consensus,
         })),
       ),
-    };
-  });
-
-  const heroIds = byTypeBase
-    .map((section) => section.topItems[0]?.media.id)
-    .filter((id): id is string => Boolean(id));
-  const [winRows, lossRows] = heroIds.length
-    ? await Promise.all([
-        prisma.pairwiseComparison.groupBy({
-          by: ["winnerId"],
-          where: { userId: user.id, winnerId: { in: heroIds } },
-          _count: { _all: true },
-        }),
-        prisma.pairwiseComparison.groupBy({
-          by: ["loserId"],
-          where: { userId: user.id, loserId: { in: heroIds } },
-          _count: { _all: true },
-        }),
-      ])
-    : [[], []];
-  const winsById = new Map(winRows.map((row) => [row.winnerId, row._count._all]));
-  const lossesById = new Map(
-    lossRows.map((row) => [row.loserId, row._count._all]),
-  );
-
-  const byType: ProfileTypeSection[] = byTypeBase.map((section) => {
-    const top = section.topItems[0];
-    return {
-      ...section,
-      hero: top
-        ? {
-            ...top,
-            wins: winsById.get(top.media.id) ?? 0,
-            losses: lossesById.get(top.media.id) ?? 0,
-          }
-        : null,
     };
   });
 
@@ -341,8 +314,6 @@ export async function getProfileData(): Promise<ProfileData> {
       memberSince: monthYearLabel(user.createdAt),
     },
     counts,
-    favorites,
-    recentActivity,
     byType,
     taste,
     friends: {

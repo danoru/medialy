@@ -199,7 +199,7 @@ describe("mergeActivity", () => {
     });
   });
 
-  it("emits both a rated and a completed event when a row has both a rating and completedAt", () => {
+  it("emits exactly one rated event, dated by completedAt, when a row has both a rating and completedAt", () => {
     const events = mergeActivity(
       [
         {
@@ -213,20 +213,13 @@ describe("mergeActivity", () => {
       [],
       10,
     );
-    expect(events.map((e) => e.id).sort()).toEqual(["completed:c2", "rated:c2"]);
+    expect(events.map((e) => e.id)).toEqual(["rated:c2"]);
 
-    const rated = events.find((e) => e.id === "rated:c2");
+    const rated = events[0];
     expect(rated).toMatchObject({
       kind: "rated",
-      occurredAt: new Date("2026-09-01T00:00:00Z"),
-      rating: 7,
-      statusLabel: "Played",
-    });
-
-    const completed = events.find((e) => e.id === "completed:c2");
-    expect(completed).toMatchObject({
-      kind: "completed",
       occurredAt: new Date("2026-09-10T00:00:00Z"),
+      rating: 7,
       statusLabel: "Played",
     });
   });
@@ -304,6 +297,28 @@ describe("mergeActivity", () => {
 
     const eventsRecentFirst = mergeActivity([recentRating, oldCompletion], [], 10);
     expect(eventsRecentFirst.map((e) => e.id)).toEqual(["rated:recent", "completed:old"]);
+  });
+
+  it("sorts a rated row by its completedAt, not its updatedAt", () => {
+    const oldRatingRecentEdit = {
+      status: "COMPLETED" as const,
+      personalRating: 9,
+      updatedAt: new Date("2026-09-14T00:00:00Z"), // row edited yesterday
+      completedAt: new Date("2025-09-15T00:00:00Z"), // but completed a year ago
+      media: tile("old-rating", "MOVIE"),
+    };
+    const recentComparison = [
+      {
+        id: "recent-compare",
+        createdAt: new Date("2026-09-08T00:00:00Z"), // last week
+        context: "STORY" as const,
+        winner: tile("w"),
+        loser: tile("l"),
+      },
+    ];
+
+    const events = mergeActivity([oldRatingRecentEdit], recentComparison, 10);
+    expect(events.map((e) => e.id)).toEqual(["compared:recent-compare", "rated:old-rating"]);
   });
 });
 

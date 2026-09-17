@@ -180,12 +180,11 @@ function toTime(value: Date | string): number {
 }
 
 /**
- * Interleave your ratings, completions and comparisons into one diary,
- * newest first. Ratings are dated by the row's last change (no rating
- * timestamp is stored). A completion is dated by `completedAt` when you gave
- * one; an undated completion falls back to the row's last change only when
- * there is no rating to stand in for it, so a title you rated and finished
- * without a date shows once, as the rating, with its status alongside.
+ * Interleave your titles and comparisons into one diary, newest first. Each
+ * title appears once: a rated title is a "rated" row carrying its status
+ * ("Watched · 2d ago"), an unrated completion is a "completed" row. A row is
+ * dated by `completedAt` when you gave one, else by the row's last change —
+ * no separate rating timestamp is stored.
  */
 export function mergeActivity(
   library: LibraryRow[],
@@ -194,12 +193,12 @@ export function mergeActivity(
 ): ProfileActivity[] {
   const events: ProfileActivity[] = [];
   for (const row of library) {
-    const completed = row.status === "COMPLETED";
+    const occurredAt = row.completedAt ?? row.updatedAt;
     if (row.personalRating != null) {
       events.push({
         kind: "rated",
         id: `rated:${row.media.id}`,
-        occurredAt: row.updatedAt,
+        occurredAt,
         media: row.media,
         rating: row.personalRating,
         statusLabel:
@@ -207,12 +206,11 @@ export function mergeActivity(
             ? null
             : statusLabel(row.status, row.media.mediaType),
       });
-    }
-    if (completed && (row.completedAt || row.personalRating == null)) {
+    } else if (row.status === "COMPLETED") {
       events.push({
         kind: "completed",
         id: `completed:${row.media.id}`,
-        occurredAt: row.completedAt ?? row.updatedAt,
+        occurredAt,
         media: row.media,
         statusLabel: statusLabel(row.status, row.media.mediaType),
       });

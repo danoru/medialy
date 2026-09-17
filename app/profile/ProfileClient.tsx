@@ -32,8 +32,9 @@ const NUMBER_FONT = (theme: { typography: { statValue: { fontFamily?: string } }
   theme.typography.statValue.fontFamily;
 
 export function ProfileClient({ data }: { data: ProfileData }) {
-  // One switcher drives the hero, Your Top 10 and Your ratings. Start on the
-  // first type that has a ranked title so the marquee never opens empty.
+  // One switcher drives every panel that shows titles: the banner, Favorites,
+  // Recent activity, Your Top 10 and Your ratings. Start on the first type
+  // with a rated title so the marquee never opens empty.
   const [mediaType, setMediaType] = useState<MediaType>(
     () =>
       SWITCHER_MEDIA_TYPES.find((candidate) =>
@@ -49,6 +50,8 @@ export function ProfileClient({ data }: { data: ProfileData }) {
     [data.byType, mediaType],
   );
   const typeAccent = mediaAccent(mediaType);
+  const typePlural = shortMediaTypeLabel(mediaType).toLowerCase();
+  const typeNoun = typePlural.replace(/s$/, "");
 
   return (
     <Stack spacing={2.5}>
@@ -82,21 +85,11 @@ export function ProfileClient({ data }: { data: ProfileData }) {
         }}
       >
         <DashboardSection
-          action={
-            <Button
-              component={Link}
-              endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
-              href="/library?favorite=1"
-              size="small"
-              sx={panelActionSx}
-            >
-              Edit
-            </Button>
-          }
+          accent={typeAccent}
           title="Favorites"
           titleVariant="eyebrow"
         >
-          {data.favorites.length ? (
+          {section.favorites.length ? (
             <Box
               sx={{
                 alignContent: "center",
@@ -106,7 +99,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                 gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
               }}
             >
-              {data.favorites.map((item) => (
+              {section.favorites.map((item) => (
                 <PosterTile
                   item={item}
                   key={item.id}
@@ -115,16 +108,19 @@ export function ProfileClient({ data }: { data: ProfileData }) {
               ))}
             </Box>
           ) : (
-            <EmptyHint text="Mark titles as favorites from their detail page to pin them here." />
+            <EmptyHint
+              text={`Favorite a ${typeNoun} from its detail page to pin it here.`}
+            />
           )}
         </DashboardSection>
 
         <DashboardSection
+          accent={typeAccent}
           action={
             <Button
               component={Link}
               endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
-              href="/library"
+              href={`/library?type=${mediaType}`}
               size="small"
               sx={panelActionSx}
             >
@@ -134,18 +130,20 @@ export function ProfileClient({ data }: { data: ProfileData }) {
           title="Recent activity"
           titleVariant="eyebrow"
         >
-          {data.recentActivity.length ? (
+          {section.recentActivity.length ? (
             <Stack sx={{ flex: 1, justifyContent: "center" }}>
-              {data.recentActivity.map((event, index) => (
+              {section.recentActivity.map((event, index) => (
                 <ActivityRow
                   event={event}
                   key={event.id}
-                  last={index === data.recentActivity.length - 1}
+                  last={index === section.recentActivity.length - 1}
                 />
               ))}
             </Stack>
           ) : (
-            <EmptyHint text="Rate, finish or compare titles and they show up here." />
+            <EmptyHint
+              text={`Rate, finish or compare ${typePlural} and they show up here.`}
+            />
           )}
         </DashboardSection>
 
@@ -153,25 +151,15 @@ export function ProfileClient({ data }: { data: ProfileData }) {
           <DashboardSection
             accent={typeAccent}
             action={
-              <Stack direction="row" sx={{ alignItems: "center", gap: 1 }}>
-                {data.counts.compared > 0 ? (
-                  <Typography
-                    color="text.secondary"
-                    sx={{ display: { xs: "none", sm: "block" }, fontSize: "0.875rem" }}
-                  >
-                    Ranked from {data.counts.compared.toLocaleString()} comparisons
-                  </Typography>
-                ) : null}
-                <Button
-                  component={Link}
-                  endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
-                  href={`/compare?type=${mediaType}`}
-                  size="small"
-                  sx={panelActionSx}
-                >
-                  Keep ranking
-                </Button>
-              </Stack>
+              <Button
+                component={Link}
+                endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
+                href={`/compare?type=${mediaType}`}
+                size="small"
+                sx={panelActionSx}
+              >
+                Keep ranking
+              </Button>
             }
             title="Your Top 10"
             titleVariant="eyebrow"
@@ -200,7 +188,7 @@ export function ProfileClient({ data }: { data: ProfileData }) {
               </Box>
             ) : (
               <EmptyHint
-                text={`Compare ${formatMediaType(mediaType).toLowerCase()} titles to build your ranking.`}
+                text={`Rate ${typePlural} to build your ranking.`}
               />
             )}
           </DashboardSection>
@@ -354,23 +342,28 @@ function Marquee({
         position: "relative",
       }}
     >
+      {/*
+        The poster painted twice: soft and zoomed here as the backdrop, sharp
+        at its real 2:3 shape on the right. The blur is light enough that the
+        art still reads as art, and the overlay only darkens where text sits.
+      */}
       <Box
         aria-hidden
         sx={{
           backgroundImage: wash,
-          backgroundPosition: "center 30%",
+          backgroundPosition: "center 25%",
           backgroundSize: "cover",
-          filter: "blur(48px)",
-          inset: -80,
+          filter: "blur(18px) saturate(1.25)",
+          inset: -40,
           position: "absolute",
-          transform: "scale(1.2)",
+          transform: "scale(1.12)",
         }}
       />
       <Box
         aria-hidden
         sx={{
           background:
-            "linear-gradient(90deg, rgba(10,8,16,0.94) 0%, rgba(10,8,16,0.82) 45%, rgba(10,8,16,0.35) 100%), linear-gradient(180deg, rgba(10,8,16,0.1) 0%, rgba(10,8,16,0.55) 100%)",
+            "linear-gradient(90deg, rgba(10,8,16,0.9) 0%, rgba(10,8,16,0.72) 40%, rgba(10,8,16,0.28) 72%, rgba(10,8,16,0.12) 100%), linear-gradient(180deg, rgba(10,8,16,0.05) 0%, rgba(10,8,16,0.45) 100%)",
           inset: 0,
           position: "absolute",
         }}
@@ -448,12 +441,6 @@ function Marquee({
               >
                 {hero.media.title}
               </Typography>
-              <Typography
-                sx={{ color: alpha("#F4EEFA", 0.72), fontSize: "0.875rem", mt: 0.25 }}
-              >
-                {hero.wins} {hero.wins === 1 ? "win" : "wins"} · {hero.losses}{" "}
-                {hero.losses === 1 ? "loss" : "losses"}
-              </Typography>
             </Box>
             <Box sx={{ boxShadow: "0 16px 40px rgba(0, 0, 0, 0.55)", width: 148 }}>
               <PosterTile
@@ -469,7 +456,7 @@ function Marquee({
           <Typography
             sx={{ color: alpha("#F4EEFA", 0.72), fontSize: "0.875rem", maxWidth: 260 }}
           >
-            Compare a few {formatMediaType(mediaType).toLowerCase()} titles and
+            Rate a few {formatMediaType(mediaType).toLowerCase()} titles and
             your №1 takes over this banner.
           </Typography>
         )}
