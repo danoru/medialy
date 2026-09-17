@@ -1,4 +1,4 @@
-import type { MediaType } from "@prisma/client";
+import type { MediaStatus, MediaType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getFollowCompatibility } from "@/lib/insights";
 import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
@@ -29,6 +29,14 @@ import { requireUser, userInitial } from "@/lib/user";
  * proportional to one person's activity, not the whole library.
  */
 
+/** Statuses that mean you have actually experienced a title. */
+const EXPERIENCED_STATUSES: MediaStatus[] = [
+  "COMPLETED",
+  "IN_PROGRESS",
+  "PAUSED",
+  "DROPPED",
+];
+
 const FAVORITES_SHOWN = 4;
 const ACTIVITY_SHOWN = 5;
 const TOP_SHOWN = 10;
@@ -52,6 +60,15 @@ export type ProfileRanked = { media: ProfileTile; score: number | null };
  */
 export type ProfileTypeSection = {
   mediaType: MediaType;
+  counts: {
+    /** Titles of this type you have finished — "Watched" or "Played" in the UI. */
+    completed: number;
+    /** Completed titles whose `completedAt` falls in the current year. */
+    thisYear: number;
+    rated: number;
+    /** Titles with enough comparisons to hold a place in your ranking. */
+    ranked: number;
+  };
   /** Your highest-scored title of this type, or null before any rating. */
   hero: ProfileRanked | null;
   topItems: ProfileRanked[];
@@ -67,16 +84,6 @@ export type ProfileData = {
     avatarColor: string | null;
     image: string | null;
     memberSince: string;
-  };
-  counts: {
-    watched: number;
-    /** Completed titles whose `completedAt` falls in the current year. */
-    thisYear: number;
-    rated: number;
-    /** Titles with enough comparisons to hold a place in your ranking. */
-    ranked: number;
-    /** Every pairwise comparison you have made. */
-    compared: number;
   };
   byType: ProfileTypeSection[];
   taste: {
@@ -117,7 +124,6 @@ export async function getProfileData(): Promise<ProfileData> {
     libraryRows,
     recentComparisons,
     lensCounts,
-    comparisonCount,
     followingIds,
     followersCount,
     compatibility,
@@ -175,9 +181,6 @@ export async function getProfileData(): Promise<ProfileData> {
       where: { userId: user.id, winner: { mediaType } },
       _count: { _all: true },
     }),
-    prisma.pairwiseComparison.count({
-      where: { userId: user.id, winner: { mediaType } },
-    }),
     getFollowingIds(user.id),
     prisma.userFollow.count({ where: { followingId: user.id } }),
     getFollowCompatibility(user.id),
@@ -208,28 +211,26 @@ export async function getProfileData(): Promise<ProfileData> {
     genres: row.media.genres.map((entry) => entry.genre.name),
   }));
 
-  // Counts
-  // "This year" only counts dated completions: rows finished before the
-  // completion date existed, or marked "not sure", are honest zeros here.
-  const completed = library.filter((row) => row.status === "COMPLETED");
   const thisYear = new Date().getUTCFullYear();
-  const counts = {
-    watched: completed.length,
-    thisYear: completed.filter(
-      (row) => row.completedAt?.getUTCFullYear() === thisYear,
-    ).length,
-    rated: library.filter((row) => row.personalRating != null).length,
-    ranked: library.filter(
-      (row) => row.comparisonCount >= RANKED_COMPARISON_TARGET,
-    ).length,
-    compared: comparisonCount,
-  };
 
   // Per-type panels. The ranking is your personal score — the refined score
   // where one exists (comparisons already feed it), else the raw rating — so
   // it is the same number the badge shows and it moves as you compare more.
   const byType: ProfileTypeSection[] = VISIBLE_MEDIA_TYPES.map((type, index) => {
     const rows = library.filter((row) => row.media.mediaType === type);
+    // "This year" only counts dated completions: rows finished before the
+    // completion date existed, or marked "not sure", are honest zeros here.
+    const completed = rows.filter((row) => row.status === "COMPLETED");
+    const counts = {
+      completed: completed.length,
+      thisYear: completed.filter(
+        (row) => row.completedAt?.getUTCFullYear() === thisYear,
+      ).length,
+      rated: rows.filter((row) => row.personalRating != null).length,
+      ranked: rows.filter(
+        (row) => row.comparisonCount >= RANKED_COMPARISON_TARGET,
+      ).length,
+    };
     const topItems = rows
       .map((row) => ({
         media: row.media,
@@ -247,6 +248,7 @@ export async function getProfileData(): Promise<ProfileData> {
       .map(({ media, score }) => ({ media, score }));
     return {
       mediaType: type,
+      counts,
       hero: topItems[0] ?? null,
       topItems,
       favorites: rows
@@ -268,9 +270,16 @@ export async function getProfileData(): Promise<ProfileData> {
     };
   });
 
-  // Taste
+  // Taste. "Your library" here means titles you have actually experienced —
+  // the same set the Compare page treats as rankable — plus anything rated.
+  // Watchlist, backlog and not-interested are intentions, not taste, and an
+  // untracked row with nothing on it is noise.
+  const experienced = library.filter(
+    (row) =>
+      EXPERIENCED_STATUSES.includes(row.status) || row.personalRating != null,
+  );
   const mixCounts = new Map<MediaType, number>();
-  for (const row of library) {
+  for (const row of experienced) {
     mixCounts.set(
       row.media.mediaType,
       (mixCounts.get(row.media.mediaType) ?? 0) + 1,
@@ -286,10 +295,10 @@ export async function getProfileData(): Promise<ProfileData> {
     mediaMix: VISIBLE_MEDIA_TYPES.map((type) => ({
       mediaType: type,
       count: mixCounts.get(type) ?? 0,
-      share: pct(mixCounts.get(type) ?? 0, library.length),
+      share: pct(mixCounts.get(type) ?? 0, experienced.length),
     })).filter((entry) => entry.count > 0),
-    totalTracked: library.length,
-    topGenres: topGenres(library),
+    totalTracked: experienced.length,
+    topGenres: topGenres(experienced),
   };
 
   // Friends
@@ -313,7 +322,6 @@ export async function getProfileData(): Promise<ProfileData> {
       image: user.image,
       memberSince: monthYearLabel(user.createdAt),
     },
-    counts,
     byType,
     taste,
     friends: {

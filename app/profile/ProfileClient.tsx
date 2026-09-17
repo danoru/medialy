@@ -26,6 +26,7 @@ import {
   shortMediaTypeLabel,
 } from "@/lib/media-ui-helpers";
 import { relativeLabel, type ProfileActivity, type ProfileTile } from "@/lib/profile";
+import { statusLabel } from "@/lib/status-labels";
 import type { ProfileData, ProfileTypeSection } from "@/lib/db/profile";
 
 const NUMBER_FONT = (theme: { typography: { statValue: { fontFamily?: string } } }) =>
@@ -70,7 +71,6 @@ export function ProfileClient({ data }: { data: ProfileData }) {
 
       <Marquee
         accent={typeAccent}
-        counts={data.counts}
         friends={data.friends}
         mediaType={mediaType}
         section={section}
@@ -313,20 +313,21 @@ export function ProfileClient({ data }: { data: ProfileData }) {
  */
 function Marquee({
   accent,
-  counts,
   friends,
   mediaType,
   section,
   user,
 }: {
   accent: string;
-  counts: ProfileData["counts"];
   friends: ProfileData["friends"];
   mediaType: MediaType;
   section: ProfileTypeSection;
   user: ProfileData["user"];
 }) {
-  const hero = section.hero;
+  const { counts, hero } = section;
+  // "Watched" for film and TV, "Played" for games — the same verb the status
+  // picker uses for this type.
+  const completedLabel = statusLabel("COMPLETED", mediaType);
   const wash = hero?.media.posterUrl
     ? `url(${hero.media.posterUrl})`
     : posterFallback(mediaType);
@@ -410,7 +411,7 @@ function Marquee({
               direction="row"
               sx={{ alignItems: "center", flexWrap: "wrap", gap: 3, mt: 2.5 }}
             >
-              <Count label="Watched" value={counts.watched} />
+              <Count label={completedLabel} value={counts.completed} />
               <CountDivider />
               <Count label="This year" value={counts.thisYear} />
               <CountDivider />
@@ -755,7 +756,7 @@ function TastePanel({ taste }: { taste: ProfileData["taste"] }) {
       </Stack>
       <Stack spacing={1.25}>
         <Typography color="text.secondary" sx={{ fontSize: "0.875rem" }}>
-          Your library is{" "}
+          You&apos;ve experienced{" "}
           <Box component="strong" sx={{ color: "text.primary" }}>
             {taste.totalTracked.toLocaleString()} titles
           </Box>
