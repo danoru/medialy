@@ -240,24 +240,83 @@ export const AFFINITY_TUNING = {
   },
 } as const;
 
-/** Review-only v2. Independent constants keep the live v1 baseline unchanged. */
+/**
+ * The v2 taste engine (`lib/scoring/recommendationV2.ts`). Every signal is a
+ * 0–100 value centered on 50 plus a 0–1 reliability; the score is 50 plus the
+ * weighted, reliability-scaled deviations. See the module header for the
+ * signal definitions.
+ */
 export const RECOMMENDATION_V2 = {
   neutral: 50,
   /** Pseudo-observations of neutral taste for each feature. */
   featurePrior: 5,
+  /**
+   * Added to a candidate's feature count when turning per-feature support
+   * into signal reliability, so one known genre is not full confidence but
+   * three well-supported ones nearly are.
+   */
+  featureBreadthPrior: 2,
   /** Stabilizes the per-medium rating baseline for sparse users. */
   baselinePrior: 5,
   fallbackRating: 6.5,
   ratingPointScale: 20,
+  /**
+   * Stored ratings below this are placeholders, not opinions: the rating
+   * control bottoms out at a half star, so a 0 was never entered by a person.
+   * They are read as no rating.
+   */
+  minExplicitRating: 0.5,
   /** Neutral friend evidence; avoids one rating dominating the score. */
   friendPrior: 2,
   overlapPrior: 5,
+  /** Opinion value when a friend finished or watchlisted a title without rating it. */
+  statusOnlyInterest: 55,
+  /**
+   * The critic score that reads as neutral. The catalog's mean consensus is
+   * about 7, so a 6 is below par and a 8.5 is strong; on the raw 0–10 scale
+   * almost everything looked positive.
+   */
+  consensusNeutral: 7,
+  /** Points of signal per critic point away from neutral. */
+  consensusPointScale: 20,
+  /**
+   * Chosen by the holdout sweep of September 21, 2026 (pooled pair accuracy
+   * 86.1%, v1 was 72%). Critics carry the most weight because for the two
+   * largest histories they were the best single predictor; the personal
+   * signals add most where taste and critics part ways.
+   */
   weights: {
-    genre: 0.2,
-    tag: 0.15,
-    contributor: 0.15,
-    friends: 0.3,
-    consensus: 0.2,
+    similarity: 0.25,
+    genre: 0.05,
+    tag: 0.04,
+    contributor: 0.06,
+    friends: 0.25,
+    consensus: 0.35,
+  },
+  similarity: {
+    /** Nearest rated titles considered per candidate. */
+    neighbours: 20,
+    /** Cosine below this is not a neighbour at all. */
+    minSimilarity: 0.1,
+    /** Squared-similarity support needed for half reliability. */
+    prior: 1.5,
+    /** Weight of a genre in the item vector; tags use the category weights. */
+    genreWeight: 1.5,
+    tagCategoryWeights: {
+      SUBGENRE: 1,
+      THEME: 0.8,
+      MOOD: 0.8,
+      MECHANIC: 0.7,
+      COUNTRY: 0.5,
+      FORMAT: 0.3,
+      default: 0.6,
+    },
+    /** Tag categories that mean the same thing across movies, TV and games. */
+    portableTagCategories: ["THEME", "MOOD", "COUNTRY"],
+    /** Same-medium reliability under which other media are consulted too. */
+    crossMediumBelow: 0.3,
+    /** Reliability multiplier for neighbours from another medium. */
+    crossMediumFactor: 0.4,
   },
   roleWeights: {
     DIRECTOR: 1,
@@ -266,6 +325,47 @@ export const RECOMMENDATION_V2 = {
     PUBLISHER: 0.35,
     ACTOR: 0,
   },
+} as const;
+
+/**
+ * Variety for short recommendation rows (dashboard picks). See
+ * `lib/scoring/diversity.ts`.
+ */
+export const DIVERSITY = {
+  /** How hard a near-duplicate of an earlier pick is pushed down, in score points per unit similarity. */
+  lambda: 0.35,
+  /** Similarity assigned to two picks that share a director, creator or studio. */
+  sameCreatorSimilarity: 0.7,
+  genreShare: 0.6,
+  tagShare: 0.4,
+  /** Slots in a row reserved for a pick outside the viewer's usual genres. */
+  adventurousSlots: 1,
+  /** Calibrated Match the adventurous pick must reach. */
+  adventurousFloor: 55,
+  /** How many of the viewer's most-rated genres count as "usual". */
+  usualGenreCount: 3,
+} as const;
+
+/** Holdout thresholds, relative to the viewer's mean rating in the medium. */
+export const RECOMMENDATION_EVALUATION = {
+  /** A held-out title counts as liked when rated this far above the mean. */
+  likedMargin: 1,
+  /** ...and as disliked when rated this far below it. */
+  dislikedMargin: 1,
+} as const;
+
+/**
+ * Maps the raw v2 score to the displayed Match ("chance you rate this above
+ * your own average"). Fitted by `npm run recommendations:evaluate -- --all`
+ * on held-out ratings; paste the printed values here after a refit.
+ *
+ * Fitted September 21, 2026 on 1,563 held-out ratings from three users
+ * (Brier 0.2125 against 0.25 for a constant guess). A raw 50 shows as 46%,
+ * a raw 70 as 90%, a raw 35 as 11%.
+ */
+export const MATCH_CALIBRATION = {
+  intercept: -0.1747,
+  slope: 0.1869,
 } as const;
 
 // -----------------------------------------------------------------------------

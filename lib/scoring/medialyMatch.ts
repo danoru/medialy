@@ -36,12 +36,15 @@ export type MedialyMatchSignals = {
 };
 
 export type MedialyMatchExplanation = {
-  signal: keyof typeof MEDIALY_MATCH_WEIGHTS;
+  /** A v1 bucket or a v2 signal key; the UI only uses it as a stable id. */
+  signal: string;
   label: string;
   rawValue: number; // pre-weight, normalized to 0–100
   weight: number; // 0–1
-  contribution: number; // rawValue * weight, rounded
+  contribution: number; // v1: rawValue × weight; v2: signed points from neutral
   detail?: string;
+  /** v2 only: 0–1, how much evidence backs this signal. */
+  reliability?: number;
 };
 
 export type MedialyMatchOutput = {

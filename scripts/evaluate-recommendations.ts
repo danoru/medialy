@@ -1,22 +1,34 @@
-/** Read-only diagnostic. Run: npm run recommendations:evaluate -- <userId> */
+/**
+ * Read-only diagnostic for the recommendation engine.
+ *
+ *   npm run recommendations:evaluate -- <userId>   one user, per medium
+ *   npm run recommendations:evaluate -- --all      every user with enough
+ *                                                  ratings, plus a pooled
+ *                                                  calibration fit to paste
+ *                                                  into MATCH_CALIBRATION
+ *
+ * Reads each evaluated user's rated rows and their friends' rows once; it
+ * never writes.
+ */
 import "dotenv/config";
 import { prisma } from "@/lib/prisma";
 import { LEAN_MEDIA_WITH_CREDITS_SELECT } from "@/lib/db/media-select";
 import { getFollowingIds } from "@/lib/social/follows";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
-import { evaluateRecommendations } from "@/lib/scoring/recommendationEvaluation";
+import {
+  evaluateRecommendations,
+  type EvaluationResult,
+} from "@/lib/scoring/recommendationEvaluation";
+import {
+  brierScore,
+  fitLogistic,
+  type CalibrationSample,
+} from "@/lib/scoring/calibration";
+import { MATCH_CALIBRATION } from "@/lib/scoring/config";
 
-async function main() {
-  const userId = process.argv[2];
-  if (!userId)
-    throw new Error(
-      "Pass the user ID to evaluate; no default account is assumed.",
-    );
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true },
-  });
-  if (!user) throw new Error("User not found.");
+const MIN_RATINGS_FOR_ALL = 20;
+
+async function loadUser(userId: string) {
   const [observations, following] = await Promise.all([
     prisma.userMedia.findMany({
       where: { userId, isArchived: false, personalRating: { not: null } },
@@ -57,15 +69,80 @@ async function main() {
     rating: row.personalRating,
     status: row.status,
   }));
+  return { observations, friends };
+}
+
+function summarize(result: EvaluationResult) {
+  const pct = (value: number | null) =>
+    value == null ? "n/a" : `${(value * 100).toFixed(1)}%`;
+  return {
+    rated: result.ratedTitles,
+    mean: result.meanRating == null ? null : Number(result.meanRating.toFixed(2)),
+    liked: result.likedTitles,
+    disliked: result.dislikedTitles,
+    pairs: result.pairs,
+    v2: pct(result.v2Accuracy),
+    v1: pct(result.v1Accuracy),
+    consensus: pct(result.consensusAccuracy),
+  };
+}
+
+async function main() {
+  const arg = process.argv[2];
+  if (!arg) {
+    throw new Error("Pass a user ID, or --all for every user with enough ratings.");
+  }
+
+  const userIds = arg === "--all"
+    ? (
+        await prisma.userMedia.groupBy({
+          by: ["userId"],
+          where: { isArchived: false, personalRating: { not: null } },
+          _count: { _all: true },
+        })
+      )
+        .filter((row) => row._count._all >= MIN_RATINGS_FOR_ALL)
+        .map((row) => row.userId)
+    : [arg];
+
+  const pooled: CalibrationSample[] = [];
+  const report: Record<string, unknown>[] = [];
+  for (const userId of userIds) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) throw new Error(`User ${userId} not found.`);
+    const { observations, friends } = await loadUser(userId);
+    for (const medium of VISIBLE_MEDIA_TYPES) {
+      const result = evaluateRecommendations(observations, friends, medium);
+      if (result.ratedTitles === 0) continue;
+      pooled.push(...result.samples);
+      report.push({ user: userId.slice(0, 8), medium, ...summarize(result) });
+    }
+  }
+
+  const fit = fitLogistic(pooled);
   console.log(
     JSON.stringify(
       {
         method:
-          "Retrospective five-fold explicit-rating check; V2 vs consensus-only; ties = half. Not an online accuracy estimate.",
-        results: VISIBLE_MEDIA_TYPES.map((medium) => ({
-          medium,
-          ...evaluateRecommendations(observations, friends, medium),
-        })),
+          "Five-fold holdout per user and medium. Liked/disliked are ±1 around the user's own mean. Accuracy = share of liked-vs-disliked pairs ranked correctly; 0.5 is chance. v1 runs with its friend signal off.",
+        results: report,
+        calibration: {
+          samples: pooled.length,
+          aboveMeanRate:
+            pooled.length > 0
+              ? Number((pooled.filter((s) => s.above).length / pooled.length).toFixed(3))
+              : null,
+          fitted: fit,
+          brierFitted: fit ? Number(brierScore(pooled, fit)!.toFixed(4)) : null,
+          brierCurrentConfig: Number(brierScore(pooled, MATCH_CALIBRATION)!.toFixed(4)),
+          brierConstant: Number(
+            brierScore(pooled, { intercept: 0, slope: 0 })!.toFixed(4),
+          ),
+          note: "Paste `fitted` into MATCH_CALIBRATION when it beats the current config on Brier.",
+        },
       },
       null,
       2,

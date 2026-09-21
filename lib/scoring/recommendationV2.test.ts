@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildFriendBaselines,
   buildFriendTrust,
   buildTasteProfiles,
   friendKey,
@@ -71,7 +72,7 @@ describe("v2 taste evidence", () => {
     );
     const disliked = scoreV2(
       item("new"),
-      buildTasteProfiles([observation("bad", 0)]),
+      buildTasteProfiles([observation("bad", 1)]),
     );
     expect(neutral.score).toBe(50);
     expect(neutral.confidence).toBeGreaterThan(0);
@@ -82,18 +83,35 @@ describe("v2 taste evidence", () => {
   it("learns likes and dislikes separately for each medium", () => {
     const rows = [
       observation("film", 10),
-      observation("game", 0, {
+      observation("game", 1, {
         media: item("game", { mediaType: "VIDEO_GAME" }),
       }),
     ];
     const profiles = buildTasteProfiles(rows);
-    expect(scoreV2(item("movie"), profiles).score).toBeGreaterThan(50);
+    const movie = scoreV2(item("movie"), profiles);
+    expect(movie.score).toBeGreaterThan(50);
     expect(
       scoreV2(item("game2", { mediaType: "VIDEO_GAME" }), profiles).score,
     ).toBeLessThan(50);
-    expect(
-      scoreV2(item("tv", { mediaType: "TV_SHOW" }), profiles).confidence,
-    ).toBe(0);
+    // A medium with no history borrows only portable taste (genres, themes)
+    // from other media, at reduced reliability. The feature profiles stay
+    // per medium.
+    const tv = scoreV2(item("tv", { mediaType: "TV_SHOW" }), profiles);
+    expect(tv.confidence).toBeGreaterThan(0);
+    expect(tv.confidence).toBeLessThan(movie.confidence);
+    for (const signal of ["genre", "tag", "contributor"] as const) {
+      expect(tv.explanations.find((e) => e.signal === signal)?.value).toBeNull();
+    }
+  });
+
+  it("reads a stored zero as a placeholder, not a rating", () => {
+    expect(observedTaste(observation("zero", 0, { status: "BACKLOG" }))).toBeNull();
+    // A completed title with a placeholder 0 and no comparisons has no taste either.
+    expect(observedTaste(observation("zero", 0))).toBeNull();
+    expect(observedTaste(observation("half", 0.5))?.rating).toBe(0.5);
+    const zero = friendSignal([friend(0)], new Map());
+    const none = friendSignal([friend(null)], new Map());
+    expect(zero.value).toBe(none.value);
   });
 
   it("shrinks one disliked example more than repeated evidence", () => {
@@ -141,11 +159,19 @@ describe("v2 taste evidence", () => {
     });
     const duplicate = {
       ...candidate,
-      genres: [...candidate.genres, ...candidate.genres, ...genre("Unseen")],
+      genres: [...candidate.genres, ...candidate.genres],
       tags: [approved, approved],
       credits: [creator, creator],
     };
     expect(scoreV2(duplicate, profiles)).toEqual(scoreV2(candidate, profiles));
+    // A feature you have never rated is unknown: it lowers confidence and
+    // pulls the score toward neutral, never past it.
+    const unseen = { ...candidate, genres: [...candidate.genres, ...genre("Unseen")] };
+    const known = scoreV2(candidate, profiles);
+    const withUnseen = scoreV2(unseen, profiles);
+    expect(withUnseen.confidence).toBeLessThan(known.confidence);
+    expect(withUnseen.score).toBeGreaterThan(50);
+    expect(withUnseen.score).toBeLessThan(known.score);
     const duplicateTraining = buildTasteProfiles([
       observation("favorite", 10, {
         media: {
@@ -237,7 +263,7 @@ describe("v2 friends", () => {
   it("lets a low friend rating demote despite completion and treats status as weak", () => {
     const score = (rating: FriendRating) =>
       scoreV2(item("new"), new Map(), friendSignal([rating], new Map())).score;
-    expect(score(friend(0))).toBeLessThan(50);
+    expect(score(friend(1))).toBeLessThan(50);
     expect(score(friend(null))).toBeGreaterThan(50);
     expect(score(friend(null))).toBeLessThan(score(friend(8)));
     expect(score(friend(null, { status: "WATCHLIST" }))).toBeLessThan(
@@ -257,7 +283,7 @@ describe("v2 friends", () => {
   it("excludes held-out overlap and keeps compatibility medium-specific", () => {
     const rows = [
       friend(10, { mediaId: "movie" }),
-      friend(0, { mediaId: "game", mediaType: "VIDEO_GAME" }),
+      friend(1, { mediaId: "game", mediaType: "VIDEO_GAME" }),
     ];
     const viewer = [
       { mediaId: "movie", rating: 10 },
@@ -301,5 +327,97 @@ describe("held-out diagnostic", () => {
       result,
     );
     expect(evaluationFold("fixed")).toBe(evaluationFold("fixed"));
+  });
+});
+
+describe("v2 similarity", () => {
+  const tagged = (name: string, category = "SUBGENRE") => ({
+    tag: { name, status: "APPROVED", category },
+  });
+  const director = { role: "DIRECTOR", contributor: { id: "d1", name: "Director" } };
+
+  it("explains a candidate by the closest title you rated", () => {
+    const profiles = buildTasteProfiles([
+      observation("loved", 10, {
+        media: item("loved", { genres: genre("Horror"), tags: [tagged("Slasher")], credits: [director] }),
+      }),
+      observation("meh", 5, {
+        media: item("meh", { genres: genre("Comedy"), tags: [tagged("Romantic Comedy")] }),
+      }),
+      observation("filler", 7, { media: item("filler", { genres: genre("Drama") }) }),
+    ]);
+    const result = scoreV2(
+      item("candidate", { genres: genre("Horror"), tags: [tagged("Slasher")], credits: [director] }),
+      profiles,
+    );
+    const similarity = result.explanations.find((e) => e.signal === "similarity");
+    expect(similarity?.because?.title).toBe("loved");
+    expect(similarity?.value).toBeGreaterThan(50);
+    expect(result.reason).toContain("loved");
+  });
+
+  it("gives a title no extra credit for carrying more tags", () => {
+    const profiles = buildTasteProfiles([
+      observation("loved", 10, {
+        media: item("loved", { genres: genre("Horror"), tags: [tagged("Slasher")] }),
+      }),
+    ]);
+    const lean = item("lean", { genres: genre("Horror"), tags: [tagged("Slasher")] });
+    const padded = item("padded", {
+      genres: genre("Horror"),
+      tags: [tagged("Slasher"), tagged("Extra one"), tagged("Extra two"), tagged("Extra three")],
+    });
+    const sim = (candidate: V2Item) =>
+      scoreV2(candidate, profiles).explanations.find((e) => e.signal === "similarity")!;
+    expect(sim(padded).reliability).toBeLessThan(sim(lean).reliability);
+  });
+
+  it("ranks a candidate near your dislikes below one near your favorites", () => {
+    const profiles = buildTasteProfiles([
+      observation("loved", 10, { media: item("loved", { genres: genre("Horror") }) }),
+      observation("hated", 2, { media: item("hated", { genres: genre("Musical") }) }),
+      ...Array.from({ length: 6 }, (_, i) =>
+        observation(`mid${i}`, 6.5, { media: item(`mid${i}`, { genres: genre("Drama") }) }),
+      ),
+    ]);
+    const horror = scoreV2(item("h", { genres: genre("Horror") }), profiles).score;
+    const musical = scoreV2(item("m", { genres: genre("Musical") }), profiles).score;
+    expect(horror).toBeGreaterThan(50);
+    expect(musical).toBeLessThan(50);
+  });
+
+  it("borrows portable taste across media only when the medium itself is thin", () => {
+    const movies = Array.from({ length: 12 }, (_, i) =>
+      observation(`film${i}`, 10, {
+        media: item(`film${i}`, { genres: genre("Horror"), tags: [tagged("Dread", "MOOD")] }),
+      }),
+    );
+    const profiles = buildTasteProfiles(movies);
+    const game = scoreV2(
+      item("game", { mediaType: "VIDEO_GAME", genres: genre("Horror"), tags: [tagged("Dread", "MOOD")] }),
+      profiles,
+    );
+    const similarity = game.explanations.find((e) => e.signal === "similarity")!;
+    expect(similarity.value).toBeGreaterThan(50);
+    expect(similarity.reliability).toBeLessThan(0.4);
+  });
+});
+
+describe("v2 friend baselines", () => {
+  it("reads a friend's rating relative to that friend's usual rating", () => {
+    const generous = [
+      ...Array.from({ length: 20 }, (_, i) => friend(9.5, { mediaId: `g${i}` })),
+      friend(7, { mediaId: "candidate" }),
+    ];
+    const harsh = [
+      ...Array.from({ length: 20 }, (_, i) => friend(5, { mediaId: `h${i}`, userId: "harsh" })),
+      friend(7, { mediaId: "candidate", userId: "harsh" }),
+    ];
+    const rows = [...generous, ...harsh];
+    const baselines = buildFriendBaselines(rows);
+    const opinion = (userId: string) =>
+      friendSignal(rows.filter((r) => r.mediaId === "candidate" && r.userId === userId), new Map(), baselines).value!;
+    expect(opinion("friend")).toBeLessThan(50);
+    expect(opinion("harsh")).toBeGreaterThan(50);
   });
 });
