@@ -431,7 +431,7 @@ export function MediaDetailView({
                 item.computedPersonalScore,
                 item.comparisonCount,
               )}
-              label="Refined"
+              label="Refined score"
               sub="Your blended personal score"
               value={formatOptionalScore(item.computedPersonalScore)}
             />
@@ -677,7 +677,7 @@ export function MediaDetailView({
 
             {eloTimeline.length >= 2 && (
               <Tooltip
-                title={`Refined score across ${eloTimeline.length} comparisons. Every item starts at 1000 and shifts with each head-to-head pick.`}
+                title={`Comparison rating across ${eloTimeline.length} comparisons. Every item starts at 1000 and shifts with each head-to-head pick.`}
                 arrow
                 placement="top"
               >
@@ -698,13 +698,13 @@ export function MediaDetailView({
                     width={200}
                     height={40}
                     baseline={1000}
-                    ariaLabel="Refined score over time"
+                    ariaLabel="Comparison rating over time"
                   />
                   <Stack>
                     <Typography
                       sx={{ fontSize: "0.875rem", color: "text.secondary" }}
                     >
-                      Refined score trajectory
+                      Comparison rating trajectory
                     </Typography>
                     <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>
                       {Math.round(eloTimeline[0])} →{" "}
@@ -732,7 +732,7 @@ export function MediaDetailView({
                   const upsetTooltip =
                     entry.expectedWinProb == null
                       ? `${entry.result} ${entry.opponent}`
-                      : `Expected win ${(entry.expectedWinProb * 100).toFixed(0)}%. ${deltaLabel ? `Refined score moved ${deltaLabel}.` : ""}`;
+                      : `Expected win ${(entry.expectedWinProb * 100).toFixed(0)}%. ${deltaLabel ? `Comparison rating moved ${deltaLabel}.` : ""}`;
                   return (
                     <Box key={entry.id} sx={comparisonRowSx}>
                       <Typography sx={comparisonOpponentSx}>

@@ -332,7 +332,7 @@ export default async function MediaPage({
             >
               <MenuItem value="title">Title</MenuItem>
               <MenuItem value="releaseDate">Release date</MenuItem>
-              <MenuItem value="pairwiseScore">Refined score</MenuItem>
+              <MenuItem value="pairwiseScore">Comparison rating</MenuItem>
               <MenuItem value="computedPersonalScore">Personal score</MenuItem>
               <MenuItem value="computedConsensusScore">
                 Consensus score

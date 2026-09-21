@@ -284,7 +284,7 @@ export default function MediaDetailMockup() {
           }}
         >
           <ScoreTile
-            label="Refined"
+            label="Refined score"
             value={item.refined.toFixed(1)}
             sub="Your blended personal score"
             colorHex={a}
