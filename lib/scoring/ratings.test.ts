@@ -25,15 +25,14 @@ function media(overrides: Partial<ScoredMediaItem> = {}): ScoredMediaItem {
 }
 
 describe("personal score", () => {
-  it("keeps low-comparison scores close to the explicit rating", () => {
+  it("preserves the explicit rating when no comparisons exist", () => {
     const score = calculatePersonalScore({
       explicitRating: 9,
       pairwiseScore: 1000,
       comparisonCount: 0,
     });
 
-    expect(score.score).toBeGreaterThan(8.5);
-    expect(score.score).toBeLessThan(9);
+    expect(score.score).toBe(9);
   });
 
   it("uses pairwise fallback when explicit rating is missing", () => {
@@ -45,6 +44,16 @@ describe("personal score", () => {
 
     expect(score.score).toBe(10);
     expect(score.confidence).toBeLessThan(1);
+  });
+
+  it("does not manufacture a score from an untested Elo placeholder", () => {
+    expect(
+      calculatePersonalScore({
+        explicitRating: null,
+        pairwiseScore: 1000,
+        comparisonCount: 0,
+      }),
+    ).toEqual({ score: null, confidence: 0 });
   });
 });
 

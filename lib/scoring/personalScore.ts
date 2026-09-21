@@ -14,8 +14,13 @@ export function calculatePersonalScore({
   pairwiseScore: number;
   comparisonCount: number;
 }) {
+  // Elo's initial value is a placeholder, not a rating or evidence.
+  if (explicitRating == null && comparisonCount <= 0) {
+    return { score: null, confidence: 0 };
+  }
   const pairwiseRating = normalizedPairwiseRating(pairwiseScore);
-  const pairwiseConfidence = calculatePairwiseConfidence(comparisonCount);
+  const pairwiseConfidence =
+    comparisonCount > 0 ? calculatePairwiseConfidence(comparisonCount) : 0;
 
   if (explicitRating == null) {
     return {
@@ -26,8 +31,7 @@ export function calculatePersonalScore({
     };
   }
 
-  const relationalWeight =
-    PERSONAL_SCORE.relationalWeight * pairwiseConfidence;
+  const relationalWeight = PERSONAL_SCORE.relationalWeight * pairwiseConfidence;
   const explicitWeight = 1 - relationalWeight;
   const score =
     explicitRating * explicitWeight + pairwiseRating * relationalWeight;
@@ -35,7 +39,10 @@ export function calculatePersonalScore({
   return {
     score: roundScore(clamp(score, 0, 10)),
     confidence: roundConfidence(
-      Math.max(PERSONAL_SCORE.explicitRatingConfidenceFloor, pairwiseConfidence),
+      Math.max(
+        PERSONAL_SCORE.explicitRatingConfidenceFloor,
+        pairwiseConfidence,
+      ),
     ),
   };
 }
