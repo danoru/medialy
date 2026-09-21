@@ -5,7 +5,6 @@ import {
   Chip,
   Divider,
   Stack,
-  Tooltip,
   Typography,
 } from "@mui/material";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
@@ -13,12 +12,15 @@ import {
   BADGE_THRESHOLDS,
   COMPARISON_RELEVANCE,
   CONSENSUS,
+  DIVERSITY,
   FRIEND_SIGNAL,
   RATING_COMPATIBILITY,
   HIDDEN_GEM,
+  MATCH_CALIBRATION,
   MEDIALY_MATCH_WEIGHTS,
   PAIRWISE,
   PERSONAL_SCORE,
+  RECOMMENDATION_V2,
   SOURCE_MEDIA_APPLICABILITY,
   SOURCE_TRUST_WEIGHTS,
 } from "@/lib/scoring/config";
@@ -168,9 +170,140 @@ export default async function ScoringConfigPage() {
       </FormulaSection>
 
       <FormulaSection
-        title="Medialy Match (taste-only)"
+        title="Taste engine (v2)"
+        formula="score = 50 + Σ(weightᵢ × reliabilityᵢ × (valueᵢ − 50))"
+        description="The live recommendation engine (lib/scoring/recommendationV2.ts). Every signal is 0–100 centered on 50 plus a 0–1 reliability; unknown (no value) is distinct from neutral (value 50, some reliability) — an unknown signal moves nothing and adds no confidence."
+      >
+        <Row
+          label="Signal weights"
+          info="Chosen by the holdout sweep of September 21, 2026 (pooled pair accuracy 86.1%, v1 was ~72%)."
+          value={Object.entries(RECOMMENDATION_V2.weights)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(" · ")}
+        />
+        <Row
+          label="Similarity — neighbours / min cosine"
+          info="Nearest rated titles considered per candidate, and the cosine below which a title is not a neighbour at all."
+          value={`${RECOMMENDATION_V2.similarity.neighbours} neighbours · min ${RECOMMENDATION_V2.similarity.minSimilarity}`}
+        />
+        <Row
+          label="Similarity — support prior"
+          info="Squared-similarity support needed for half reliability."
+          value={RECOMMENDATION_V2.similarity.prior}
+        />
+        <Row
+          label="Similarity — cross-medium fallback"
+          info="Below this same-medium reliability, other media are consulted through the portable vector (genres + theme/mood/country tags), at the listed reliability multiplier."
+          value={`below ${RECOMMENDATION_V2.similarity.crossMediumBelow} · ×${RECOMMENDATION_V2.similarity.crossMediumFactor}`}
+        />
+        <Row
+          label="Genre / tag weights in the item vector"
+          info="Weight of a genre vs. each tag category when building the cosine vector."
+          value={`genre ${RECOMMENDATION_V2.similarity.genreWeight} · ${Object.entries(
+            RECOMMENDATION_V2.similarity.tagCategoryWeights,
+          )
+            .map(([k, v]) => `${k.toLowerCase()} ${v}`)
+            .join(" · ")}`}
+        />
+        <Row
+          label="Portable tag categories"
+          info="Tag categories that mean the same thing across movies, TV and games, used for the cross-medium fallback."
+          value={RECOMMENDATION_V2.similarity.portableTagCategories.join(", ")}
+        />
+        <Row
+          label="Role weights"
+          info="Strength of a contributor credit by role; 0 means the role never contributes (e.g. actors)."
+          value={Object.entries(RECOMMENDATION_V2.roleWeights)
+            .map(([k, v]) => `${k.toLowerCase()} ${v}`)
+            .join(" · ")}
+        />
+        <Row
+          label="Consensus neutral / point scale"
+          info="The critic score that reads as neutral (the catalog's mean is about 7), and points of signal per critic point away from it."
+          value={`neutral ${RECOMMENDATION_V2.consensusNeutral} · ${RECOMMENDATION_V2.consensusPointScale} pts/point`}
+        />
+        <Row
+          label="Feature priors"
+          info="featurePrior: pseudo-observations of neutral taste per feature. featureBreadthPrior: added to a candidate's known-feature count so one known genre isn't full confidence."
+          value={`feature ${RECOMMENDATION_V2.featurePrior} · breadth ${RECOMMENDATION_V2.featureBreadthPrior}`}
+        />
+        <Row
+          label="Baseline prior / fallback rating"
+          info="Pseudo-observations at the fallback rating used to stabilize a sparse per-medium rating baseline."
+          value={`${RECOMMENDATION_V2.baselinePrior} obs @ ${RECOMMENDATION_V2.fallbackRating}`}
+        />
+        <Row
+          label="Rating point scale"
+          info="How a rating's distance from baseline (0–10 scale) converts to signal points (0–100 scale), clamped ±50."
+          value={RECOMMENDATION_V2.ratingPointScale}
+        />
+        <Row
+          label="Friend priors"
+          info="friendPrior: neutral friend evidence, avoids one rating dominating. overlapPrior: shared ratings needed for half compatibility trust."
+          value={`friend ${RECOMMENDATION_V2.friendPrior} · overlap ${RECOMMENDATION_V2.overlapPrior}`}
+        />
+        <Row
+          label="Status-only interest"
+          info="Opinion value when a friend finished or watchlisted a title without rating it."
+          value={RECOMMENDATION_V2.statusOnlyInterest}
+        />
+        <Row
+          label="Minimum explicit rating"
+          info="Stored ratings below this are placeholders, not opinions (the rating control bottoms out at a half star) — read as no rating at all."
+          value={RECOMMENDATION_V2.minExplicitRating}
+        />
+      </FormulaSection>
+
+      <FormulaSection
+        title="Match calibration"
+        formula="match = round(sigmoid(intercept + slope × (rawScore − 50)) × 100)"
+        description="Maps the v2 engine's raw 0–100 score to the displayed Match: the chance the viewer rates the title above their own average. Fitted offline (npm run recommendations:evaluate -- --all) on held-out ratings — paste the printed values here after a refit."
+      >
+        <Row label="Intercept" value={MATCH_CALIBRATION.intercept} />
+        <Row label="Slope" value={MATCH_CALIBRATION.slope} />
+        <Row
+          label="Last fit"
+          info="1,563 held-out ratings from three users. Brier 0.2125 vs. 0.25 for a constant guess. Raw 50 → 46%, raw 70 → 90%, raw 35 → 11%."
+          value="September 21, 2026"
+        />
+      </FormulaSection>
+
+      <FormulaSection
+        title="Pick variety"
+        formula="value = score − DIVERSITY.lambda × similarityToClosestPickSoFar × 100"
+        description="Turns a ranked list into a short set worth showing together (lib/scoring/diversity.ts). Maximal marginal relevance per slot, then one adventurous slot for a pick outside the viewer's usual genres."
+      >
+        <Row
+          label="Lambda"
+          info="How hard a near-duplicate of an earlier pick is pushed down, in score points per unit similarity."
+          value={DIVERSITY.lambda}
+        />
+        <Row
+          label="Same-creator similarity"
+          info="Similarity assigned to two picks that share a director, creator or studio."
+          value={DIVERSITY.sameCreatorSimilarity}
+        />
+        <Row
+          label="Genre / tag share weights"
+          info="How much shared genres vs. shared tags count toward similarity when there's no shared creator."
+          value={`genre ${DIVERSITY.genreShare} · tag ${DIVERSITY.tagShare}`}
+        />
+        <Row
+          label="Adventurous slots / floor"
+          info="Slots in a row reserved for a pick outside the viewer's usual genres, and the calibrated Match it must reach."
+          value={`${DIVERSITY.adventurousSlots} slot(s) · floor ${DIVERSITY.adventurousFloor}`}
+        />
+        <Row
+          label="Usual genre count"
+          info="How many of the viewer's most-rated genres count as 'usual' (and are therefore avoided by the adventurous pick)."
+          value={DIVERSITY.usualGenreCount}
+        />
+      </FormulaSection>
+
+      <FormulaSection
+        title="Previous engine (v1, kept for comparison)"
         formula="match = Σ(signalᵢ × weightᵢ), clamped to 0–100"
-        description="Pure taste signal. Status and upcoming are NOT here — they're eligibility filters on the candidate pool (see `lib/scoring/eligibility.ts`). Each row is what we believe about you, not what's convenient to consume right now."
+        description="Superseded by the taste engine (v2) above; kept for the admin comparison page and the holdout baseline (getRecommendationsV1). Status and upcoming are NOT here — they're eligibility filters on the candidate pool (see `lib/scoring/eligibility.ts`)."
       >
         {Object.entries(MEDIALY_MATCH_WEIGHTS).map(([key, value]) => (
           <Row key={key} label={key} value={value} />
@@ -377,11 +510,10 @@ function Row({
       <Stack direction="row" sx={{ alignItems: "center", gap: 0.5, minWidth: 220 }}>
         <Typography sx={{ fontSize: "0.875rem", fontWeight: 600 }}>{label}</Typography>
         {info ? (
-          <Tooltip arrow title={info} placement="top">
-            <InfoOutlinedIcon
-              sx={{ fontSize: 14, color: "text.secondary", cursor: "help" }}
-            />
-          </Tooltip>
+          <InfoOutlinedIcon
+            titleAccess={info}
+            sx={{ fontSize: 14, color: "text.secondary", cursor: "help" }}
+          />
         ) : null}
       </Stack>
       <Box

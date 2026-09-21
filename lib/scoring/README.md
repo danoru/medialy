@@ -70,7 +70,74 @@ Final consensus confidence is the product of the two.
 
 ---
 
-## Medialy Match (`medialyMatch.ts`)
+## Medialy Match (v2) — `recommendationV2.ts`
+
+The live recommendation engine, wired through `lib/recommendations.ts:getRecommendations` → `lib/recommendations-v2.ts:getRecommendationsV2`. Replaces the affinity/friend/consensus blend described further down (`getRecommendationsV1`, kept for comparison).
+
+Every signal answers "how much will this viewer like the candidate?" as a 0–100 value centered on 50 (neutral), plus a 0–1 reliability saying how much evidence backs it. Unknown (`value: null`, reliability 0) is different from neutral (`value: 50`): an unknown signal moves nothing and adds no confidence, a neutral one adds confidence while moving nothing.
+
+```
+score = 50 + Σ(weightᵢ × reliabilityᵢ × (valueᵢ − 50))
+confidence = Σ(weightᵢ × reliabilityᵢ)
+```
+
+### The six signals (`RECOMMENDATION_V2.weights`)
+
+| Signal | Weight | What it measures |
+|---|---:|---|
+| Similarity | 0.25 | Nearest rated titles ("because you rated X"), cosine over genre/tag/credit/country vectors |
+| Genre | 0.05 | Signed per-medium genre profile |
+| Tag | 0.04 | Signed per-medium approved-tag profile |
+| Contributor | 0.06 | Signed per-medium director/creator/developer/publisher profile |
+| Friends | 0.25 | Followers' ratings, centered on each friend's own baseline |
+| Consensus | 0.35 | External critics, centered on the catalog's typical 7 |
+
+Weights were chosen by the holdout sweep of September 21, 2026 (see below); critics carry the most weight because for the two largest histories they were the best single predictor, and the personal signals add most where taste and critics part ways.
+
+**Similarity** (`similaritySignal`) — the candidate's `RECOMMENDATION_V2.similarity.neighbours` (20) nearest same-medium rated titles by cosine similarity (`cosine ≥ minSimilarity`), weighted by squared similarity × example weight. The value is the weighted mean of those neighbours' residuals (rating minus the viewer's medium baseline, in points, clamped ±50). When same-medium reliability falls below `crossMediumBelow` (0.3), titles from other media are consulted too through a portable vector (genres plus theme/mood/country tags only), at `crossMediumFactor` (0.4) reliability. Cosine normalization means a title with more tags gets no extra credit.
+
+**Genre / tag / contributor** (`featureSignal`) — signed per-medium feature profiles built in `buildTasteProfiles`. Each rated title's residual is added to every genre/tag/contributor-role it carries. A candidate's value is the reliability-weighted mean of its *known* features' residuals; reliability grows both with how well-supported each known feature is (`featurePrior`) and with how many of the candidate's features are known at all (`featureBreadthPrior`) — so a title whose features you have never rated moves the score little, and three loved genres beat one. Unknown features lower reliability instead of disappearing.
+
+**Friends** (`friendSignal`) — each followed user's opinion of the candidate, centered on *that friend's own* usual rating in the medium (`buildFriendBaselines`), not a flat neutral. Compatibility is shrunk toward neutral by shared-rating overlap (`overlapPrior`); completing or watchlisting without a rating counts only as weak interest (`statusOnlyInterest`), never stacked on top of a rating.
+
+**Consensus** — critics, centered on `consensusNeutral` (7, the catalog's typical critic score, not 5) at `consensusPointScale` (20) points per critic point away from it; reliability is the consensus pipeline's own confidence.
+
+### Calibration — what Match now means (`calibration.ts`, `MATCH_CALIBRATION`)
+
+The raw 0–100 score is not itself a probability. `calibratedMatch` maps it through a logistic curve fitted offline (`npm run recommendations:evaluate -- --all`) on held-out ratings, so the displayed **Match** means *"the chance you rate this title above your own average"* — the same meaning for every viewer and medium:
+
+```
+probability = sigmoid(MATCH_CALIBRATION.intercept + MATCH_CALIBRATION.slope × (rawScore − 50))
+match = round(probability × 100)
+```
+
+Fitted September 21, 2026 on 1,563 held-out ratings: intercept −0.1747, slope 0.1869, Brier 0.2125 (vs. 0.25 for a constant guess). A raw 50 shows as 46%, a raw 70 as 90%, a raw 35 as 11%.
+
+### Diversity — the dashboard picks (`diversity.ts`, `DIVERSITY`)
+
+Short recommendation rows (dashboard picks) run their ranked candidates through `diversify`: maximal marginal relevance picks each slot as the candidate with the best `score − λ × similarityToClosestPickSoFar`, so a row of five is not five entries from one franchise or one director. One slot (`adventurousSlots`) is reserved for the best candidate outside the viewer's `usualGenreCount` most-rated genres, provided it clears `adventurousFloor` (55 calibrated Match); if none does, the slot stays dependable.
+
+### Holdout (`recommendationEvaluation.ts`, `RECOMMENDATION_EVALUATION`)
+
+`npm run recommendations:evaluate -- --all`, run September 21, 2026. A five-fold, per-medium, retrospective diagnostic: a held-out title is "liked" when rated `likedMargin` (1) above the viewer's own mean rating in that medium, "disliked" when `dislikedMargin` (1) below it; the reported accuracy is the fraction of liked/disliked pairs each ranker orders correctly (0.5 = chance).
+
+Pooled pair accuracy: **v2 86.1%**, v1 ~72%, critics-alone ~87%, on the two biggest movie histories.
+
+| Cell | Pairs | V2 | V1 | Critics alone |
+|---|---:|---:|---:|---:|
+| User A, movies | 2,742 | 82.3% | 68.0% | 82.8% |
+| Main user, movies | 1,863 | 91.4% | 76.1% | 92.5% |
+| Third user, movies | 75 | 86.7% | 60.0% | 75.3% |
+
+Critics alone edge out v2 on the two largest histories, where personal taste and critical consensus mostly agree; v2's margin over v1 is largest where a user's taste diverges most from critics (the third user's cell).
+
+Stored ratings of 0 are read as no rating by the engine (`explicitRating`, `minExplicitRating: 0.5`) — of the 164 zero-valued rows found, 163 belong to the main account's unplayed games and are placeholders, not real opinions. The database rows themselves still need a manual cleanup (set `personalRating` to `NULL` where it is 0, then `npm run ratings:recompute`), because a stored 0 still counts as a vote in community averages even though the engine ignores it.
+
+---
+
+## Previous engine (v1, kept for comparison) — `medialyMatch.ts`, `affinityProfile.ts`
+
+Superseded by v2 above. Kept for the side-by-side admin comparison (`/data-health/recommendations`) and as the holdout baseline; reachable through `getRecommendationsV1`. Not used by any product page.
 
 The recommendation score, **0–100**. Personal score is intentionally absent — by the time an item reaches this function it's a candidate the user hasn't consumed (filtered upstream in `eligibility.ts`), so "how much have you already shown you like it" is meaningless. Demonstrated taste flows in via the affinity signals.
 
@@ -285,8 +352,12 @@ Run `pnpm tsx scripts/explain-recommendations.ts [userId] [limit]` to print the 
 
 | Change | File |
 |---|---|
-| Tune Medialy Match weights | `config.ts:MEDIALY_MATCH_WEIGHTS` |
-| Tune affinity shrinkage / saturation | `config.ts:AFFINITY_TUNING` |
+| Tune v2 signal weights, priors, similarity | `config.ts:RECOMMENDATION_V2` |
+| Tune Match calibration (what the % means) | `config.ts:MATCH_CALIBRATION`, `calibration.ts` |
+| Tune dashboard pick variety | `config.ts:DIVERSITY`, `diversity.ts` |
+| Tune the holdout's liked/disliked margins | `config.ts:RECOMMENDATION_EVALUATION` |
+| Tune v1 Medialy Match weights | `config.ts:MEDIALY_MATCH_WEIGHTS` |
+| Tune v1 affinity shrinkage / saturation | `config.ts:AFFINITY_TUNING` |
 | Tune Top 10 / Insights shrinkage | `config.ts:TOP_RANKING` |
 | Tune Discover section rules | `config.ts:DISCOVER` |
 | Tune friend-signal trust | `config.ts:FRIEND_SIGNAL` |
