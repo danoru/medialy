@@ -21,6 +21,7 @@
     "completed-at:backfill": "tsx scripts/backfill-completed-at.ts",
     "ratings:fetch": "node scripts/enrich-ratings.mjs",
     "ratings:recompute": "tsx scripts/recompute-ratings.ts",
+    "recommendations:evaluate": "tsx scripts/evaluate-recommendations.ts",
     "opencritic:fetch": "tsx scripts/enrich-opencritic.ts",
     "tags:cleanup:dry-run": "tsx scripts/cleanup-tags.ts",
     "tags:cleanup": "tsx scripts/cleanup-tags.ts --apply",

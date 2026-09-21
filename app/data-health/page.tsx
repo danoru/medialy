@@ -58,6 +58,9 @@ export default async function DataHealthPage({
 
   return (
     <Stack spacing={3}>
+      <Link href="/data-health/recommendations">
+        Compare recommendation algorithms
+      </Link>
       <Card variant="outlined">
         <CardContent>
           <Tabs
