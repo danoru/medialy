@@ -240,6 +240,34 @@ export const AFFINITY_TUNING = {
   },
 } as const;
 
+/** Review-only v2. Independent constants keep the live v1 baseline unchanged. */
+export const RECOMMENDATION_V2 = {
+  neutral: 50,
+  /** Pseudo-observations of neutral taste for each feature. */
+  featurePrior: 5,
+  /** Stabilizes the per-medium rating baseline for sparse users. */
+  baselinePrior: 5,
+  fallbackRating: 6.5,
+  ratingPointScale: 20,
+  /** Neutral friend evidence; avoids one rating dominating the score. */
+  friendPrior: 2,
+  overlapPrior: 5,
+  weights: {
+    genre: 0.2,
+    tag: 0.15,
+    contributor: 0.15,
+    friends: 0.3,
+    consensus: 0.2,
+  },
+  roleWeights: {
+    DIRECTOR: 1,
+    CREATOR: 1,
+    DEVELOPER: 0.55,
+    PUBLISHER: 0.35,
+    ACTOR: 0,
+  },
+} as const;
+
 // -----------------------------------------------------------------------------
 // Comparison relevance (which Elo matchups to surface)
 // -----------------------------------------------------------------------------
@@ -269,6 +297,31 @@ export const RATING_COMPATIBILITY = {
    * 1-point average gap drops you to 88; a 5-point gap drops you to 40.
    */
   ratingDistancePenalty: 12,
+} as const;
+
+// -----------------------------------------------------------------------------
+// Friend signal (the `friendAffinity` input to Medialy Match)
+// -----------------------------------------------------------------------------
+
+/**
+ * How followed users' opinions of a candidate become one 0–100 signal.
+ *
+ *  - A friend's compatibility is shrunk toward neutral (50) by how many titles
+ *    the two of you have both rated: `overlap / (overlap + overlapPrior)`. One
+ *    matching rating no longer makes someone a 100% taste twin.
+ *  - Their opinion is a 0–100 value: `(rating − 5) × 20` for an explicit rating
+ *    (a 10 reaches 100, a 5 is neutral), else a small interest value for having
+ *    finished or watchlisted the title. Status is never added on top of a rating.
+ *  - The compatibility-weighted mean is then multiplied by
+ *    `Σw / (Σw + evidencePrior)`, so a single 50%-compatible friend moves the
+ *    signal about half as far as a fully trusted one, instead of the weight
+ *    cancelling out of the average entirely.
+ */
+export const FRIEND_SIGNAL = {
+  overlapPrior: 5,
+  evidencePrior: 1,
+  completedInterest: 15,
+  watchlistInterest: 8,
 } as const;
 
 // -----------------------------------------------------------------------------

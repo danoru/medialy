@@ -13,6 +13,7 @@ import {
   BADGE_THRESHOLDS,
   COMPARISON_RELEVANCE,
   CONSENSUS,
+  FRIEND_SIGNAL,
   RATING_COMPATIBILITY,
   HIDDEN_GEM,
   MEDIALY_MATCH_WEIGHTS,
@@ -216,6 +217,28 @@ export default async function ScoringConfigPage() {
           label="Rating distance penalty"
           info="12 means a 1-point average gap drops you to 88; a 5-point gap drops you to 40."
           value={RATING_COMPATIBILITY.ratingDistancePenalty}
+        />
+      </FormulaSection>
+
+      <FormulaSection
+        title="Friend Signal"
+        formula="value = weightedMean(opinion × w) × Σw / (Σw + evidencePrior)"
+        description="How followed users' opinions of a title become the 0–100 friend input to Medialy Match. Opinion = (rating − 5) × 20, or a small interest value for finishing or watchlisting without a rating. w = compatibility shrunk toward neutral by shared-rating count."
+      >
+        <Row
+          label="Overlap prior"
+          info="Shared ratings needed before a friend's compatibility counts at half strength. With 5, one shared title moves compatibility only a sixth of the way from neutral."
+          value={FRIEND_SIGNAL.overlapPrior}
+        />
+        <Row
+          label="Evidence prior"
+          info="Total follower weight needed for the signal to reach half of the weighted mean. Stops a single half-trusted friend from counting in full."
+          value={FRIEND_SIGNAL.evidencePrior}
+        />
+        <Row
+          label="Status-only interest"
+          info="Opinion value when a friend finished or watchlisted the title but did not rate it. Never added on top of a rating."
+          value={`completed ${FRIEND_SIGNAL.completedInterest} · watchlist ${FRIEND_SIGNAL.watchlistInterest}`}
         />
       </FormulaSection>
 

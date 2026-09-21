@@ -8,7 +8,7 @@ import {
 } from "@/lib/scoring/eligibility";
 import { getCatalogItems, getCatalogWithUser } from "@/lib/db/catalog";
 import { calculateRatingCompatibility } from "@/lib/scoring/compatibility";
-import { AFFINITY_TUNING } from "@/lib/scoring/config";
+import { AFFINITY_TUNING, FRIEND_SIGNAL } from "@/lib/scoring/config";
 import {
   saturate,
   shrunkContribution,
@@ -440,15 +440,24 @@ export async function getFollowedUserRatingsByMedia(
   return byMedia;
 }
 
+/** A follower's taste agreement with the viewer and how much evidence backs it. */
+export type FollowerTrust = {
+  /** 0–100 from `calculateRatingCompatibility`; 50 when there is no overlap. */
+  compatibility: number;
+  /** Titles both the viewer and the follower have rated. */
+  overlap: number;
+};
+
 /**
- * Per-follower taste compatibility (0–100) against the viewer. Computed once
- * per request from overlapping rated items. Returned map is keyed by
- * followerId; missing followers default to 50 (neutral) at lookup time.
+ * Per-follower taste compatibility (0–100) against the viewer, plus the
+ * overlap count that produced it. Computed once per request from overlapping
+ * rated items. Returned map is keyed by followerId; missing followers default
+ * to neutral with zero overlap at lookup time.
  */
 export async function getFollowerCompatibilityMap(
   viewerId: string,
   followedByMedia: Map<string, FollowerRating[]>,
-): Promise<Map<string, number>> {
+): Promise<Map<string, FollowerTrust>> {
   if (viewerId === "__anonymous__") return new Map();
   const followerIds = new Set<string>();
   for (const rows of followedByMedia.values()) {
@@ -491,24 +500,47 @@ export async function getFollowerCompatibilityMap(
     pairsByFollower.set(row.userId, list);
   }
 
-  const compatibility = new Map<string, number>();
+  const trust = new Map<string, FollowerTrust>();
   for (const followerId of followerIds) {
     const pairs = pairsByFollower.get(followerId) ?? [];
     if (pairs.length === 0) {
-      compatibility.set(followerId, 50); // no overlap = neutral
+      trust.set(followerId, { compatibility: 50, overlap: 0 });
       continue;
     }
-    compatibility.set(
-      followerId,
-      calculateRatingCompatibility(pairs).compatibilityScore,
-    );
+    const result = calculateRatingCompatibility(pairs);
+    trust.set(followerId, {
+      compatibility: result.compatibilityScore,
+      overlap: result.overlapCount,
+    });
   }
-  return compatibility;
+  return trust;
+}
+
+/**
+ * Compatibility shrunk toward neutral by how many shared ratings back it, then
+ * mapped to a 0–1 weight. See `FRIEND_SIGNAL` for the reasoning.
+ */
+export function followerWeight(trust: FollowerTrust | undefined) {
+  const compatibility = trust?.compatibility ?? 50;
+  const overlap = trust?.overlap ?? 0;
+  const reliability = overlap / (overlap + FRIEND_SIGNAL.overlapPrior);
+  const effective = 50 + (compatibility - 50) * reliability;
+  return effective / 100;
+}
+
+/** One follower's opinion of a title as a 0–100 value; 0 means no opinion. */
+export function followerOpinion(entry: FollowerRating) {
+  if (entry.rating != null) {
+    return Math.max(0, Math.min(100, (entry.rating - 5) * 20));
+  }
+  if (entry.status === "COMPLETED") return FRIEND_SIGNAL.completedInterest;
+  if (entry.status === "WATCHLIST") return FRIEND_SIGNAL.watchlistInterest;
+  return 0;
 }
 
 export function computeFriendSignal(
   ratings: FollowerRating[],
-  followerCompatibility: Map<string, number>,
+  followerTrust: Map<string, FollowerTrust>,
 ): { value: number; detail?: string } {
   if (ratings.length === 0) return { value: 0 };
 
@@ -517,28 +549,29 @@ export function computeFriendSignal(
   let topRater: { rating: number; compatibility: number } | undefined;
 
   for (const entry of ratings) {
-    const compat = followerCompatibility.get(entry.userId) ?? 50;
-    // Compatibility 0→100 maps to weight 0→1. A perfectly aligned friend's
-    // rating counts in full; a low-compatibility friend's rating is muted.
-    const weight = compat / 100;
-    const ratingBoost = entry.rating
-      ? Math.max(0, (entry.rating - 6) * 10)
-      : 0;
-    const statusBoost =
-      entry.status === "COMPLETED" ? 8 : entry.status === "WATCHLIST" ? 5 : 0;
-    const perFollower = ratingBoost + statusBoost;
-
-    weightedSum += perFollower * weight;
+    const trust = followerTrust.get(entry.userId);
+    const weight = followerWeight(trust);
+    weightedSum += followerOpinion(entry) * weight;
     weightTotal += weight;
 
     if (entry.rating != null) {
       if (!topRater || entry.rating > topRater.rating) {
-        topRater = { rating: entry.rating, compatibility: compat };
+        topRater = {
+          rating: entry.rating,
+          compatibility: trust?.compatibility ?? 50,
+        };
       }
     }
   }
 
-  const value = weightTotal > 0 ? weightedSum / weightTotal : 0;
+  if (weightTotal <= 0) return { value: 0 };
+
+  // Weighted mean of opinions, then shrunk by total trust so that one
+  // half-trusted friend moves the signal half as far as a fully trusted one
+  // (their weight no longer cancels out of the average).
+  const mean = weightedSum / weightTotal;
+  const evidence = weightTotal / (weightTotal + FRIEND_SIGNAL.evidencePrior);
+  const value = mean * evidence;
 
   let detail: string | undefined;
   if (topRater) {

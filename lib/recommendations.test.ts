@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeFriendSignal,
+  followerOpinion,
+  followerWeight,
   getRecommendationReleaseDateWhere,
   isRecommendationEligibleStatus,
   recommendationPersonalScoreTrust,
@@ -57,5 +60,85 @@ describe("recommendation availability policy", () => {
     ).toEqual({
       OR: [{ releaseDate: null }, { releaseDate: { lt: tomorrow } }],
     });
+  });
+});
+
+describe("friend signal", () => {
+  const rated = (userId: string, rating: number | null, status = "COMPLETED") => ({
+    userId,
+    rating,
+    status,
+  });
+  const trust = (entries: Array<[string, number, number]>) =>
+    new Map(
+      entries.map(([userId, compatibility, overlap]) => [
+        userId,
+        { compatibility, overlap },
+      ]),
+    );
+
+  it("lets a fully trusted friend who loved the title reach the top of the 0–100 range", () => {
+    const { value } = computeFriendSignal(
+      [rated("a", 10)],
+      trust([["a", 100, 100]]),
+    );
+    // weight ≈ 0.95 after overlap shrinkage, evidence ≈ 0.49 with one friend.
+    expect(value).toBeGreaterThan(45);
+    expect(followerOpinion(rated("a", 10))).toBe(100);
+  });
+
+  it("does not let compatibility cancel out when only one friend contributes", () => {
+    const aligned = computeFriendSignal(
+      [rated("a", 9)],
+      trust([["a", 100, 40]]),
+    ).value;
+    const mismatched = computeFriendSignal(
+      [rated("a", 9)],
+      trust([["a", 20, 40]]),
+    ).value;
+    expect(aligned).toBeGreaterThan(mismatched * 1.5);
+  });
+
+  it("shrinks compatibility toward neutral when there is little shared history", () => {
+    // 100% compatibility on one shared title is worth far less than on twenty.
+    expect(followerWeight({ compatibility: 100, overlap: 1 })).toBeLessThan(
+      0.6,
+    );
+    expect(followerWeight({ compatibility: 100, overlap: 20 })).toBeGreaterThan(
+      0.85,
+    );
+    expect(followerWeight(undefined)).toBe(0.5);
+  });
+
+  it("treats finishing or watchlisting without a rating as weak interest, never as a rating", () => {
+    expect(followerOpinion(rated("a", null, "COMPLETED"))).toBeLessThan(20);
+    expect(followerOpinion(rated("a", null, "WATCHLIST"))).toBeLessThan(
+      followerOpinion(rated("a", null, "COMPLETED")),
+    );
+    expect(followerOpinion(rated("a", null, "UNTRACKED"))).toBe(0);
+    // A rating stands alone; completion is not stacked on top of it.
+    expect(followerOpinion(rated("a", 7, "COMPLETED"))).toBe(40);
+  });
+
+  it("treats a rating at the neutral point or below as no endorsement", () => {
+    expect(followerOpinion(rated("a", 5))).toBe(0);
+    expect(followerOpinion(rated("a", 3))).toBe(0);
+  });
+
+  it("grows with more agreeing friends rather than averaging them away", () => {
+    const one = computeFriendSignal(
+      [rated("a", 9)],
+      trust([["a", 90, 20]]),
+    ).value;
+    const three = computeFriendSignal(
+      [rated("a", 9), rated("b", 9), rated("c", 9)],
+      trust([
+        ["a", 90, 20],
+        ["b", 90, 20],
+        ["c", 90, 20],
+      ]),
+    ).value;
+    expect(three).toBeGreaterThan(one);
+    expect(three).toBeLessThanOrEqual(100);
   });
 });
