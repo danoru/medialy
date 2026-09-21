@@ -1,5 +1,6 @@
 "use client";
 
+import { MATCH_MEANING } from "@/lib/score-display";
 import ArchiveRoundedIcon from "@mui/icons-material/ArchiveRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
@@ -326,7 +327,7 @@ export function MediaDetailView({
                 <Tooltip
                   arrow
                   placement="top"
-                  title="How well this matches your taste, based on the genres, tags, and items you've already rated."
+                  title={MATCH_MEANING}
                 >
                   <Stack spacing={0.5} sx={{ cursor: "help" }}>
                     <Typography sx={kickerSx}>Medialy Match</Typography>

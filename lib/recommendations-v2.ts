@@ -1,12 +1,13 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
-import { getCatalogWithUser } from "@/lib/db/catalog";
+import { getCatalogWithUser, type CatalogItemWithUser } from "@/lib/db/catalog";
 import { getFollowingIds } from "@/lib/social/follows";
 import {
   matchesRecommendationEligibility,
   type EligibilityOptions,
 } from "@/lib/scoring/eligibility";
 import {
+  buildFriendBaselines,
   buildFriendTrust,
   buildTasteProfiles,
   friendSignal,
@@ -14,9 +15,17 @@ import {
   scoreV2,
   type FriendRating,
   type TasteObservation,
+  type V2Score,
 } from "@/lib/scoring/recommendationV2";
+import { calibratedMatch } from "@/lib/scoring/calibration";
+import { toMediaItemDTO } from "@/lib/media";
+import type { Recommendation } from "@/lib/types";
 
-/** Request-local only: no cross-user persistence of taste profiles or social data. */
+/**
+ * The v2 engine's data layer. One cached context per request holds the
+ * catalog with the viewer's rows merged, the viewer's ratings, and every
+ * rated or completed row from the people they follow.
+ */
 export const getRecommendationV2Context = cache(async (userId: string) => {
   const [catalog, followingIds] = await Promise.all([
     getCatalogWithUser(userId),
@@ -73,50 +82,63 @@ export const getRecommendationV2Context = cache(async (userId: string) => {
     friends,
     viewerRatings,
     friendRatingsByMedia,
+    profiles: buildTasteProfiles(observations),
+    trust: buildFriendTrust(viewerRatings, friends),
+    baselines: buildFriendBaselines(friends),
+    observedIds: new Set(
+      observations
+        .filter((row) => observedTaste(row) != null)
+        .map((row) => row.media.id),
+    ),
   };
 });
 
-/** Review-only entry point. Live getRecommendations intentionally remains v1. */
+export type V2Recommendation = V2Score & { media: CatalogItemWithUser };
+
+/**
+ * Scores one catalog row for the viewer. A title the viewer has already
+ * rated is scored with itself removed from the profile and the friend
+ * overlap, so it cannot explain itself.
+ */
+export function scoreCatalogItem(
+  context: Awaited<ReturnType<typeof getRecommendationV2Context>>,
+  media: CatalogItemWithUser,
+): V2Recommendation {
+  const excluded = new Set([media.id]);
+  const isObserved = context.observedIds.has(media.id);
+  const profiles = isObserved
+    ? buildTasteProfiles(context.observations, excluded)
+    : context.profiles;
+  const trust = isObserved
+    ? buildFriendTrust(context.viewerRatings, context.friends, excluded)
+    : context.trust;
+  return {
+    media,
+    ...scoreV2(
+      media,
+      profiles,
+      friendSignal(
+        context.friendRatingsByMedia.get(media.id) ?? [],
+        trust,
+        context.baselines,
+      ),
+    ),
+  };
+}
+
+/** Every eligible title, best first, with raw scores and full explanations. */
 export async function getRecommendationsV2(
   userId: string,
   eligibility: EligibilityOptions = {},
-) {
+): Promise<V2Recommendation[]> {
   const context = await getRecommendationV2Context(userId);
-  const profiles = buildTasteProfiles(context.observations);
-  const trust = buildFriendTrust(context.viewerRatings, context.friends);
-  const observedIds = new Set(
-    context.observations
-      .filter((row) => observedTaste(row) != null)
-      .map((row) => row.media.id),
-  );
   return context.catalog
     .filter(
       (item) =>
         !eligibility.hiddenMediaTypes?.includes(item.mediaType) &&
         matchesRecommendationEligibility(item, { ...eligibility, userId }),
     )
-    .map((media) => {
-      // An explicit includeRated/includeCompleted request must not let a title
-      // explain itself through either its own taste features or friend overlap.
-      const excluded = new Set([media.id]);
-      const candidateProfiles = observedIds.has(media.id)
-        ? buildTasteProfiles(context.observations, excluded)
-        : profiles;
-      const candidateTrust = observedIds.has(media.id)
-        ? buildFriendTrust(context.viewerRatings, context.friends, excluded)
-        : trust;
-      return {
-        media,
-        ...scoreV2(
-          media,
-          candidateProfiles,
-          friendSignal(
-            context.friendRatingsByMedia.get(media.id) ?? [],
-            candidateTrust,
-          ),
-        ),
-      };
-    })
+    .map((media) => scoreCatalogItem(context, media))
     .sort(
       (a, b) =>
         b.score - a.score ||
@@ -124,4 +146,32 @@ export async function getRecommendationsV2(
         a.media.title.localeCompare(b.media.title) ||
         a.media.id.localeCompare(b.media.id),
     );
+}
+
+/**
+ * The shape the pages consume. `score` is the calibrated Match (chance the
+ * viewer rates it above their own average); the raw engine score and the
+ * signed per-signal breakdown ride along for explainers.
+ */
+export function toRecommendation(entry: V2Recommendation): Recommendation {
+  const explanations = entry.explanations.map((e) => ({
+    signal: e.signal,
+    label: e.label,
+    rawValue: e.value == null ? 0 : Math.round(e.value),
+    weight: e.weight,
+    contribution: Math.round(e.contribution * 10) / 10,
+    reliability: Math.round(e.reliability * 100) / 100,
+    detail: e.detail,
+  }));
+  return {
+    media: toMediaItemDTO(entry.media),
+    score: calibratedMatch(entry.score),
+    rawScore: Math.round(entry.score * 10) / 10,
+    confidence: Math.round(entry.confidence * 100) / 100,
+    reason: entry.reason,
+    reasons: explanations
+      .filter((e) => Math.abs(e.contribution) >= 0.5)
+      .map((e) => ({ label: e.label, value: e.contribution })),
+    explanations,
+  };
 }

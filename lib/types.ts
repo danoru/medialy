@@ -147,8 +147,14 @@ export type RecommendationReason = {
 
 export type Recommendation = {
   media: MediaItemDTO;
+  /** Displayed Match, 0–100: the chance the viewer rates this above their own average. */
   score: number;
+  /** 0–1: how much evidence backs the call. */
   confidence: number;
+  /** The engine's uncalibrated score, 50 = neutral. */
+  rawScore?: number;
+  /** One sentence naming the strongest reason. */
+  reason?: string;
   reasons: RecommendationReason[];
   explanations?: MedialyMatchExplanation[];
 };

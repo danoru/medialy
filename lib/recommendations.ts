@@ -8,17 +8,17 @@ import {
 } from "@/lib/scoring/eligibility";
 import { getCatalogItems, getCatalogWithUser } from "@/lib/db/catalog";
 import { calculateRatingCompatibility } from "@/lib/scoring/compatibility";
-import { AFFINITY_TUNING, FRIEND_SIGNAL } from "@/lib/scoring/config";
+import { FRIEND_SIGNAL } from "@/lib/scoring/config";
 import {
-  saturate,
-  shrunkContribution,
-  type RatingAccumulator,
-} from "@/lib/scoring/affinity";
+  buildAffinityMaps,
+  candidateAffinity,
+  type AffinityMaps,
+  type ContributorAffinity,
+} from "@/lib/scoring/affinityProfile";
 import { mediaTypeNoun } from "@/lib/format";
 import { toMediaItemDTO } from "@/lib/media";
 import { visibleMediaTypeFilter } from "@/lib/media-types";
 import type { Recommendation, RecommendationReason } from "@/lib/types";
-import { GENRE_WEIGHT, TAG_WEIGHT } from "@/lib/scoring/taxonomySimilarity";
 import {
   EXCLUDED_RECOMMENDATION_STATUSES,
   isRecommendationEligibleStatus,
@@ -26,7 +26,13 @@ import {
   recommendationStatusSignal,
 } from "@/lib/recommendation-policy";
 import { getFollowingIds } from "@/lib/social/follows";
+import {
+  getRecommendationsV2,
+  toRecommendation,
+} from "@/lib/recommendations-v2";
 import type { Prisma } from "@prisma/client";
+
+export type { AffinityMaps } from "@/lib/scoring/affinityProfile";
 
 export {
   EXCLUDED_RECOMMENDATION_STATUSES,
@@ -35,14 +41,38 @@ export {
   recommendationStatusSignal,
 };
 
+/**
+ * The live recommendation list: the v2 taste engine, calibrated so `score`
+ * is the chance the viewer rates the title above their own average. See
+ * `lib/scoring/recommendationV2.ts` for the signals.
+ */
 export async function getRecommendations(
   limit?: number,
   eligibility: EligibilityOptions = {},
   userIdOverride?: string,
 ): Promise<Recommendation[]> {
-  // Anonymous viewers get a best-effort recommendations list built from
-  // public signals (no personal taste graph). A sentinel id makes the
-  // per-user joins consistently return defaults.
+  // Anonymous viewers get a best-effort list built from public signals (no
+  // personal taste graph). A sentinel id makes the per-user joins
+  // consistently return defaults.
+  const userId =
+    userIdOverride ?? (await getCurrentUserId()) ?? "__anonymous__";
+  const ranked = await getRecommendationsV2(userId, eligibility);
+  const recommendations = ranked.map(toRecommendation);
+  return typeof limit === "number"
+    ? recommendations.slice(0, limit)
+    : recommendations;
+}
+
+/**
+ * The previous engine (affinity buckets plus a coverage-style confidence),
+ * kept for the side-by-side comparison on /data-health/recommendations and
+ * as the holdout baseline. Not used by any product page.
+ */
+export async function getRecommendationsV1(
+  limit?: number,
+  eligibility: EligibilityOptions = {},
+  userIdOverride?: string,
+): Promise<Recommendation[]> {
   const userId =
     userIdOverride ?? (await getCurrentUserId()) ?? "__anonymous__";
 
@@ -80,26 +110,8 @@ export async function getRecommendations(
 
   const recommendations = items
     .map((item) => {
-      const genreRaw = item.genres.reduce(
-        (total, entry) => total + (affinity.genres.get(entry.genre.name) ?? 0),
-        0,
-      );
-      const tagRaw = item.tags.reduce(
-        (total, entry) => total + (affinity.tags.get(entry.tag.name) ?? 0),
-        0,
-      );
-      const contributorRaw = item.credits.reduce(
-        (total, entry) =>
-          total +
-          (affinity.contributors.get(entry.contributor.id)?.weight ?? 0),
-        0,
-      );
-      const genreAffinity = saturate(genreRaw, AFFINITY_TUNING.saturationK.genre);
-      const tagAffinity = saturate(tagRaw, AFFINITY_TUNING.saturationK.tag);
-      const contributorAffinity = saturate(
-        contributorRaw,
-        AFFINITY_TUNING.saturationK.contributor,
-      );
+      const { genreAffinity, tagAffinity, contributorAffinity } =
+        candidateAffinity(item, affinity);
 
       const contributorDetail = buildContributorDetail(
         item.credits,
@@ -166,57 +178,6 @@ export function getRecommendationReleaseDateWhere(
   return recommendationEligibilityWhere({ now });
 }
 
-type ContributorAffinity = {
-  weight: number;
-  name: string;
-  role: string;
-  exampleCount: number;
-  topExample: { title: string; rating: number };
-};
-
-type CountryAffinity = {
-  exampleCount: number;
-};
-
-export type AffinityMaps = {
-  genres: Map<string, number>;
-  tags: Map<string, number>;
-  contributors: Map<string, ContributorAffinity>;
-  countries: Map<string, CountryAffinity>;
-};
-
-// Directors and creators carry a strong authorial fingerprint; publishers/devs
-// are more incidental, so we give them less weight per match. Applied as a
-// post-shrinkage multiplier so it doesn't distort the per-contributor mean rating.
-const ROLE_WEIGHT: Record<string, number> = {
-  DIRECTOR: 1,
-  CREATOR: 1,
-  DEVELOPER: 0.55,
-  PUBLISHER: 0.35,
-  // Actor data is brand-new; suppress its scoring contribution until we have
-  // enough rated items to validate the signal isn't just popularity noise.
-  ACTOR: 0,
-};
-
-// Excluded from country affinity: most users have a US-heavy library by
-// default, so matching on US would add noise without signal.
-const COUNTRY_AFFINITY_EXCLUSIONS = new Set(["US"]);
-
-// Tag and contributor buckets are post-multiplied to keep their typical
-// contributions in roughly the same ratio they had under the old itemBoost
-// scheme — tags supplement genres, contributors land between the two.
-const TAG_BUCKET_SCALE = TAG_WEIGHT / GENRE_WEIGHT;
-const CONTRIBUTOR_BUCKET_SCALE = 0.6;
-
-function pushRating(acc: Map<string, RatingAccumulator>, key: string, rating: number) {
-  const existing = acc.get(key);
-  if (existing) {
-    existing.sum += rating;
-    existing.count += 1;
-  } else {
-    acc.set(key, { sum: rating, count: 1 });
-  }
-}
 
 export async function getAffinityMaps(
   userId: string,
@@ -252,98 +213,14 @@ export async function getAffinityMaps(
   ]);
 
   const catalogById = new Map(catalog.map((item) => [item.id, item]));
-  const completed = ratedRows.flatMap((row) => {
+  const rows = ratedRows.flatMap((row) => {
     const media = catalogById.get(row.mediaId);
-    return media ? [{ ...row, media }] : [];
+    if (!media) return [];
+    const rating = row.computedPersonalScore ?? row.personalRating ?? 0;
+    return [{ rating, media }];
   });
 
-  // First pass: collect per-feature rating accumulators + provenance.
-  const genreRatings = new Map<string, RatingAccumulator>();
-  const tagRatings = new Map<string, RatingAccumulator>();
-  type ContributorAccum = RatingAccumulator & {
-    name: string;
-    role: string;
-    topExample: { title: string; rating: number };
-  };
-  const contributorRatings = new Map<string, ContributorAccum>();
-  const countries = new Map<string, CountryAffinity>();
-
-  let poolSum = 0;
-  let poolCount = 0;
-
-  for (const row of completed) {
-    const rating = row.computedPersonalScore ?? row.personalRating ?? 0;
-    if (rating <= 0) continue;
-    poolSum += rating;
-    poolCount += 1;
-    const itemRating = Math.round(rating);
-
-    for (const entry of row.media.genres) {
-      pushRating(genreRatings, entry.genre.name, rating);
-    }
-    for (const entry of row.media.tags) {
-      pushRating(tagRatings, entry.tag.name, rating);
-
-      if (
-        entry.tag.category === "COUNTRY" &&
-        entry.tag.countryCode &&
-        !COUNTRY_AFFINITY_EXCLUSIONS.has(entry.tag.countryCode)
-      ) {
-        const existing = countries.get(entry.tag.countryCode);
-        countries.set(entry.tag.countryCode, {
-          exampleCount: (existing?.exampleCount ?? 0) + 1,
-        });
-      }
-    }
-    for (const entry of row.media.credits) {
-      const id = entry.contributor.id;
-      const existing = contributorRatings.get(id);
-      if (existing) {
-        existing.sum += rating;
-        existing.count += 1;
-        if (itemRating > existing.topExample.rating) {
-          existing.topExample = { title: row.media.title, rating: itemRating };
-        }
-      } else {
-        contributorRatings.set(id, {
-          sum: rating,
-          count: 1,
-          name: entry.contributor.name,
-          role: entry.role,
-          topExample: { title: row.media.title, rating: itemRating },
-        });
-      }
-    }
-  }
-
-  const globalMean = poolCount > 0 ? poolSum / poolCount : AFFINITY_TUNING.neutralPivot;
-
-  // Second pass: derive per-feature contributions via shrunk mean.
-  const genres = new Map<string, number>();
-  for (const [name, acc] of genreRatings) {
-    genres.set(name, shrunkContribution(acc, globalMean));
-  }
-  const tags = new Map<string, number>();
-  for (const [name, acc] of tagRatings) {
-    tags.set(name, shrunkContribution(acc, globalMean) * TAG_BUCKET_SCALE);
-  }
-  const contributors = new Map<string, ContributorAffinity>();
-  for (const [id, acc] of contributorRatings) {
-    const roleMultiplier = ROLE_WEIGHT[acc.role] ?? 0.5;
-    const weight =
-      shrunkContribution(acc, globalMean) *
-      CONTRIBUTOR_BUCKET_SCALE *
-      roleMultiplier;
-    contributors.set(id, {
-      weight,
-      name: acc.name,
-      role: acc.role,
-      exampleCount: acc.count,
-      topExample: acc.topExample,
-    });
-  }
-
-  return { genres, tags, contributors, countries };
+  return buildAffinityMaps(rows);
 }
 
 export function buildContributorDetail(

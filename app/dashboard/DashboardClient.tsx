@@ -39,6 +39,7 @@ type DashboardData = {
       media: MediaItemDTO;
       score: number;
       confidence: number;
+      reason?: string;
     }>;
   }>;
   topItemsByMediaType: Array<{
@@ -109,8 +110,9 @@ export function DashboardClient({
   const typeAccent = mediaAccent(mediaType);
 
   return (
-    <Stack spacing={2.5}>
+    <Stack spacing={2.5} data-dashboard="root">
       <Stack
+        data-dashboard="header"
         direction={{ xs: "column", lg: "row" }}
         sx={{ alignItems: { lg: "flex-end" }, gap: 2 }}
       >
@@ -165,6 +167,7 @@ export function DashboardClient({
           {heroRecommendation ? (
             <DiagonalPickStrip
               confidence={heroRecommendation.confidence}
+              heroReason={firstSentence(heroRecommendation.reason)}
               hero={heroRecommendation.media}
               heroScore={heroRecommendation.score}
               showMatch={showPersonalSignals}
@@ -205,6 +208,7 @@ export function DashboardClient({
           >
             {topItems.length > 0 ? (
               <Box
+                data-dashboard="top-ten"
                 sx={{
                   alignContent: "center",
                   display: "grid",
@@ -286,12 +290,15 @@ const DIAG_SKEW = 40;
 
 function DiagonalPickStrip({
   confidence,
+  heroReason,
   hero,
   heroScore,
   showMatch,
   upNext,
 }: {
   confidence: number;
+  /** The engine's own reason, first sentence; falls back to a genre line. */
+  heroReason?: string;
   hero: MediaItemDTO;
   heroScore: number;
   showMatch: boolean;
@@ -315,6 +322,7 @@ function DiagonalPickStrip({
   return (
     <Box
       component="section"
+      data-dashboard="picks"
       sx={{
         bgcolor: "background.paper",
         border: "1px solid",
@@ -335,6 +343,7 @@ function DiagonalPickStrip({
     >
       {/* Featured slice */}
       <Box
+        data-dashboard="featured-pick"
         sx={{
           flex: { xs: "1 1 auto", md: "2.4 1 0" },
           height: { xs: 360, md: "100%" },
@@ -369,6 +378,7 @@ function DiagonalPickStrip({
         ) : null}
         {/* Copy */}
         <Stack
+          data-dashboard="featured-copy"
           spacing={1.25}
           sx={{
             bottom: { xs: 20, md: 26 },
@@ -405,6 +415,7 @@ function DiagonalPickStrip({
             {hero.title}
           </Typography>
           <Box
+            data-dashboard="accent-rule"
             sx={{
               background: `linear-gradient(90deg, ${heroAccent}, ${alpha(heroAccent, 0)})`,
               borderRadius: 1,
@@ -430,7 +441,7 @@ function DiagonalPickStrip({
               maxWidth: 420,
             }}
           >
-            {pickReason(hero)}
+            {heroReason ?? pickReason(hero)}
           </Typography>
           <Stack direction="row" sx={{ flexWrap: "wrap", gap: 1, pt: 0.5 }}>
             <Button
@@ -457,6 +468,7 @@ function DiagonalPickStrip({
         return (
           <Box
             component={Link}
+            data-dashboard="alternative-pick"
             href={`/media/${rec.media.id}`}
             key={rec.media.id}
             sx={{
@@ -478,6 +490,7 @@ function DiagonalPickStrip({
           >
             <SliceBackdrop item={rec.media} className="upnext-backdrop" />
             <Box
+              data-dashboard="alternative-shade"
               sx={{
                 background:
                   "linear-gradient(0deg, rgba(8,8,11,0.92) 0%, rgba(8,8,11,0.30) 55%, rgba(8,8,11,0.10) 100%)",
@@ -491,6 +504,7 @@ function DiagonalPickStrip({
                 matching the polygon's left edge exactly. */}
             <Box
               aria-hidden
+              data-dashboard="seam"
               sx={{
                 clipPath: {
                   xs: "none",
@@ -518,6 +532,7 @@ function DiagonalPickStrip({
               />
             ) : null}
             <Stack
+              data-dashboard="alternative-copy"
               spacing={0.5}
               sx={{
                 bottom: 18,
@@ -547,6 +562,7 @@ function DiagonalPickStrip({
               </Typography>
               <Box
                 className="upnext-title-bar"
+                data-dashboard="accent-rule"
                 sx={{
                   background: `linear-gradient(90deg, ${sliceAccent}, ${alpha(sliceAccent, 0)})`,
                   borderRadius: 1,
@@ -601,6 +617,7 @@ function ScoreBadge({
 }) {
   return (
     <Box
+      data-dashboard="match-badge"
       sx={{
         alignItems: "center",
         bgcolor: "rgba(8,8,11,0.55)",
@@ -637,6 +654,7 @@ function ScoreBadge({
 function OnDarkChip({ children }: { children: React.ReactNode }) {
   return (
     <Box
+      data-dashboard="metadata-chip"
       sx={{
         bgcolor: "rgba(255,255,255,0.12)",
         borderRadius: 1.5,
@@ -670,6 +688,7 @@ function FeaturedCollectionsPanel({
   const featured = collections.slice(0, FEATURED_COLLECTION_COUNT);
   return (
     <Box
+      data-dashboard="collections"
       sx={{
         display: "grid",
         flex: 1,
@@ -715,6 +734,7 @@ function CollectionCoverCard({
     <Box
       component={Link}
       href={`/discover/collections/${collection.id}`}
+      data-dashboard="collection-cover"
       sx={{
         backgroundColor: "surface.2",
         backgroundImage: collection.coverUrl
@@ -815,4 +835,11 @@ function pickReason(item: MediaItemDTO) {
     return `Because you've rated ${genre.toLowerCase()} highly in your library.`;
   }
   return "Because your ratings and rankings make this stand out tonight.";
+}
+
+/** The first sentence of an engine reason, for the hero card. */
+function firstSentence(text: string | undefined) {
+  if (!text) return undefined;
+  const match = text.match(/^(.+?[.!?])(\s|$)/);
+  return match ? match[1] : text;
 }

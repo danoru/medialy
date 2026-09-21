@@ -7,7 +7,7 @@ import {
   Typography,
 } from "@mui/material";
 import { requireAdmin } from "@/lib/user";
-import { getRecommendations } from "@/lib/recommendations";
+import { getRecommendationsV1 } from "@/lib/recommendations";
 import {
   getRecommendationsV2,
   getRecommendationV2Context,
@@ -32,7 +32,7 @@ export default async function RecommendationComparisonPage({
       : VISIBLE_MEDIA_TYPES[0];
   const options = { now: new Date() };
   const [legacy, revised, context] = await Promise.all([
-    getRecommendations(undefined, options, user.id),
+    getRecommendationsV1(undefined, options, user.id),
     getRecommendationsV2(user.id, options),
     getRecommendationV2Context(user.id),
   ]);
@@ -62,9 +62,10 @@ export default async function RecommendationComparisonPage({
           Recommendation comparison
         </Typography>
         <Typography color="text.secondary">
-          The current algorithm still powers the app. V2 is available here for
-          review using your own ratings and the same eligible catalog. Nothing
-          on this page changes your library.
+          V2 now powers the app. The previous engine is kept here for a
+          side-by-side read, and the held-out check below scores both against
+          critics alone on the same hidden ratings. Nothing on this page
+          changes your library.
         </Typography>
       </Box>
       <Stack direction="row" sx={{ gap: 1, flexWrap: "wrap" }}>
@@ -96,7 +97,7 @@ export default async function RecommendationComparisonPage({
           <CardContent>
             <Stack spacing={2}>
               <Typography variant="h6" component="h2">
-                Current algorithm
+                Previous engine (v1)
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Its confidence value reports signal coverage.
@@ -130,10 +131,10 @@ export default async function RecommendationComparisonPage({
           <CardContent>
             <Stack spacing={2}>
               <Typography variant="h6" component="h2">
-                V2 · evidence-aware taste
+                Live engine (v2)
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                50 is neutral. Evidence strength is a heuristic, not a
+                Raw score, 50 is neutral; the app shows the calibrated Match. Evidence strength is a heuristic, not a
                 probability of liking a title.
               </Typography>
               {v2.slice(0, 10).map((rec, index) => (
@@ -181,21 +182,22 @@ export default async function RecommendationComparisonPage({
               Held-out rating check
             </Typography>
             <Typography variant="body2">
-              When a favorite (8+) and a disliked title (5 or below) are hidden
-              from your profile, how often does the favorite rank higher? Ties
-              count as half. This diagnostic compares V2 with external consensus
-              alone, not with the current algorithm above.
+              Hide a fifth of your ratings, then ask each ranker to order every
+              hidden favorite (rated a point or more above your average) against
+              every hidden dislike (a point or more below). Ties count as half;
+              50% is chance. Same pairs for every ranker.
             </Typography>
             <Typography>
-              V2: {percent(evaluation.v2Accuracy)} · Consensus alone:{" "}
+              V2: {percent(evaluation.v2Accuracy)} · Previous engine: {percent(evaluation.v1Accuracy)} · Critics alone:{" "}
               {percent(evaluation.consensusAccuracy)}
             </Typography>
             {evaluation.v2Accuracy != null &&
               evaluation.consensusAccuracy != null &&
               evaluation.v2Accuracy < evaluation.consensusAccuracy && (
                 <Typography color="warning.main" variant="body2">
-                  V2 is below the consensus-only reference in this check. Keep
-                  it in review while investigating the ranking differences.
+                  Critics alone still edge out v2 on this cut. The personal
+                  signals earn their keep where your taste and the critics
+                  disagree; see the per-user sweep in lib/scoring/README.md.
                 </Typography>
               )}
             <Typography variant="body2">

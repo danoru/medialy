@@ -15,6 +15,8 @@ import { startOfToday } from "@/lib/upcoming";
 import { getCatalogWithUser } from "@/lib/db/catalog";
 import { bayesianShrunkMean } from "@/lib/scoring/affinity";
 import { TOP_RANKING } from "@/lib/scoring/config";
+import { diversify, usualGenresFrom } from "@/lib/scoring/diversity";
+import { explicitRating } from "@/lib/scoring/recommendationV2";
 
 export function getDashboardUpcomingWhere(
   today = startOfToday(),
@@ -243,16 +245,42 @@ export function getDashboardOverallTopItemsByMediaType(
   }));
 }
 
+/**
+ * Tonight's picks: five per media type, chosen for variety rather than as
+ * the raw top five. Near-duplicates (same franchise, creator or genre mix)
+ * are pushed down and one slot goes to a strong pick outside the viewer's
+ * usual genres. See `lib/scoring/diversity.ts`.
+ */
 export function getDashboardTonightPicksByMediaType(
   recommendations: DashboardRecommendationEntry[],
+  usualGenresByType: Map<string, ReadonlySet<string>> = new Map(),
 ) {
-  return VISIBLE_MEDIA_TYPES.map((mediaType) => ({
-    mediaType,
-    recommendations: recommendations
+  return VISIBLE_MEDIA_TYPES.map((mediaType) => {
+    const pool = recommendations
       .filter((recommendation) => recommendation.media.mediaType === mediaType)
-      .slice(0, 5),
-  }));
+      .slice(0, DASHBOARD_PICK_POOL);
+    const byId = new Map(pool.map((entry) => [entry.media.id, entry]));
+    const picks = diversify(
+      pool.map((entry) => ({
+        id: entry.media.id,
+        score: entry.score,
+        genres: entry.media.genres,
+        tags: entry.media.tags,
+        creators: (entry.media.credits ?? [])
+          .filter((credit) => credit.role !== "ACTOR")
+          .map((credit) => `${credit.role}:${credit.name}`),
+      })),
+      { limit: 5, usualGenres: usualGenresByType.get(mediaType) },
+    );
+    return {
+      mediaType,
+      recommendations: picks.map((pick) => byId.get(pick.id)!),
+    };
+  });
 }
+
+/** How far down the ranked list the variety pass may reach. */
+const DASHBOARD_PICK_POOL = 30;
 
 export async function getDashboardData() {
   const today = startOfToday();
@@ -316,8 +344,26 @@ export async function getDashboardData() {
     mergedOverallTopItems.map(toMediaItemDTO),
     topRankingContext,
   );
-  const tonightPicksByMediaType =
-    getDashboardTonightPicksByMediaType(recommendations);
+  // The viewer's usual genres per medium, from what they have rated, so the
+  // variety pass knows what "adventurous" means for them.
+  const usualGenresByType = new Map(
+    VISIBLE_MEDIA_TYPES.map((mediaType) => [
+      mediaType,
+      usualGenresFrom(
+        mergedOverallTopItems
+          .filter(
+            (item) =>
+              item.mediaType === mediaType &&
+              explicitRating(item.personalRating) != null,
+          )
+          .map((item) => item.genres.map((entry) => entry.genre.name)),
+      ),
+    ]),
+  );
+  const tonightPicksByMediaType = getDashboardTonightPicksByMediaType(
+    recommendations,
+    usualGenresByType,
+  );
 
   return {
     userName: user?.displayName ?? null,

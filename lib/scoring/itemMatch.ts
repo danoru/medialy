@@ -1,27 +1,20 @@
 import { MediaType } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { leanGenreSelect, leanTagSelect } from "@/lib/db/media-select";
 import {
-  leanCreditsSelect,
-  leanGenreSelect,
-  leanTagSelect,
-} from "@/lib/db/media-select";
-import { AFFINITY_TUNING } from "@/lib/scoring/config";
-import { saturate } from "@/lib/scoring/affinity";
-import { calculateMedialyMatch } from "@/lib/scoring/medialyMatch";
-import {
-  getAffinityMaps,
-  buildContributorDetail,
-  getFollowedUserRatingsByMedia,
-  getFollowerCompatibilityMap,
-  computeFriendSignal,
-} from "@/lib/recommendations";
+  getRecommendationV2Context,
+  scoreCatalogItem,
+} from "@/lib/recommendations-v2";
+import { calibratedMatch } from "@/lib/scoring/calibration";
+import { explicitRating } from "@/lib/scoring/recommendationV2";
 
 /**
  * Single-item Medialy Match summary for the media detail page. Distinct from
  * `getRecommendations`, which only scores items the viewer hasn't consumed —
  * here we want to explain the match for *any* item (including ones already
- * watched/in the library).
+ * watched/in the library). Uses the same v2 engine and calibration, with the
+ * title itself removed from the viewer's profile so it cannot explain itself.
  */
 export type SimilarTitleGroup = {
   /** Facet name shared by these titles, e.g. "Roguelike" or "Action". */
@@ -32,10 +25,11 @@ export type SimilarTitleGroup = {
 };
 
 export type MediaItemMatchSummary = {
+  /** Calibrated Match, 0–100. */
   score: number;
   /** Groups of highly-rated titles sharing a subgenre/genre with this item. */
   similarTitleGroups: SimilarTitleGroup[];
-  /** "Director X — you rated Y 9/10" or null when no contributor match. */
+  /** "Because you rated X 9/10" or a creator match, or null. */
   contributorReason: string | null;
 };
 
@@ -45,91 +39,41 @@ export async function getMediaItemMatch(
 ): Promise<MediaItemMatchSummary | null> {
   if (!userId) return null;
 
-  const item = await prisma.mediaItem.findUnique({
-    where: { id: mediaId },
-    select: {
-      id: true,
-      mediaType: true,
-      computedConsensusScore: true,
-      genres: leanGenreSelect,
-      tags: { where: { tag: { status: "APPROVED" } }, ...leanTagSelect },
-      credits: leanCreditsSelect,
-    },
-  });
+  const context = await getRecommendationV2Context(userId);
+  const item = context.catalog.find((row) => row.id === mediaId);
   if (!item) return null;
 
-  // These three reads are independent — the affinity pool, the followed-user
-  // ratings for this item, and the similar-title groups — so fire them together
-  // instead of serially. `followerCompatibility` alone depends on the followed
-  // ratings, so it stays sequential after them.
   const subgenreNames = item.tags
-    .filter((entry) => entry.tag.category === "SUBGENRE")
+    .filter(
+      (entry) =>
+        entry.tag.category === "SUBGENRE" && entry.tag.status === "APPROVED",
+    )
     .map((entry) => entry.tag.name);
 
-  const [affinity, followedRatingsByMedia, similarTitleGroups] =
-    await Promise.all([
-      getAffinityMaps(userId, { excludeMediaId: mediaId }),
-      getFollowedUserRatingsByMedia(userId, [mediaId]),
-      findSimilarTitleGroups(userId, {
-        id: item.id,
-        mediaType: item.mediaType,
-        genres: item.genres.map((entry) => entry.genre.name),
-        subgenres: subgenreNames,
-      }),
-    ]);
+  const [scored, similarTitleGroups] = await Promise.all([
+    Promise.resolve(scoreCatalogItem(context, item)),
+    findSimilarTitleGroups(userId, {
+      id: item.id,
+      mediaType: item.mediaType,
+      genres: item.genres.map((entry) => entry.genre.name),
+      subgenres: subgenreNames,
+    }),
+  ]);
 
-  const genreRaw = item.genres.reduce(
-    (total, entry) => total + (affinity.genres.get(entry.genre.name) ?? 0),
-    0,
-  );
-  const tagRaw = item.tags.reduce(
-    (total, entry) => total + (affinity.tags.get(entry.tag.name) ?? 0),
-    0,
-  );
-  const contributorRaw = item.credits.reduce(
-    (total, entry) =>
-      total + (affinity.contributors.get(entry.contributor.id)?.weight ?? 0),
-    0,
-  );
+  const similarity = scored.explanations.find((e) => e.signal === "similarity");
+  const contributor = scored.explanations.find((e) => e.signal === "contributor");
+  let contributorReason: string | null = null;
+  if (similarity?.because && similarity.contribution > 0) {
+    const rating = similarity.because.rating;
+    contributorReason = `Closest to ${similarity.because.title}, which you rated ${
+      Number.isInteger(rating) ? rating : rating.toFixed(1)
+    }/10`;
+  } else if (contributor && contributor.contribution > 0) {
+    contributorReason = contributor.detail.split(". ")[0];
+  }
 
-  // Friend signal computed the same way `getRecommendations` does so the
-  // detail-page Medialy Match matches the dashboard/recommendations number.
-  // friendAffinity carries 30% of the weight; passing 0 here would understate
-  // the score for items rated by followed users. `followedRatingsByMedia` was
-  // loaded above; only the compatibility map depends on it.
-  const followerCompatibility = await getFollowerCompatibilityMap(
-    userId,
-    followedRatingsByMedia,
-  );
-  const friendSignal = computeFriendSignal(
-    followedRatingsByMedia.get(mediaId) ?? [],
-    followerCompatibility,
-  );
-
-  const match = calculateMedialyMatch({
-    genreAffinity: saturate(genreRaw, AFFINITY_TUNING.saturationK.genre),
-    tagAffinity: saturate(tagRaw, AFFINITY_TUNING.saturationK.tag),
-    contributorAffinity: saturate(
-      contributorRaw,
-      AFFINITY_TUNING.saturationK.contributor,
-    ),
-    friendAffinity: friendSignal.value,
-    consensusScore: item.computedConsensusScore,
-  });
-
-  const contributorReason =
-    buildContributorDetail(
-      item.credits.map((credit) => ({
-        contributor: { id: credit.contributor.id },
-        role: credit.role,
-      })),
-      affinity,
-      item.mediaType,
-    ) ?? null;
-
-  // `similarTitleGroups` was loaded in the parallel batch above.
   return {
-    score: match.score,
+    score: calibratedMatch(scored.score),
     similarTitleGroups,
     contributorReason,
   };
@@ -206,7 +150,8 @@ async function findSimilarTitleGroups(
   const entries: Entry[] = rated
     .map((row) => ({
       title: row.media.title,
-      rating: row.computedPersonalScore ?? row.personalRating ?? 0,
+      rating:
+        row.computedPersonalScore ?? explicitRating(row.personalRating) ?? 0,
       genres: new Set(row.media.genres.map((entry) => entry.genre.name)),
       subgenres: new Set(
         row.media.tags
