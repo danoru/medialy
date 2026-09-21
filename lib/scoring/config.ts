@@ -325,6 +325,55 @@ export const FRIEND_SIGNAL = {
 } as const;
 
 // -----------------------------------------------------------------------------
+// Discover page sections (see `lib/discover.ts`)
+// -----------------------------------------------------------------------------
+
+/**
+ * Every Discover section ranks on the same global Quality score the dashboard
+ * Top 10 and Canon use (`dashboardQualityScore`), so the lists are the same for
+ * every viewer; the viewer only affects which titles are hidden (finished,
+ * dropped, not interested) and the seeds for "If You Liked".
+ *
+ * "Reach" is how many people have weighed in: Medialy raters plus external
+ * rating sources. It is expressed as a percentile within the genre pool so a
+ * small catalog still gets a spread.
+ */
+export const DISCOVER = {
+  essentials: {
+    limit: 14,
+    /**
+     * Essentials are the acknowledged best, so they come from the more-seen
+     * part of the pool. Titles below this reach percentile are left for
+     * Hidden Gems. Relaxed when the pool is too small to fill the shelf.
+     */
+    minReachPercentile: 0.4,
+  },
+  gateway: {
+    limit: 4,
+    /** Critics have to broadly agree for a title to be an entry point. */
+    minConsensusConfidence: 0.5,
+    /** Entry points are widely seen, so they must sit in the upper half of reach. */
+    minReachPercentile: 0.5,
+    /** How many of the genre's most frequent subgenre tags count as "mainstream". */
+    commonSubgenres: 8,
+  },
+  hiddenGems: {
+    limit: 8,
+    /** Gems must be in the less-seen 60% of the pool by reach. */
+    maxReachPercentile: 0.6,
+  },
+  ifYouLiked: {
+    limit: 4,
+    /** Chains below this similarity are dropped rather than shown as filler. */
+    minSimilarity: 0.25,
+    taxonomyWeight: 0.7,
+    creditWeight: 0.3,
+  },
+  /** Posters shown on a world card on the Discover landing. */
+  worldMosaicSize: 3,
+} as const;
+
+// -----------------------------------------------------------------------------
 // Hidden gems & discoverability badges
 // -----------------------------------------------------------------------------
 
