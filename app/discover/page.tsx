@@ -14,12 +14,13 @@ import type { SxProps, Theme } from "@mui/material/styles";
 import { formatMediaType } from "@/lib/format";
 import { alpha } from "@mui/material/styles";
 import {
+  ACCENTS,
   mediaAccent,
   mediaTypeTabIndicatorColor,
   mediaTypeTabSx,
   posterFallback,
 } from "@/lib/media-ui-helpers";
-import { PosterImage, PosterTile } from "@/components/media/PosterCard";
+import { PosterImage } from "@/components/media/PosterCard";
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 import {
   getFeaturedCollection,
@@ -28,39 +29,31 @@ import {
   type CollectionSummary,
 } from "@/lib/db/collections";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
-import { rankHiddenGems } from "@/lib/scoring/hiddenGems";
-import { bayesianShrunkMean } from "@/lib/scoring/affinity";
-import { TOP_RANKING } from "@/lib/scoring/config";
-import {
-  getPromotedDiscoverTagsForMediaType,
-  isDiscoverSubgenreForGenre,
-} from "@/lib/taxonomy";
 import { getCurrentUser } from "@/lib/user";
+import { getCatalogWithUser } from "@/lib/db/catalog";
+import { buildOverallTopRankingContext } from "@/lib/db/dashboard";
+import { DISCOVER } from "@/lib/scoring/config";
 import {
-  getCatalogWithUser,
-  type CatalogItemWithUser,
-} from "@/lib/db/catalog";
+  buildDiscoverPool,
+  buildSections,
+  buildWorlds,
+  pickEssentials,
+  scoreDiscoverItems,
+  viewerMeanScore,
+  type DiscoverChain,
+  type DiscoverItem,
+  type DiscoverWorld,
+} from "@/lib/discover";
+import { SubgenreMenu } from "./SubgenreMenu";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Discover" };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-type DiscoveryItem = CatalogItemWithUser;
-
-type GenreWorld = {
-  name: string;
-  count: number;
-  averageScore: number;
-  items: DiscoveryItem[];
-  tags: Subgenre[];
-};
-
-type Subgenre = {
-  name: string;
-  count: number;
-  items: DiscoveryItem[];
-};
+const PEACH = ACCENTS.peach;
+const HEADING_FONT =
+  'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif';
 
 const discoveryCopy: Partial<
   Record<MediaType, { noun: string; headline: string; dek: string }>
@@ -82,7 +75,7 @@ const discoveryCopy: Partial<
   },
 };
 
-export default async function TopListsPage({
+export default async function DiscoverPage({
   searchParams,
 }: {
   searchParams: SearchParams;
@@ -99,13 +92,16 @@ export default async function TopListsPage({
   const currentUser = await getCurrentUser();
   const userId = currentUser?.id ?? null;
   const isAdmin = currentUser?.isAdmin ?? false;
-  // Reads the shared cached catalog instead of its own per-type scan; the type,
-  // archive and country filters below are the JS equivalents of the `where`
-  // clauses this used to send.
-  const catalog = await getCatalogWithUser(userId);
-  const discoverItems: DiscoveryItem[] = catalog
+
+  const [catalog, context, featuredCollection, collections] = await Promise.all([
+    getCatalogWithUser(userId),
+    buildOverallTopRankingContext(),
+    getFeaturedCollection(),
+    listCollections({ includeDrafts: false }),
+  ]);
+
+  const ofType = catalog
     .filter((item) => item.mediaType === selectedType)
-    .filter((item) => userId == null || !item.isArchived)
     .filter(
       (item) =>
         !requestedCountry ||
@@ -116,53 +112,23 @@ export default async function TopListsPage({
             entry.tag.discoverable &&
             entry.tag.status === "APPROVED",
         ),
-    )
-    .sort(
-      (a, b) =>
-        (b.computedPersonalScore ?? -Infinity) -
-          (a.computedPersonalScore ?? -Infinity) ||
-        (b.personalRating ?? -Infinity) - (a.personalRating ?? -Infinity) ||
-        b.pairwiseScore - a.pairwiseScore,
     );
 
-  const discoverPrior = computeDiscoverPrior(discoverItems);
-  const genreWorlds = getGenreWorlds(
-    discoverItems,
-    selectedType,
-    discoverPrior,
-  );
-  const selectedWorld =
-    genreWorlds.find((world) => world.name === requestedGenre) ??
-    genreWorlds[0] ??
-    null;
-  const selectedSubgenre =
-    selectedWorld?.tags.find((tag) => tag.name === requestedSubgenre) ?? null;
-  const activeItems = selectedSubgenre?.items ?? selectedWorld?.items ?? [];
-  const essentials = activeItems.slice(0, 14);
-  const startHere = getStartHere(activeItems, discoverPrior);
-  const hiddenGems = getHiddenGems(activeItems);
-  const relationshipChains = getRelationshipChains(activeItems);
-  const [featuredCollection, collections] = await Promise.all([
-    getFeaturedCollection(),
-    listCollections({ includeDrafts: false }),
-  ]);
+  const scoredAll = scoreDiscoverItems(ofType, context);
+  const pool = buildDiscoverPool(scoredAll, { viewerId: userId });
+  const viewerMean = viewerMeanScore(scoredAll);
+  const worlds = buildWorlds(pool, selectedType);
+  const worldsAll = buildWorlds(scoredAll, selectedType);
+
   const copy = discoveryCopy[selectedType] ?? discoveryCopy.MOVIE!;
-  const heroTitle = selectedWorld
-    ? `${selectedWorld.name} Essentials`
-    : copy.headline;
-  const heroDek = selectedWorld
-    ? `The ${copy.noun} that make ${selectedWorld.name.toLowerCase()} feel vivid, approachable, and worth exploring deeper.`
-    : copy.dek;
-  const heroItems = essentials.slice(0, 5);
   const accentColor = mediaAccent(selectedType);
-  const heroTitleNode = highlightLastWord(heroTitle, accentColor);
+
+  const selectedWorld = requestedGenre
+    ? (worlds.find((world) => world.name === requestedGenre) ?? null)
+    : null;
 
   return (
-    <Box
-      sx={{
-        mx: "auto",
-      }}
-    >
+    <Box sx={{ mx: "auto" }}>
       <PageAccentBackground mediaType={selectedType} />
       <Stack spacing={2.5}>
         <Box
@@ -207,100 +173,293 @@ export default async function TopListsPage({
           </Tabs>
         </Box>
 
-        <HeroSection
-          accent={accentColor}
-          copy={heroDek}
-          eyebrow={`${formatMediaType(selectedType)} discovery engine`}
-          items={heroItems}
-          title={heroTitleNode}
-        />
-
-        {featuredCollection ? (
-          <FeaturedCollectionPanel
-            accent={accentColor}
-            collection={featuredCollection}
-          />
-        ) : null}
-
-        <GenreRail
-          accent={accentColor}
-          genres={genreWorlds}
-          selectedGenre={selectedWorld?.name ?? null}
-          selectedType={selectedType}
-          country={requestedCountry}
-        />
-
         {selectedWorld ? (
-          <>
-            <Box
-              sx={{
-                display: "grid",
-                gap: 2,
-                gridTemplateColumns: { xs: "1fr", lg: "1.15fr 0.85fr" },
-              }}
-            >
-              <StartHerePanel
-                accent={accentColor}
-                genre={selectedWorld.name}
-                items={startHere}
-                mediaNoun={copy.noun}
-              />
-              <SubgenreExplorer
-                accent={accentColor}
-                selectedSubgenre={selectedSubgenre?.name ?? null}
-                selectedType={selectedType}
-                subgenres={selectedWorld.tags}
-                genre={selectedWorld.name}
-                country={requestedCountry}
-              />
-            </Box>
-
-            <PosterShelf
-              accent={accentColor}
-              eyebrow="Definitive entries"
-              items={essentials}
-              title={
-                selectedSubgenre
-                  ? `Essential ${selectedSubgenre.name}`
-                  : `Essential ${selectedWorld.name}`
-              }
-            />
-
-            <Box
-              sx={{
-                display: "grid",
-                gap: 2,
-                gridTemplateColumns: { xs: "1fr", xl: "0.9fr 1.1fr" },
-              }}
-            >
-              <PosterShelf
-                accent={accentColor}
-                compact
-                eyebrow="Worth digging for"
-                grid
-                items={hiddenGems}
-                title="Hidden Gems"
-              />
-              <IfYouLikedPanel
-                accent={accentColor}
-                chains={relationshipChains}
-              />
-            </Box>
-          </>
+          <WorldView
+            accent={accentColor}
+            country={requestedCountry}
+            copy={copy}
+            selectedSubgenre={requestedSubgenre ?? null}
+            selectedType={selectedType}
+            viewerMean={viewerMean}
+            world={selectedWorld}
+            worldsAll={worldsAll}
+          />
         ) : (
-          <EmptyDiscoveryState mediaType={selectedType} />
-        )}
-
-        {collections.length > 0 || isAdmin ? (
-          <CuratedCollections
+          <LandingView
             accent={accentColor}
             collections={collections}
+            copy={copy}
+            featuredCollection={featuredCollection}
             isAdmin={isAdmin}
+            pool={pool}
+            selectedType={selectedType}
+            worlds={worlds}
           />
-        ) : null}
+        )}
       </Stack>
     </Box>
   );
+}
+
+function LandingView({
+  accent,
+  collections,
+  copy,
+  featuredCollection,
+  isAdmin,
+  pool,
+  selectedType,
+  worlds,
+}: {
+  accent: string;
+  collections: CollectionSummary[];
+  copy: { noun: string; headline: string; dek: string };
+  featuredCollection: CollectionDetail | null;
+  isAdmin: boolean;
+  pool: DiscoverItem[];
+  selectedType: MediaType;
+  worlds: DiscoverWorld[];
+}) {
+  const essentials = pickEssentials(pool, new Set());
+  const headlineNode = highlightLastWord(copy.headline, accent);
+
+  return (
+    <>
+      <Box sx={{ maxHeight: 140, overflow: "hidden" }}>
+        <Typography variant="eyebrow" sx={{ color: accent, display: "block" }}>
+          {`${formatMediaType(selectedType)} discovery`}
+        </Typography>
+        <Typography
+          component="h1"
+          sx={{
+            fontFamily: HEADING_FONT,
+            fontSize: { xs: "1.75rem", md: "2.5rem" },
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            lineHeight: 1.1,
+            mt: 0.5,
+          }}
+        >
+          {headlineNode}
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ fontSize: { xs: "0.875rem", md: "1rem" }, mt: 0.75 }}
+        >
+          {copy.dek}
+        </Typography>
+      </Box>
+
+      {worlds.length === 0 ? (
+        <EmptyDiscoveryState mediaType={selectedType} />
+      ) : (
+        <>
+          <PosterShelf
+            accent={accent}
+            eyebrow="Definitive entries"
+            glow
+            items={essentials}
+            title={`Essential ${copy.noun}`}
+          />
+
+          <WorldsGrid accent={accent} country={null} selectedType={selectedType} worlds={worlds} />
+        </>
+      )}
+
+      <CollectionsRail
+        accent={accent}
+        collections={collections}
+        featuredCollection={featuredCollection}
+        isAdmin={isAdmin}
+      />
+    </>
+  );
+}
+
+function WorldView({
+  accent,
+  country,
+  copy,
+  selectedSubgenre,
+  selectedType,
+  viewerMean,
+  world,
+  worldsAll,
+}: {
+  accent: string;
+  country?: string | null;
+  copy: { noun: string; headline: string; dek: string };
+  selectedSubgenre: string | null;
+  selectedType: MediaType;
+  viewerMean: number | null;
+  world: DiscoverWorld;
+  worldsAll: DiscoverWorld[];
+}) {
+  const activeSubgenre = selectedSubgenre
+    ? (world.subgenres.find((tag) => tag.name === selectedSubgenre) ?? null)
+    : null;
+  const activeItems = activeSubgenre ? activeSubgenre.items : world.items;
+
+  const worldItemsAllSource = worldsAll.find((w) => w.name === world.name);
+  const worldItems = activeSubgenre
+    ? (worldItemsAllSource?.subgenres.find((tag) => tag.name === activeSubgenre.name)
+        ?.items ?? [])
+    : (worldItemsAllSource?.items ?? []);
+
+  const sections = buildSections({
+    worldItems,
+    pool: activeItems,
+    mediaType: selectedType,
+    genre: world.name,
+    viewerMean,
+  });
+
+  const shelfTitle = activeSubgenre
+    ? `Essential ${activeSubgenre.name}`
+    : `Essential ${world.name}`;
+
+  return (
+    <>
+      <Box
+        sx={{
+          bgcolor: "background.default",
+          borderBottom: "1px solid",
+          borderBottomColor: "border.subtle",
+          boxShadow: `0 8px 24px -12px ${alpha(accent, 0.5)}`,
+          position: "sticky",
+          pt: 1.5,
+          pb: 1.25,
+          top: 0,
+          zIndex: 10,
+        }}
+      >
+        <Box
+          component="a"
+          href={topListsHref(selectedType, null, null, country)}
+          sx={{
+            color: PEACH,
+            display: "inline-block",
+            fontSize: "0.875rem",
+            fontWeight: 550,
+            textDecoration: "none",
+            "&:hover": { textDecoration: "underline" },
+          }}
+        >
+          {"‹ All worlds"}
+        </Box>
+        <Typography
+          component="h1"
+          sx={{
+            fontFamily: HEADING_FONT,
+            fontSize: { xs: "1.5rem", md: "2rem" },
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            lineHeight: 1.15,
+            mt: 0.25,
+          }}
+        >
+          {highlightLastWord(world.name, accent)}
+        </Typography>
+        <SubgenrePills
+          activeName={activeSubgenre?.name ?? null}
+          country={country}
+          genre={world.name}
+          selectedType={selectedType}
+          subgenres={world.subgenres}
+        />
+      </Box>
+
+      <StartHerePanel
+        accent={accent}
+        genre={world.name}
+        items={sections.gateway}
+        mediaNoun={copy.noun}
+      />
+
+      <PosterShelf
+        accent={accent}
+        eyebrow="Definitive entries"
+        items={sections.essentials}
+        title={shelfTitle}
+      />
+
+      <Box
+        sx={{
+          display: "grid",
+          gap: 2,
+          gridTemplateColumns: { xs: "1fr", xl: "1fr 1fr" },
+        }}
+      >
+        <PosterShelf
+          accent={accent}
+          compact
+          eyebrow="Worth digging for"
+          grid
+          items={sections.hiddenGems}
+          title="Hidden Gems"
+        />
+        <IfYouLikedPanel accent={accent} chains={sections.ifYouLiked} />
+      </Box>
+    </>
+  );
+}
+
+function SubgenrePills({
+  activeName,
+  country,
+  genre,
+  selectedType,
+  subgenres,
+}: {
+  activeName: string | null;
+  country?: string | null;
+  genre: string;
+  selectedType: MediaType;
+  subgenres: DiscoverWorld["subgenres"];
+}) {
+  const visible = subgenres.slice(0, 8);
+  const overflow = subgenres.slice(8);
+
+  return (
+    <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75, mt: 1 }}>
+      <Chip
+        clickable
+        component="a"
+        href={topListsHref(selectedType, genre, null, country)}
+        label="All"
+        sx={pillSx(activeName == null)}
+      />
+      {visible.map((tag) => (
+        <Chip
+          clickable
+          component="a"
+          href={topListsHref(selectedType, genre, tag.name, country)}
+          key={tag.name}
+          label={tag.name}
+          sx={pillSx(activeName === tag.name)}
+        />
+      ))}
+      {overflow.length > 0 ? (
+        <SubgenreMenu
+          options={overflow.map((tag) => ({
+            name: tag.name,
+            href: topListsHref(selectedType, genre, tag.name, country),
+          }))}
+        />
+      ) : null}
+    </Stack>
+  );
+}
+
+function pillSx(active: boolean): SxProps<Theme> {
+  return {
+    bgcolor: active ? alpha(PEACH, 0.14) : "surface.1",
+    border: active
+      ? `1px solid ${alpha(PEACH, 0.5)}`
+      : "1px solid var(--mui-palette-border-subtle)",
+    color: active ? PEACH : "text.primary",
+    fontWeight: active ? 600 : 500,
+  };
 }
 
 function highlightLastWord(text: string, accent: string): React.ReactNode {
@@ -308,13 +467,7 @@ function highlightLastWord(text: string, accent: string): React.ReactNode {
   const lastSpace = trimmed.lastIndexOf(" ");
   if (lastSpace === -1) {
     return (
-      <Box
-        component="span"
-        sx={{
-          color: accent,
-          textShadow: `0 0 28px ${alpha(accent, 0.5)}`,
-        }}
-      >
+      <Box component="span" sx={{ color: accent }}>
         {trimmed}
       </Box>
     );
@@ -322,188 +475,274 @@ function highlightLastWord(text: string, accent: string): React.ReactNode {
   return (
     <>
       {trimmed.slice(0, lastSpace + 1)}
-      <Box
-        component="span"
-        sx={{
-          color: accent,
-          textShadow: `0 0 28px ${alpha(accent, 0.5)}`,
-        }}
-      >
+      <Box component="span" sx={{ color: accent }}>
         {trimmed.slice(lastSpace + 1)}
       </Box>
     </>
   );
 }
 
-function HeroSection({
+function WorldsGrid({
   accent,
-  copy,
-  eyebrow,
-  items,
-  title,
+  country,
+  selectedType,
+  worlds,
 }: {
   accent: string;
-  copy: string;
-  eyebrow: string;
-  items: DiscoveryItem[];
-  title: React.ReactNode;
+  country?: string | null;
+  selectedType: MediaType;
+  worlds: DiscoverWorld[];
 }) {
   return (
+    <Stack spacing={1}>
+      <Typography variant="eyebrow" sx={{ color: accent }}>
+        Worlds
+      </Typography>
+      <Box
+        sx={{
+          display: "grid",
+          gap: 1.5,
+          gridTemplateColumns: {
+            xs: "repeat(2, minmax(0, 1fr))",
+            sm: "repeat(3, minmax(0, 1fr))",
+            md: "repeat(4, minmax(0, 1fr))",
+            lg: "repeat(5, minmax(0, 1fr))",
+          },
+        }}
+      >
+        {worlds.map((world) => (
+          <WorldCard
+            country={country}
+            key={world.name}
+            selectedType={selectedType}
+            world={world}
+          />
+        ))}
+      </Box>
+    </Stack>
+  );
+}
+
+function WorldCard({
+  country,
+  selectedType,
+  world,
+}: {
+  country?: string | null;
+  selectedType: MediaType;
+  world: DiscoverWorld;
+}) {
+  const mosaic = world.items.slice(0, DISCOVER.worldMosaicSize);
+  return (
     <Box
+      component="a"
+      href={topListsHref(selectedType, world.name, null, country)}
       sx={{
-        minHeight: { xs: 360, sm: 430, md: 470 },
-        overflow: "hidden",
-        position: "relative",
+        color: "inherit",
+        display: "block",
+        textDecoration: "none",
       }}
     >
       <Box
         sx={{
           display: "grid",
-          gap: { xs: 1.2, md: 1.5 },
-          gridTemplateColumns: { xs: "1fr", md: "0.92fr 1.08fr" },
-          minHeight: "inherit",
+          gap: 0.5,
+          gridTemplateColumns: `repeat(${Math.max(mosaic.length, 1)}, 1fr)`,
         }}
       >
-        <Box
-          sx={{
-            alignSelf: "end",
-            maxWidth: 780,
-            pb: { xs: 1, md: 4 },
-            pt: { xs: 2, md: 5 },
-            zIndex: 2,
-          }}
-        >
-          <Typography
-            variant="eyebrow"
-            sx={{ color: accent, display: "block", mb: 1.5 }}
-          >
-            {eyebrow}
-          </Typography>
-          <Typography
-            component="h1"
-            variant="displayHero"
-            sx={{
-              fontSize: { xs: "2.25rem", sm: "3.5rem", md: "4.5rem" },
-              maxWidth: 760,
-              textWrap: "balance",
-            }}
-          >
-            {title}
-          </Typography>
-          <Typography
-            color="text.secondary"
-            sx={{
-              fontSize: { xs: "0.9375rem", md: "1.0625rem" },
-              lineHeight: 1.55,
-              maxWidth: 560,
-              mt: 2,
-            }}
-          >
-            {copy}
-          </Typography>
-        </Box>
-
-        <Box
-          sx={{
-            alignItems: "center",
-            display: "grid",
-            gridTemplateColumns: {
-              xs: "repeat(3, minmax(96px, 1fr))",
-              sm: "repeat(5, minmax(84px, 1fr))",
-            },
-            minHeight: { xs: 168, sm: 240, md: 430 },
-            position: "relative",
-          }}
-        >
-          <Box
-            sx={{
-              background: `radial-gradient(circle at 45% 22%, ${alpha(accent, 0.08)} 0%, transparent 24rem)`,
-              inset: 0,
-              position: "absolute",
-              pointerEvents: "none",
-            }}
-          />
-          {items.map((item, index) => (
-            <PosterCard
-              accent={accent}
-              elevated={index === 2}
-              item={item}
+        {mosaic.length > 0 ? (
+          mosaic.map((item) => (
+            <Box
               key={item.id}
-              linked
               sx={{
-                // Only three fit across a phone, so don't wrap the other two
-                // onto a second row.
-                display: { xs: index < 3 ? "block" : "none", sm: "block" },
-                mt: index % 2 === 0 ? { xs: 0, md: -5 } : { xs: 2, md: 8 },
-                transform: {
-                  xs: "none",
-                  md: `rotate(${[-7, 4, -2, 6, -5][index] ?? 0}deg)`,
-                },
-                zIndex: index === 2 ? 4 : 3 - Math.abs(index - 2),
+                aspectRatio: "2 / 3",
+                backgroundImage: item.posterUrl
+                  ? `url(${item.posterUrl})`
+                  : posterFallback(item.mediaType),
+                backgroundPosition: "center",
+                backgroundSize: "cover",
+                border: "1px solid",
+                borderColor: "border.subtle",
+                borderRadius: 1,
+                overflow: "hidden",
               }}
             />
-          ))}
-        </Box>
+          ))
+        ) : (
+          <Box
+            sx={{
+              aspectRatio: "2 / 3",
+              backgroundImage: posterFallback(selectedType),
+              border: "1px solid",
+              borderColor: "border.subtle",
+              borderRadius: 1,
+            }}
+          />
+        )}
       </Box>
+      <Typography noWrap sx={{ fontWeight: 650, mt: 1 }}>
+        {world.name}
+      </Typography>
+      <Typography color="text.secondary" noWrap variant="body2">
+        {`${world.count} ${world.count === 1 ? "title" : "titles"}`}
+      </Typography>
+      <Typography color="text.secondary" noWrap variant="caption">
+        {`Quality ${world.averageQuality.toFixed(1)}`}
+      </Typography>
     </Box>
   );
 }
 
-function GenreRail({
+function CollectionsRail({
   accent,
-  country,
-  genres,
-  selectedGenre,
-  selectedType,
+  collections,
+  featuredCollection,
+  isAdmin,
 }: {
   accent: string;
-  country?: string | null;
-  genres: GenreWorld[];
-  selectedGenre: string | null;
-  selectedType: MediaType;
+  collections: CollectionSummary[];
+  featuredCollection: CollectionDetail | null;
+  isAdmin: boolean;
 }) {
+  if (collections.length === 0 && !isAdmin) return null;
+
+  const rest = featuredCollection
+    ? collections.filter((c) => c.id !== featuredCollection.id)
+    : collections;
+
   return (
     <Stack spacing={1}>
-      <Typography variant="eyebrow" sx={{ color: accent }}>
-        Choose a world
-      </Typography>
+      <Box
+        sx={{
+          alignItems: "baseline",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <Typography variant="eyebrow" sx={{ color: accent }}>
+          Curated collections
+        </Typography>
+        <Box
+          component="a"
+          href={
+            collections.length > 0 || !isAdmin
+              ? "/discover/collections"
+              : "/discover/collections/new"
+          }
+          sx={{ color: PEACH, fontSize: "0.875rem", textDecoration: "none" }}
+        >
+          {collections.length > 0
+            ? "View all"
+            : isAdmin
+              ? "Create the first one"
+              : "View all"}
+        </Box>
+      </Box>
       <Box
         sx={{
           display: "flex",
-          gap: 0.75,
+          gap: 1.5,
           overflowX: "auto",
-          pb: 0.4,
+          pb: 0.5,
           scrollbarWidth: "thin",
         }}
       >
-        {[...genres]
-          .sort((first, second) => first.name.localeCompare(second.name))
-          .map((genre) => {
-            const active = selectedGenre === genre.name;
-            return (
-              <Chip
-                clickable
-                component="a"
-                href={topListsHref(selectedType, genre.name, null, country)}
-                key={genre.name}
-                label={genre.name}
-                sx={{
-                  bgcolor: active ? alpha(accent, 0.1) : "surface.1",
-                  border: active
-                    ? `1px solid ${alpha(accent, 0.4)}`
-                    : "1px solid var(--mui-palette-border-subtle)",
-                  color: active ? accent : "text.primary",
-                  flex: "0 0 auto",
-                  fontWeight: active ? 600 : 500,
-                  boxShadow: active
-                    ? `0 0 14px ${alpha(accent, 0.25)}`
-                    : "none",
-                }}
-              />
-            );
-          })}
+        {featuredCollection ? (
+          <FeaturedCollectionCard collection={featuredCollection} />
+        ) : null}
+        {rest.slice(0, 12).map((collection) => (
+          <CompactCollectionCard collection={collection} key={collection.id} />
+        ))}
       </Box>
     </Stack>
+  );
+}
+
+function FeaturedCollectionCard({ collection }: { collection: CollectionDetail }) {
+  const items = [
+    ...collection.ungrouped,
+    ...collection.sectionGroups.flatMap((group) => group.items),
+  ].slice(0, 4);
+
+  return (
+    <Box
+      component="a"
+      href={`/discover/collections/${collection.id}`}
+      sx={{
+        bgcolor: "surface.1",
+        border: "1px solid",
+        borderColor: "border.subtle",
+        borderRadius: 2,
+        color: "inherit",
+        display: "block",
+        flex: "0 0 auto",
+        p: 1.5,
+        textDecoration: "none",
+        width: 320,
+      }}
+    >
+      <Typography variant="eyebrow" sx={{ color: PEACH }}>
+        {collection.featuredMonth
+          ? `Featured · ${collection.featuredMonth}`
+          : "Featured"}
+      </Typography>
+      <Typography sx={{ fontWeight: 700, mt: 0.5 }}>{collection.name}</Typography>
+      {collection.subtitle ? (
+        <Typography color="text.secondary" noWrap sx={{ mt: 0.25 }} variant="body2">
+          {collection.subtitle}
+        </Typography>
+      ) : null}
+      {items.length > 0 ? (
+        <Box
+          sx={{
+            display: "grid",
+            gap: 0.75,
+            gridTemplateColumns: "repeat(4, 1fr)",
+            mt: 1,
+          }}
+        >
+          {items.map((item) => (
+            <PosterImage item={item.media} key={item.id} />
+          ))}
+        </Box>
+      ) : null}
+    </Box>
+  );
+}
+
+function CompactCollectionCard({ collection }: { collection: CollectionSummary }) {
+  return (
+    <Box
+      component="a"
+      href={`/discover/collections/${collection.id}`}
+      sx={{
+        bgcolor: "surface.1",
+        border: "1px solid",
+        borderColor: "border.subtle",
+        borderRadius: 2,
+        color: "inherit",
+        display: "flex",
+        flex: "0 0 auto",
+        flexDirection: "column",
+        justifyContent: "center",
+        minHeight: 96,
+        p: 1.5,
+        textDecoration: "none",
+        width: 200,
+      }}
+    >
+      <Typography noWrap sx={{ fontWeight: 650 }}>
+        {collection.name}
+      </Typography>
+      {collection.subtitle ? (
+        <Typography color="text.secondary" noWrap sx={{ mt: 0.25 }} variant="body2">
+          {collection.subtitle}
+        </Typography>
+      ) : null}
+      <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="caption">
+        {`${collection.itemCount} title${collection.itemCount === 1 ? "" : "s"}`}
+      </Typography>
+    </Box>
   );
 }
 
@@ -515,7 +754,7 @@ function StartHerePanel({
 }: {
   accent: string;
   genre: string;
-  items: DiscoveryItem[];
+  items: DiscoverItem[];
   mediaNoun: string;
 }) {
   return (
@@ -524,7 +763,7 @@ function StartHerePanel({
         Start here
       </Typography>
       <Typography component="h2" sx={sectionTitleSx}>
-        Gateway {mediaNoun} for {genre.toLowerCase()}
+        {`Gateway ${mediaNoun} for ${genre}`}
       </Typography>
       <Box
         sx={{
@@ -535,12 +774,7 @@ function StartHerePanel({
         }}
       >
         {items.map((item, index) => (
-          <GatewayCard
-            accent={accent}
-            index={index}
-            item={item}
-            key={item.id}
-          />
+          <GatewayCard accent={accent} index={index} item={item} key={item.id} />
         ))}
       </Box>
       {items.length === 0 ? <EmptyText>No entries yet.</EmptyText> : null}
@@ -555,7 +789,7 @@ function GatewayCard({
 }: {
   accent: string;
   index: number;
-  item: DiscoveryItem;
+  item: DiscoverItem;
 }) {
   return (
     <Box
@@ -595,63 +829,10 @@ function GatewayCard({
             .join(" · ") || "Essential entry point"}
         </Typography>
       </Box>
-      <Typography
-        sx={{ color: "text.disabled", fontSize: "1.1rem", fontWeight: 700 }}
-      >
+      <Typography sx={{ color: "text.disabled", fontSize: "1.1rem", fontWeight: 700 }}>
         {String(index + 1).padStart(2, "0")}
       </Typography>
     </Box>
-  );
-}
-
-function SubgenreExplorer({
-  accent,
-  country,
-  genre,
-  selectedSubgenre,
-  selectedType,
-  subgenres,
-}: {
-  accent: string;
-  country?: string | null;
-  genre: string;
-  selectedSubgenre: string | null;
-  selectedType: MediaType;
-  subgenres: Subgenre[];
-}) {
-  return (
-    <DiscoveryPanel accent={accent}>
-      <Typography variant="eyebrow" sx={{ color: accent }}>
-        Subgenre explorer
-      </Typography>
-      <Typography component="h2" sx={sectionTitleSx}>
-        Go deeper than {genre.toLowerCase()}
-      </Typography>
-      <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.75, mt: 1.25 }}>
-        <Chip
-          clickable
-          component="a"
-          href={topListsHref(selectedType, genre, null, country)}
-          label="All essentials"
-          sx={subgenreChipSx(!selectedSubgenre, accent)}
-        />
-        {subgenres.slice(0, 14).map((tag) => (
-          <Chip
-            clickable
-            component="a"
-            href={topListsHref(selectedType, genre, tag.name, country)}
-            key={tag.name}
-            label={tag.name}
-            sx={subgenreChipSx(selectedSubgenre === tag.name, accent)}
-          />
-        ))}
-      </Stack>
-      {subgenres.length === 0 ? (
-        <EmptyText>
-          Add approved tags to this genre to unlock subgenre paths.
-        </EmptyText>
-      ) : null}
-    </DiscoveryPanel>
   );
 }
 
@@ -659,6 +840,7 @@ function PosterShelf({
   accent,
   compact = false,
   eyebrow,
+  glow = false,
   grid = false,
   items,
   title,
@@ -666,8 +848,9 @@ function PosterShelf({
   accent: string;
   compact?: boolean;
   eyebrow: string;
+  glow?: boolean;
   grid?: boolean;
-  items: DiscoveryItem[];
+  items: DiscoverItem[];
   title: string;
 }) {
   return (
@@ -706,6 +889,7 @@ function PosterShelf({
         {items.map((item, index) => (
           <ShelfPoster
             accent={accent}
+            glow={glow && index === 0}
             item={item}
             key={item.id}
             rank={index + 1}
@@ -719,11 +903,13 @@ function PosterShelf({
 
 function ShelfPoster({
   accent,
+  glow = false,
   item,
   rank,
 }: {
   accent: string;
-  item: DiscoveryItem;
+  glow?: boolean;
+  item: DiscoverItem;
   rank: number;
 }) {
   return (
@@ -739,7 +925,23 @@ function ShelfPoster({
       }}
     >
       <Box sx={{ position: "relative" }}>
-        <PosterCard item={item} />
+        <Box
+          sx={{
+            aspectRatio: "2 / 3",
+            backgroundImage: item.posterUrl
+              ? `linear-gradient(180deg, transparent 58%, rgba(8,8,11,0.55)), url(${item.posterUrl})`
+              : posterFallback(item.mediaType),
+            backgroundPosition: "center",
+            backgroundSize: "cover",
+            border: `1px solid ${alpha(accent, 0.3)}`,
+            borderRadius: 2,
+            boxShadow: glow
+              ? `0 14px 36px rgba(0,0,0,0.5), 0 0 28px ${alpha(accent, 0.4)}`
+              : "0 6px 16px rgba(0,0,0,0.35)",
+            overflow: "hidden",
+            width: "100%",
+          }}
+        />
         <Box
           sx={{
             alignItems: "center",
@@ -765,8 +967,15 @@ function ShelfPoster({
       <Typography noWrap sx={{ fontWeight: 600, mt: 1 }}>
         {item.title}
       </Typography>
-      <Typography color="text.secondary" noWrap variant="caption">
-        {formatScore(item)}
+      <Typography
+        color="text.secondary"
+        component="span"
+        noWrap
+        sx={{ display: "block" }}
+        title="Quality: community and critic blend"
+        variant="caption"
+      >
+        {item.quality.toFixed(1)}
       </Typography>
     </Box>
   );
@@ -777,7 +986,7 @@ function IfYouLikedPanel({
   chains,
 }: {
   accent: string;
-  chains: Array<{ seed: DiscoveryItem; next: DiscoveryItem }>;
+  chains: DiscoverChain[];
 }) {
   return (
     <DiscoveryPanel accent={accent}>
@@ -787,10 +996,6 @@ function IfYouLikedPanel({
       <Typography component="h2" sx={sectionTitleSx}>
         If You Liked...
       </Typography>
-      {/* Was a five-column grid even at 390px, which squeezed each `noWrap`
-          title into ~85px — and nothing in the row was a link, so the user
-          could see two films and tap neither. Now it stacks on a phone and both
-          halves navigate. */}
       <Stack spacing={0.8} sx={{ mt: 1.25 }}>
         {chains.map((chain) => (
           <Box
@@ -818,6 +1023,15 @@ function IfYouLikedPanel({
               then
             </Typography>
             <ChainLink item={chain.next} />
+            {chain.sharedFacet ? (
+              <Typography
+                color="text.secondary"
+                sx={{ gridColumn: "1 / -1" }}
+                variant="caption"
+              >
+                {`both ${chain.sharedFacet}`}
+              </Typography>
+            ) : null}
           </Box>
         ))}
       </Stack>
@@ -828,202 +1042,14 @@ function IfYouLikedPanel({
   );
 }
 
-function FeaturedCollectionPanel({
-  accent,
-  collection,
-}: {
-  accent: string;
-  collection: CollectionDetail;
-}) {
-  const items = [
-    ...collection.ungrouped,
-    ...collection.sectionGroups.flatMap((group) => group.items),
-  ].slice(0, 6);
-
-  return (
-    <DiscoveryPanel accent={accent}>
-      <Box
-        component="a"
-        href={`/discover/collections/${collection.id}`}
-        sx={{ color: "inherit", display: "block", textDecoration: "none" }}
-      >
-        <Typography variant="eyebrow" sx={{ color: accent }}>
-          Featured collection
-        </Typography>
-        <Typography
-          sx={{
-            fontFamily:
-              'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif',
-            fontSize: "1.35rem",
-            fontWeight: 700,
-            letterSpacing: "-0.015em",
-            mt: 0.5,
-          }}
-        >
-          {collection.name}
-        </Typography>
-        {collection.subtitle ? (
-          <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="body2">
-            {collection.subtitle}
-          </Typography>
-        ) : null}
-      </Box>
-      {items.length > 0 ? (
-        <Box
-          sx={{
-            display: "grid",
-            gap: 1,
-            gridTemplateColumns: {
-              xs: "repeat(3, 1fr)",
-              sm: "repeat(6, 1fr)",
-            },
-            mt: 1.5,
-          }}
-        >
-          {items.map((item) => (
-            <PosterTile
-              item={{
-                id: item.media.id,
-                title: item.media.title,
-                mediaType: item.media.mediaType,
-                posterUrl: item.media.posterUrl,
-              }}
-              key={item.id}
-            />
-          ))}
-        </Box>
-      ) : null}
-    </DiscoveryPanel>
-  );
-}
-
-function CuratedCollections({
-  accent,
-  collections,
-  isAdmin,
-}: {
-  accent: string;
-  collections: CollectionSummary[];
-  isAdmin: boolean;
-}) {
-  return (
-    <DiscoveryPanel accent={accent}>
-      <Box
-        sx={{
-          alignItems: "baseline",
-          display: "flex",
-          justifyContent: "space-between",
-        }}
-      >
-        <Typography variant="eyebrow" sx={{ color: accent }}>
-          Curated collections
-        </Typography>
-        <Box
-          component="a"
-          href="/discover/collections"
-          sx={{ color: accent, fontSize: "0.875rem", textDecoration: "none" }}
-        >
-          {collections.length > 0 ? "View all collections" : "Manage collections"}
-        </Box>
-      </Box>
-      {collections.length === 0 ? (
-        <Typography color="text.secondary" sx={{ mt: 1 }} variant="body2">
-          No collections yet.{" "}
-          {isAdmin ? (
-            <Box
-              component="a"
-              href="/discover/collections/new"
-              sx={{ color: accent, textDecoration: "none" }}
-            >
-              Create the first one.
-            </Box>
-          ) : null}
-        </Typography>
-      ) : null}
-      <Box
-        sx={{
-          display: "grid",
-          gap: 1,
-          gridTemplateColumns: { xs: "1fr", md: "repeat(4, 1fr)" },
-          mt: 1,
-        }}
-      >
-        {collections.slice(0, 8).map((collection) => (
-          <Box
-            component="a"
-            href={`/discover/collections/${collection.id}`}
-            key={collection.id}
-            sx={{
-              bgcolor: "surface.1",
-              border: "1px solid",
-              borderColor: "border.subtle",
-              borderLeft: `2px solid ${accent}`,
-              borderRadius: 2,
-              color: "inherit",
-              display: "flex",
-              flexDirection: "column",
-              minHeight: 142,
-              p: 1.5,
-              textDecoration: "none",
-              transition: "border-color 160ms ease, transform 160ms ease",
-              "&:hover": {
-                borderColor: "border.strong",
-                transform: "translateY(-2px)",
-              },
-            }}
-          >
-            {collection.featuredMonth ? (
-              <Typography variant="eyebrow" sx={{ color: accent }}>
-                Featured · {collection.featuredMonth}
-              </Typography>
-            ) : null}
-            <Typography
-              sx={{
-                fontFamily:
-                  'var(--font-heading), "Satoshi", "General Sans", "Space Grotesk", "Inter", system-ui, sans-serif',
-                fontSize: "1rem",
-                fontWeight: 650,
-                letterSpacing: "-0.015em",
-                mt: 1.5,
-              }}
-            >
-              {collection.name}
-            </Typography>
-            {collection.subtitle ? (
-              <Typography
-                color="text.secondary"
-                sx={{ mt: 0.6 }}
-                variant="body2"
-              >
-                {collection.subtitle}
-              </Typography>
-            ) : null}
-            <Typography
-              color="text.secondary"
-              sx={{ mt: "auto", pt: 1 }}
-              variant="caption"
-            >
-              {collection.itemCount} title
-              {collection.itemCount === 1 ? "" : "s"}
-            </Typography>
-          </Box>
-        ))}
-      </Box>
-    </DiscoveryPanel>
-  );
-}
-
 /** One half of an "If You Liked…" chain — poster + title, as a single link.
  *
  *  Note this page is a Server Component, so `component={Link}` can't be used:
  *  MUI's `Box` is a client component and a function prop can't cross the RSC
  *  boundary. Plain `<Link>` on the outside, `sx` on the inside. */
-function ChainLink({ item }: { item: DiscoveryItem }) {
+function ChainLink({ item }: { item: DiscoverItem }) {
   return (
-    <Link
-      href={`/media/${item.id}`}
-      style={{ color: "inherit", textDecoration: "none" }}
-    >
+    <Link href={`/media/${item.id}`} style={{ color: "inherit", textDecoration: "none" }}>
       <Box
         sx={{
           alignItems: "center",
@@ -1042,62 +1068,6 @@ function ChainLink({ item }: { item: DiscoveryItem }) {
   );
 }
 
-/**
- * A poster.
- *
- * `linked` controls whether it is *itself* the anchor. `ShelfPoster` already
- * wraps it in one, and an `<a>` inside an `<a>` is invalid HTML — it also gave
- * screen-reader users the same destination twice in a row. Callers that render
- * it bare (the hero fan) opt into the link; callers that wrap it don't.
- */
-function PosterCard({
-  accent,
-  elevated = false,
-  item,
-  linked = false,
-  sx,
-}: {
-  accent?: string;
-  elevated?: boolean;
-  item: DiscoveryItem;
-  linked?: boolean;
-  sx?: object;
-}) {
-  const tint = accent ?? mediaAccent(item.mediaType);
-  return (
-    <Box
-      component={linked ? "a" : "div"}
-      href={linked ? `/media/${item.id}` : undefined}
-      aria-label={linked ? item.title : undefined}
-      sx={{
-        aspectRatio: "2 / 3",
-        backgroundImage: item.posterUrl
-          ? `linear-gradient(180deg, transparent 58%, rgba(8,8,11,0.55)), url(${item.posterUrl})`
-          : posterFallback(item.mediaType),
-        backgroundPosition: "center",
-        backgroundSize: "cover",
-        border: `1px solid ${alpha(tint, elevated ? 0.55 : 0.3)}`,
-        borderRadius: 2,
-        boxShadow: elevated
-          ? `0 18px 42px rgba(0,0,0,0.55), 0 0 32px ${alpha(tint, 0.45)}`
-          : `0 10px 24px rgba(0,0,0,0.45), 0 0 18px ${alpha(tint, 0.22)}`,
-        display: "block",
-        minWidth: 0,
-        overflow: "hidden",
-        position: "relative",
-        textDecoration: "none",
-        transition: "transform 180ms ease, box-shadow 180ms ease",
-        width: "100%",
-        "&:hover": {
-          boxShadow: `0 22px 48px rgba(0,0,0,0.6), 0 0 38px ${alpha(tint, 0.55)}`,
-          transform: "translateY(-4px)",
-        },
-        ...sx,
-      }}
-    />
-  );
-}
-
 function DiscoveryPanel({
   accent,
   children,
@@ -1110,9 +1080,6 @@ function DiscoveryPanel({
       sx={{
         height: "100%",
         borderLeft: accent ? `2px solid ${accent}` : undefined,
-        boxShadow: accent
-          ? `0 8px 24px rgba(0,0,0,0.25), -10px 0 32px -18px ${alpha(accent, 0.6)}`
-          : undefined,
       }}
     >
       <CardContent sx={{ p: { xs: 2, md: 2.5 } }}>{children}</CardContent>
@@ -1124,7 +1091,7 @@ function EmptyDiscoveryState({ mediaType }: { mediaType: MediaType }) {
   return (
     <DiscoveryPanel>
       <Typography component="h2" sx={sectionTitleSx}>
-        No {formatMediaType(mediaType).toLowerCase()} yet
+        {`No ${formatMediaType(mediaType).toLowerCase()} yet`}
       </Typography>
       <EmptyText>
         Add items with genres and posters to build the discovery engine.
@@ -1150,221 +1117,6 @@ const sectionTitleSx: SxProps<Theme> = {
   lineHeight: 1.15,
   mt: 0.75,
 };
-
-function subgenreChipSx(active: boolean, accent: string): SxProps<Theme> {
-  return {
-    bgcolor: active ? alpha(accent, 0.1) : "surface.1",
-    border: active
-      ? `1px solid ${alpha(accent, 0.4)}`
-      : "1px solid var(--mui-palette-border-subtle)",
-    color: active ? accent : "text.primary",
-    fontWeight: active ? 600 : 500,
-    boxShadow: active ? `0 0 14px ${alpha(accent, 0.25)}` : "none",
-  };
-}
-
-function getGenreWorlds(
-  items: DiscoveryItem[],
-  mediaType: MediaType,
-  prior: number,
-): GenreWorld[] {
-  const worlds = new Map<string, DiscoveryItem[]>();
-
-  for (const item of items) {
-    for (const entry of item.genres) {
-      const current = worlds.get(entry.genre.name) ?? [];
-      current.push(item);
-      worlds.set(entry.genre.name, current);
-    }
-  }
-
-  const promoted = getPromotedDiscoverTagsForMediaType(mediaType);
-  if (promoted.length > 0) {
-    const promotedKeys = new Map(
-      promoted.map((name) => [name.toLowerCase(), name]),
-    );
-    for (const item of items) {
-      const seenThisItem = new Set<string>();
-      for (const entry of item.tags) {
-        if (entry.tag.status !== "APPROVED") continue;
-        const canonical = promotedKeys.get(entry.tag.name.toLowerCase());
-        if (!canonical) continue;
-        if (seenThisItem.has(canonical)) continue;
-        seenThisItem.add(canonical);
-        const current = worlds.get(canonical) ?? [];
-        current.push(item);
-        worlds.set(canonical, current);
-      }
-    }
-  }
-
-  return [...worlds.entries()]
-    .map(([name, worldItems]) => {
-      const sortedItems = sortByScore(worldItems, prior);
-      // World averageScore drives world ordering — use the shrunk rank score
-      // so a world full of thin 10s doesn't outrank a world of broad 8s.
-      const averageScore =
-        sortedItems.reduce(
-          (sum, item) => sum + discoverRankScore(item, prior),
-          0,
-        ) / sortedItems.length;
-
-      return {
-        name,
-        count: sortedItems.length,
-        averageScore,
-        items: sortedItems,
-        tags: getSubgenres(sortedItems, mediaType, name, prior),
-      };
-    })
-    .sort(
-      (first, second) =>
-        second.averageScore - first.averageScore || second.count - first.count,
-    );
-}
-
-function getSubgenres(
-  items: DiscoveryItem[],
-  mediaType: MediaType,
-  genre: string,
-  prior: number,
-) {
-  const tags = new Map<string, DiscoveryItem[]>();
-
-  for (const item of items) {
-    for (const entry of item.tags) {
-      if (entry.tag.status !== "APPROVED") continue;
-      if (entry.tag.category !== "SUBGENRE") continue;
-      if (!entry.tag.discoverable) continue;
-      if (!tagAllowsMediaType(entry.tag.mediaTypesJson, mediaType)) continue;
-      if (!isDiscoverSubgenreForGenre(mediaType, genre, entry.tag.name)) {
-        continue;
-      }
-      const current = tags.get(entry.tag.name) ?? [];
-      current.push(item);
-      tags.set(entry.tag.name, current);
-    }
-  }
-
-  return [...tags.entries()]
-    .map(([name, tagItems]) => ({
-      name,
-      count: tagItems.length,
-      items: sortByScore(tagItems, prior),
-    }))
-    .sort((first, second) => second.count - first.count)
-    .slice(0, 18);
-}
-
-function tagAllowsMediaType(
-  mediaTypesJson: string | null,
-  mediaType: MediaType,
-) {
-  if (!mediaTypesJson) return true;
-
-  try {
-    const mediaTypes = JSON.parse(mediaTypesJson);
-    return Array.isArray(mediaTypes) && mediaTypes.includes(mediaType);
-  } catch {
-    return false;
-  }
-}
-
-function getStartHere(items: DiscoveryItem[], prior: number) {
-  return sortByScore(items, prior)
-    .sort(
-      (first, second) =>
-        second.comparisonCount - first.comparisonCount ||
-        discoverRankScore(second, prior) - discoverRankScore(first, prior),
-    )
-    .slice(0, 4);
-}
-
-function getHiddenGems(items: DiscoveryItem[]) {
-  if (items.length <= 4) return items.slice(2, 6);
-  return rankHiddenGems(items, { limit: 8, requireQualifies: false }).filter(
-    (item) => item.hiddenGem.score > 0,
-  );
-}
-
-function getRelationshipChains(items: DiscoveryItem[]) {
-  const chains: Array<{ seed: DiscoveryItem; next: DiscoveryItem }> = [];
-
-  for (let index = 0; index < Math.min(items.length - 1, 4); index += 1) {
-    chains.push({ seed: items[index], next: items[index + 1] });
-  }
-
-  return chains;
-}
-
-function sortByScore(items: DiscoveryItem[], prior: number) {
-  return [...items].sort(
-    (first, second) =>
-      discoverRankScore(second, prior) - discoverRankScore(first, prior),
-  );
-}
-
-type ScorableItem = {
-  computedPersonalScore: number | null;
-  personalRating: number | null;
-  pairwiseScore: number;
-  comparisonCount?: number;
-  status: import("@prisma/client").MediaStatus;
-};
-
-/**
- * Raw observed score used for display ("8.5"). Same fallback chain as before.
- * Use `discoverRankScore` for ranking — that one applies Bayesian shrinkage
- * so a single 10-rated item doesn't outrank items with broader evidence.
- */
-function discoverScore(item: ScorableItem) {
-  if (item.computedPersonalScore != null) return item.computedPersonalScore;
-  if (item.personalRating != null) return item.personalRating;
-  if (item.status === "COMPLETED") return item.pairwiseScore / 100;
-  return 0;
-}
-
-/**
- * Ranking-only variant. Shrinks the discover score toward `prior` in
- * proportion to evidence (pairwise comparisons + explicit-rating presence).
- * Items with zero evidence collapse to the prior and lose ground to anything
- * that has any data.
- */
-function discoverRankScore(item: ScorableItem, prior: number) {
-  const observed = discoverScore(item);
-  if (observed === 0) return 0;
-  const evidence =
-    (item.comparisonCount ?? 0) + (item.personalRating != null ? 3 : 0);
-  return bayesianShrunkMean(
-    observed,
-    evidence,
-    prior,
-    TOP_RANKING.shrinkageK.personal,
-  );
-}
-
-/**
- * Mean of the observed scores across the candidate pool — used as the prior
- * for `discoverRankScore`. Items with no signal contribute 0 and would skew
- * the mean low, so we average across items that have any score.
- */
-function computeDiscoverPrior(items: ScorableItem[]): number {
-  let sum = 0;
-  let count = 0;
-  for (const item of items) {
-    const value = discoverScore(item);
-    if (value > 0) {
-      sum += value;
-      count += 1;
-    }
-  }
-  return count > 0 ? sum / count : TOP_RANKING.fallbackPrior;
-}
-
-function formatScore(item: ScorableItem) {
-  const score = discoverScore(item);
-  return score > 0 ? score.toFixed(1) : "Unrated";
-}
 
 function stringParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
