@@ -114,6 +114,7 @@ export function PosterTile({
       style={{ color: "inherit", display: "block", textDecoration: "none" }}
     >
       <Box
+        data-poster-slot="frame"
         sx={{
           aspectRatio: "2 / 3",
           bgcolor: "surface.2",
@@ -148,6 +149,7 @@ export function PosterTile({
           }}
         />
         <Box
+          data-poster-slot="shade"
           sx={{
             background:
               "linear-gradient(180deg, transparent 35%, rgba(8,8,11,0.45) 62%, rgba(8,8,11,0.92) 100%)",
@@ -177,6 +179,7 @@ export function PosterTile({
           </Box>
         ) : null}
         <Box
+          data-poster-slot="caption"
           sx={{
             bottom: 0,
             left: 0,
