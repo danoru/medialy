@@ -146,19 +146,31 @@ Picks the contributor on the candidate with the highest affinity weight and prod
 
 ### Friend signal (`computeFriendSignal` in `recommendations.ts`)
 
-For each candidate, gather all followers who rated/completed it. Per follower, compute a per-item boost:
+For each candidate, gather all followers who rated/completed it. Per follower, their **opinion** is a 0–100 value (`followerOpinion`):
 
 ```
-ratingBoost = max(0, (rating − 6) × 10)
-statusBoost = COMPLETED ? 8 : WATCHLIST ? 5 : 0
-perFollower = ratingBoost + statusBoost
+opinion = rating != null ? clamp((rating − 5) × 20, 0, 100)
+        : COMPLETED ? FRIEND_SIGNAL.completedInterest (15)
+        : WATCHLIST ? FRIEND_SIGNAL.watchlistInterest (8)
+        : 0
 ```
 
-Then weight each follower's contribution by their **compatibility** with the viewer (0–100 → 0–1), where compatibility = `calculateRatingCompatibility(overlapping rated items)`. So a 95%-compatible friend's 9/10 counts ~3× as much as a 30%-compatible friend's. Followers with no overlap default to 50% (neutral).
+A 10/10 reaches 100; a 5 or below is no endorsement. Finishing or watchlisting without a rating is weak interest and is never stacked on top of a rating.
+
+Each follower's **weight** (`followerWeight`) is their compatibility with the viewer, shrunk toward neutral by how many titles you've both rated so one matching rating can't make someone a taste twin:
 
 ```
-friendAffinity = sum(perFollower × weight) / sum(weight)
+reliability = overlap / (overlap + FRIEND_SIGNAL.overlapPrior)
+weight = (50 + (compatibility − 50) × reliability) / 100
 ```
+
+Then:
+
+```
+friendAffinity = (Σ opinion × weight / Σ weight) × (Σ weight / (Σ weight + FRIEND_SIGNAL.evidencePrior))
+```
+
+The second factor is why a single half-trusted friend moves the signal about half as far as a fully trusted one. Before this, with one contributing friend the weight cancelled out of the average entirely, and the per-follower value topped out at 48 while being weighted as a 0–100 input.
 
 ### Confidence (signal coverage)
 
@@ -177,7 +189,7 @@ In practice 60–80% is a *very* strong match; anything 90+ is rare. The ceiling
 
 ---
 
-## Top 10 & cross-surface rankings (`lib/db/dashboard.ts`, `lib/insights.ts`, `app/discover/page.tsx`)
+## Top 10 & cross-surface rankings (`lib/db/dashboard.ts`, `lib/insights.ts`, `lib/discover.ts`)
 
 Three surfaces rank items by a blended quality score: Overall Top 10 (dashboard), Insights standouts, and Discover. Historically they were naive arithmetic means — a single user rating of 10 with no critic data would rank #1 over an item with five user ratings averaging 9 plus broad critic consensus.
 
@@ -204,9 +216,22 @@ Defensive default: if `computedConsensusScore` exists but we have no source coun
 
 Per-user ranking. Same shape but with the **user's** personal score in place of community avg. Personal-side evidence = `comparisonCount + (personalRating ? 3 : 0)` — pairwise votes and explicit rating both count, with the rating worth ~3 comparisons of evidence (matches `PAIRWISE.confidenceBuckets`). Uses `shrinkageK.personal=3`.
 
-### Discover (`discoverRankScore` in `app/discover/page.tsx`)
+### Discover (`lib/discover.ts`, tunables in `config.ts:DISCOVER`)
 
-The `discoverScore()` function still returns the raw value for *display* (so users see their actual rating, not a shrunk version). `discoverRankScore(item, prior)` is the ranking-time variant — wraps `discoverScore` in Bayesian shrinkage with `shrinkageK.personal` and the discover-pool mean as prior. All sort comparators inside the page now use the rank variant; the displayed "8.5" badge still uses the raw.
+Discover ranks on the same `dashboardQualityScore` as the Overall Top 10 and Canon, so its lists are **global**: identical for every viewer. The viewer only affects two things — titles they have COMPLETED, DROPPED or marked NOT_INTERESTED are hidden, and their own highly rated titles seed "If You Liked". Titles with neither a community rating nor a consensus score are not shown at all.
+
+**Reach** = Medialy raters + external rating sources for the title (both from the cached ranking aggregates), expressed as a percentile within the genre pool.
+
+The four sections are pairwise disjoint and chosen in this order:
+
+| Section | Rule |
+|---|---|
+| Gateway (Start here) | Quality ≥ pool mean, `consensusConfidence ≥ 0.5`, reach percentile ≥ 0.5, and mainstream (at least half its subgenre tags are among the genre's 8 most common). Ranked by `quality × (0.5 + 0.5 × reachPercentile)`. Relaxes to the quality rule alone if fewer than 4 qualify. |
+| Essentials | Top Quality among the rest with reach percentile ≥ 0.4 (the acknowledged best). Fills from lower reach only if the pool is too small. |
+| Hidden Gems | Of what's left: Quality ≥ pool median and reach percentile ≤ 0.6, ranked by min-max Quality × (1 − reach percentile). |
+| If You Liked | Seeds = the viewer's titles in the world scored at or above their own mean (top 4), else the Essentials. Partner = most similar unshown title by `0.7 × taxonomySimilarity + 0.3 × shared non-actor credits`, floor 0.25, each partner used once. |
+
+Worlds (the genre cards) are ordered by mean Quality, then size. Poster captions show the Quality score, not the viewer's own rating.
 
 ### Debugging
 
@@ -262,7 +287,9 @@ Run `pnpm tsx scripts/explain-recommendations.ts [userId] [limit]` to print the 
 |---|---|
 | Tune Medialy Match weights | `config.ts:MEDIALY_MATCH_WEIGHTS` |
 | Tune affinity shrinkage / saturation | `config.ts:AFFINITY_TUNING` |
-| Tune Top 10 / Insights / Discover shrinkage | `config.ts:TOP_RANKING` |
+| Tune Top 10 / Insights shrinkage | `config.ts:TOP_RANKING` |
+| Tune Discover section rules | `config.ts:DISCOVER` |
+| Tune friend-signal trust | `config.ts:FRIEND_SIGNAL` |
 | Tune Elo K-factor or confidence | `config.ts:PAIRWISE` |
 | Tune source trust / applicability | `config.ts:SOURCE_TRUST_WEIGHTS`, `SOURCE_MEDIA_APPLICABILITY` |
 | Add a new affinity bucket | `recommendations.ts:getAffinityMaps` + corresponding signal in `medialyMatch.ts` + weight in `config.ts` |
