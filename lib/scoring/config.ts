@@ -371,6 +371,11 @@ export const DISCOVER = {
   },
   /** Posters shown on a world card on the Discover landing. */
   worldMosaicSize: 3,
+  /**
+   * Pseudo-titles at the pool mean added to each world before ordering the
+   * world rail, so tiny worlds need a big margin to outrank large ones.
+   */
+  worldRankPrior: 8,
 } as const;
 
 // -----------------------------------------------------------------------------

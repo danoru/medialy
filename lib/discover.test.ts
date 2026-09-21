@@ -288,7 +288,7 @@ describe("discover sections", () => {
 });
 
 describe("discover worlds", () => {
-  it("orders worlds by mean quality and promotes discover tags to worlds", () => {
+  it("orders worlds by quality and promotes discover tags to worlds", () => {
     const scored = score([
       { id: "a", genres: ["Drama"], consensus: 9, sources: 3 },
       { id: "b", genres: ["Drama"], consensus: 9, sources: 3 },
@@ -296,11 +296,20 @@ describe("discover worlds", () => {
       { id: "d", genres: ["Comedy"], tags: ["Animation"], consensus: 6, sources: 3 },
     ]);
     const worlds = buildWorlds(scored, "MOVIE");
-    expect(worlds.map((world) => world.name)).toEqual([
-      "Drama",
-      "Comedy",
-      "Animation",
-    ]);
-    expect(worlds[2].items.map((item) => item.id)).toEqual(["d"]);
+    expect(worlds[0].name).toBe("Drama");
+    const animation = worlds.find((world) => world.name === "Animation");
+    expect(animation?.items.map((item) => item.id)).toEqual(["d"]);
+  });
+
+  it("does not let a tiny world with one great title outrank a large strong world", () => {
+    const specs: Spec[] = [{ id: "solo", genres: ["Musical"], consensus: 9.5, sources: 3 }];
+    for (let i = 0; i < 30; i += 1) {
+      specs.push({ id: `drama-${i}`, genres: ["Drama"], consensus: 8, sources: 3 });
+    }
+    for (let i = 0; i < 6; i += 1) {
+      specs.push({ id: `filler-${i}`, genres: ["Comedy"], consensus: 5, sources: 3 });
+    }
+    const worlds = buildWorlds(score(specs), "MOVIE");
+    expect(worlds.map((world) => world.name)).toEqual(["Drama", "Musical", "Comedy"]);
   });
 });

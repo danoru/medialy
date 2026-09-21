@@ -189,6 +189,7 @@ export default async function DiscoverPage({
             accent={accentColor}
             collections={collections}
             copy={copy}
+            country={requestedCountry}
             featuredCollection={featuredCollection}
             isAdmin={isAdmin}
             pool={pool}
@@ -205,6 +206,7 @@ function LandingView({
   accent,
   collections,
   copy,
+  country,
   featuredCollection,
   isAdmin,
   pool,
@@ -214,6 +216,7 @@ function LandingView({
   accent: string;
   collections: CollectionSummary[];
   copy: { noun: string; headline: string; dek: string };
+  country?: string | null;
   featuredCollection: CollectionDetail | null;
   isAdmin: boolean;
   pool: DiscoverItem[];
@@ -221,48 +224,34 @@ function LandingView({
   worlds: DiscoverWorld[];
 }) {
   const essentials = pickEssentials(pool, new Set());
-  const headlineNode = highlightLastWord(copy.headline, accent);
 
   return (
     <>
-      <Box sx={{ maxHeight: 140, overflow: "hidden" }}>
-        <Typography variant="eyebrow" sx={{ color: accent, display: "block" }}>
-          {`${formatMediaType(selectedType)} discovery`}
-        </Typography>
-        <Typography
-          component="h1"
-          sx={{
-            fontFamily: HEADING_FONT,
-            fontSize: { xs: "1.75rem", md: "2.5rem" },
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            lineHeight: 1.1,
-            mt: 0.5,
-          }}
-        >
-          {headlineNode}
-        </Typography>
-        <Typography
-          color="text.secondary"
-          sx={{ fontSize: { xs: "0.875rem", md: "1rem" }, mt: 0.75 }}
-        >
-          {copy.dek}
-        </Typography>
-      </Box>
+      <HeroSection
+        accent={accent}
+        copy={copy.dek}
+        eyebrow={`${formatMediaType(selectedType)} discovery engine`}
+        items={essentials.slice(0, 5)}
+        title={highlightLastWord(copy.headline, accent)}
+      />
 
       {worlds.length === 0 ? (
         <EmptyDiscoveryState mediaType={selectedType} />
       ) : (
         <>
+          <MarqueeRail
+            accent={accent}
+            country={country}
+            selectedType={selectedType}
+            worlds={worlds}
+          />
+
           <PosterShelf
             accent={accent}
             eyebrow="Definitive entries"
-            glow
             items={essentials}
             title={`Essential ${copy.noun}`}
           />
-
-          <WorldsGrid accent={accent} country={null} selectedType={selectedType} worlds={worlds} />
         </>
       )}
 
@@ -302,8 +291,9 @@ function WorldView({
 
   const worldItemsAllSource = worldsAll.find((w) => w.name === world.name);
   const worldItems = activeSubgenre
-    ? (worldItemsAllSource?.subgenres.find((tag) => tag.name === activeSubgenre.name)
-        ?.items ?? [])
+    ? (worldItemsAllSource?.subgenres.find(
+        (tag) => tag.name === activeSubgenre.name,
+      )?.items ?? [])
     : (worldItemsAllSource?.items ?? []);
 
   const sections = buildSections({
@@ -314,52 +304,30 @@ function WorldView({
     viewerMean,
   });
 
+  // The fan is the "Start here" set: the gateway picks, topped up from the
+  // essentials so it always fans out to five.
+  const fanItems = [
+    ...sections.gateway,
+    ...sections.essentials.filter(
+      (item) => !sections.gateway.some((pick) => pick.id === item.id),
+    ),
+  ].slice(0, 5);
+
   const shelfTitle = activeSubgenre
     ? `Essential ${activeSubgenre.name}`
     : `Essential ${world.name}`;
+  const heroDek = `The ${copy.noun} that make ${world.name.toLowerCase()} feel vivid, approachable, and worth exploring deeper.`;
 
   return (
     <>
-      <Box
-        sx={{
-          bgcolor: "background.default",
-          borderBottom: "1px solid",
-          borderBottomColor: "border.subtle",
-          boxShadow: `0 8px 24px -12px ${alpha(accent, 0.5)}`,
-          position: "sticky",
-          pt: 1.5,
-          pb: 1.25,
-          top: 0,
-          zIndex: 10,
-        }}
+      <HeroSection
+        accent={accent}
+        backHref={topListsHref(selectedType, null, null, country)}
+        copy={heroDek}
+        eyebrow="Start here"
+        items={fanItems}
+        title={highlightLastWord(`${world.name} Essentials`, accent)}
       >
-        <Box
-          component="a"
-          href={topListsHref(selectedType, null, null, country)}
-          sx={{
-            color: PEACH,
-            display: "inline-block",
-            fontSize: "0.875rem",
-            fontWeight: 550,
-            textDecoration: "none",
-            "&:hover": { textDecoration: "underline" },
-          }}
-        >
-          {"‹ All worlds"}
-        </Box>
-        <Typography
-          component="h1"
-          sx={{
-            fontFamily: HEADING_FONT,
-            fontSize: { xs: "1.5rem", md: "2rem" },
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            lineHeight: 1.15,
-            mt: 0.25,
-          }}
-        >
-          {highlightLastWord(world.name, accent)}
-        </Typography>
         <SubgenrePills
           activeName={activeSubgenre?.name ?? null}
           country={country}
@@ -367,14 +335,7 @@ function WorldView({
           selectedType={selectedType}
           subgenres={world.subgenres}
         />
-      </Box>
-
-      <StartHerePanel
-        accent={accent}
-        genre={world.name}
-        items={sections.gateway}
-        mediaNoun={copy.noun}
-      />
+      </HeroSection>
 
       <PosterShelf
         accent={accent}
@@ -401,6 +362,190 @@ function WorldView({
         <IfYouLikedPanel accent={accent} chains={sections.ifYouLiked} />
       </Box>
     </>
+  );
+}
+
+/**
+ * The page's opening: headline copy on the left, a fan of five posters on
+ * the right. On the landing the fan is the type's top essentials; in a world
+ * it is the Start here set. The center poster carries the page's one glow.
+ */
+function HeroSection({
+  accent,
+  backHref,
+  children,
+  copy,
+  eyebrow,
+  items,
+  title,
+}: {
+  accent: string;
+  backHref?: string;
+  children?: React.ReactNode;
+  copy: string;
+  eyebrow: string;
+  items: DiscoverItem[];
+  title: React.ReactNode;
+}) {
+  return (
+    <Box
+      sx={{
+        minHeight: { xs: 340, sm: 420, md: 460 },
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      <Box
+        sx={{
+          display: "grid",
+          gap: { xs: 1.2, md: 1.5 },
+          gridTemplateColumns: { xs: "1fr", md: "0.92fr 1.08fr" },
+          minHeight: "inherit",
+        }}
+      >
+        <Box
+          sx={{
+            alignSelf: "end",
+            maxWidth: 780,
+            pb: { xs: 1, md: 4 },
+            pt: { xs: 2, md: 4 },
+            zIndex: 2,
+          }}
+        >
+          {backHref ? (
+            <Box
+              component="a"
+              href={backHref}
+              sx={{
+                color: PEACH,
+                display: "inline-block",
+                fontSize: "0.875rem",
+                fontWeight: 550,
+                mb: 1.5,
+                textDecoration: "none",
+                "&:hover": { textDecoration: "underline" },
+              }}
+            >
+              {"‹ All worlds"}
+            </Box>
+          ) : null}
+          <Typography
+            variant="eyebrow"
+            sx={{ color: accent, display: "block", mb: 1.5 }}
+          >
+            {eyebrow}
+          </Typography>
+          <Typography
+            component="h1"
+            variant="displayHero"
+            sx={{
+              fontSize: { xs: "2.25rem", sm: "3.5rem", md: "4.5rem" },
+              maxWidth: 760,
+              textWrap: "balance",
+            }}
+          >
+            {title}
+          </Typography>
+          <Typography
+            color="text.secondary"
+            sx={{
+              fontSize: { xs: "0.9375rem", md: "1.0625rem" },
+              lineHeight: 1.55,
+              maxWidth: 560,
+              mt: 2,
+            }}
+          >
+            {copy}
+          </Typography>
+          {children ? <Box sx={{ mt: 2.5 }}>{children}</Box> : null}
+        </Box>
+
+        <Box
+          sx={{
+            alignItems: "center",
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "repeat(3, minmax(96px, 1fr))",
+              sm: "repeat(5, minmax(84px, 1fr))",
+            },
+            minHeight: { xs: 168, sm: 240, md: 420 },
+            position: "relative",
+          }}
+        >
+          <Box
+            sx={{
+              background: `radial-gradient(circle at 45% 22%, ${alpha(accent, 0.08)} 0%, transparent 24rem)`,
+              inset: 0,
+              position: "absolute",
+              pointerEvents: "none",
+            }}
+          />
+          {items.map((item, index) => (
+            <HeroPoster
+              accent={accent}
+              elevated={index === 2}
+              item={item}
+              key={item.id}
+              sx={{
+                // Only three fit across a phone, so don't wrap the other two
+                // onto a second row.
+                display: { xs: index < 3 ? "block" : "none", sm: "block" },
+                mt: index % 2 === 0 ? { xs: 0, md: -5 } : { xs: 2, md: 8 },
+                transform: {
+                  xs: "none",
+                  md: `rotate(${[-7, 4, -2, 6, -5][index] ?? 0}deg)`,
+                },
+                zIndex: index === 2 ? 4 : 3 - Math.abs(index - 2),
+              }}
+            />
+          ))}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+/** One fanned poster in the hero. The elevated (center) one carries the glow. */
+function HeroPoster({
+  accent,
+  elevated = false,
+  item,
+  sx,
+}: {
+  accent: string;
+  elevated?: boolean;
+  item: DiscoverItem;
+  sx?: object;
+}) {
+  return (
+    <Box
+      component="a"
+      href={`/media/${item.id}`}
+      aria-label={item.title}
+      title={item.title}
+      sx={{
+        aspectRatio: "2 / 3",
+        backgroundImage: item.posterUrl
+          ? `linear-gradient(180deg, transparent 58%, rgba(8,8,11,0.55)), url(${item.posterUrl})`
+          : posterFallback(item.mediaType),
+        backgroundPosition: "center",
+        backgroundSize: "cover",
+        border: `1px solid ${alpha(accent, elevated ? 0.55 : 0.3)}`,
+        borderRadius: 2,
+        boxShadow: elevated
+          ? `0 18px 42px rgba(0,0,0,0.55), 0 0 32px ${alpha(accent, 0.45)}`
+          : "0 10px 24px rgba(0,0,0,0.45)",
+        display: "block",
+        minWidth: 0,
+        overflow: "hidden",
+        position: "relative",
+        textDecoration: "none",
+        transition: "transform 180ms ease",
+        width: "100%",
+        "&:hover": { transform: "translateY(-4px)" },
+        ...sx,
+      }}
+    />
   );
 }
 
@@ -482,7 +627,12 @@ function highlightLastWord(text: string, accent: string): React.ReactNode {
   );
 }
 
-function WorldsGrid({
+/**
+ * The world picker: one marquee card per genre, best world first, in a
+ * horizontal rail. Each card is the genre name over a small strip of its top
+ * posters, so a world reads as a destination rather than a chip.
+ */
+function MarqueeRail({
   accent,
   country,
   selectedType,
@@ -495,24 +645,37 @@ function WorldsGrid({
 }) {
   return (
     <Stack spacing={1}>
-      <Typography variant="eyebrow" sx={{ color: accent }}>
-        Worlds
-      </Typography>
+      <Box
+        sx={{
+          alignItems: "baseline",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <Box>
+          <Typography variant="eyebrow" sx={{ color: accent }}>
+            Choose a world
+          </Typography>
+          <Typography component="h2" sx={sectionTitleSx}>
+            {worlds.length} lanes, best first
+          </Typography>
+        </Box>
+      </Box>
       <Box
         sx={{
           display: "grid",
-          gap: 1.5,
-          gridTemplateColumns: {
-            xs: "repeat(2, minmax(0, 1fr))",
-            sm: "repeat(3, minmax(0, 1fr))",
-            md: "repeat(4, minmax(0, 1fr))",
-            lg: "repeat(5, minmax(0, 1fr))",
-          },
+          gap: 1.25,
+          gridAutoColumns: { xs: "196px", sm: "232px" },
+          gridAutoFlow: "column",
+          overflowX: "auto",
+          pb: 0.75,
+          scrollbarWidth: "thin",
         }}
       >
         {worlds.map((world) => (
-          <WorldCard
-            country={country}
+          <MarqueeCard
+            accent={accent}
+            href={topListsHref(selectedType, world.name, null, country)}
             key={world.name}
             selectedType={selectedType}
             world={world}
@@ -523,72 +686,119 @@ function WorldsGrid({
   );
 }
 
-function WorldCard({
-  country,
+function MarqueeCard({
+  accent,
+  href,
   selectedType,
   world,
 }: {
-  country?: string | null;
+  accent: string;
+  href: string;
   selectedType: MediaType;
   world: DiscoverWorld;
 }) {
-  const mosaic = world.items.slice(0, DISCOVER.worldMosaicSize);
+  const strip = world.items.slice(0, DISCOVER.worldMosaicSize);
+  const noun = world.count === 1 ? "title" : "titles";
+
   return (
     <Box
       component="a"
-      href={topListsHref(selectedType, world.name, null, country)}
+      href={href}
+      aria-label={`${world.name}, ${world.count} ${noun}`}
       sx={{
+        bgcolor: "surface.2",
+        border: "1px solid",
+        borderColor: "border.subtle",
+        borderRadius: 2.5,
         color: "inherit",
         display: "block",
+        height: 150,
+        overflow: "hidden",
+        position: "relative",
         textDecoration: "none",
+        transition: "border-color 160ms ease, transform 160ms ease",
+        "&:hover": {
+          borderColor: alpha(PEACH, 0.5),
+          transform: "translateY(-2px)",
+        },
       }}
     >
       <Box
+        aria-hidden
         sx={{
-          display: "grid",
-          gap: 0.5,
-          gridTemplateColumns: `repeat(${Math.max(mosaic.length, 1)}, 1fr)`,
+          bottom: -34,
+          display: "flex",
+          gap: 0.75,
+          opacity: 0.85,
+          position: "absolute",
+          right: -10,
+          transform: "rotate(-8deg)",
+          width: 190,
         }}
       >
-        {mosaic.length > 0 ? (
-          mosaic.map((item) => (
-            <Box
-              key={item.id}
-              sx={{
-                aspectRatio: "2 / 3",
-                backgroundImage: item.posterUrl
-                  ? `url(${item.posterUrl})`
-                  : posterFallback(item.mediaType),
-                backgroundPosition: "center",
-                backgroundSize: "cover",
-                border: "1px solid",
-                borderColor: "border.subtle",
-                borderRadius: 1,
-                overflow: "hidden",
-              }}
-            />
-          ))
-        ) : (
+        {strip.map((item) => (
           <Box
+            key={item.id}
             sx={{
               aspectRatio: "2 / 3",
-              backgroundImage: posterFallback(selectedType),
-              border: "1px solid",
-              borderColor: "border.subtle",
-              borderRadius: 1,
+              backgroundImage: item.posterUrl
+                ? `url(${item.posterUrl})`
+                : posterFallback(selectedType),
+              backgroundPosition: "center",
+              backgroundSize: "cover",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 1.25,
+              flex: "0 0 58px",
             }}
           />
-        )}
+        ))}
       </Box>
-      <Typography noWrap sx={{ fontWeight: 650, mt: 1 }}>
+      <Box
+        aria-hidden
+        sx={{
+          background:
+            "linear-gradient(105deg, var(--mui-palette-surface-2) 38%, rgba(26,22,36,0.2) 100%)",
+          inset: 0,
+          position: "absolute",
+        }}
+      />
+      <Typography
+        sx={{
+          fontFamily: HEADING_FONT,
+          fontSize: "1.375rem",
+          fontWeight: 700,
+          left: 16,
+          letterSpacing: "-0.03em",
+          lineHeight: 1,
+          maxWidth: 124,
+          position: "absolute",
+          top: 16,
+        }}
+      >
         {world.name}
       </Typography>
-      <Typography color="text.secondary" noWrap variant="body2">
-        {`${world.count} ${world.count === 1 ? "title" : "titles"}`}
+      <Typography
+        sx={{
+          bottom: 14,
+          color: "text.secondary",
+          fontSize: "0.75rem",
+          left: 16,
+          position: "absolute",
+        }}
+      >
+        {world.count} {noun} · quality {world.averageQuality.toFixed(1)}
       </Typography>
-      <Typography color="text.secondary" noWrap variant="caption">
-        {`Quality ${world.averageQuality.toFixed(1)}`}
-      </Typography>
+      <Box
+        aria-hidden
+        sx={{
+          bgcolor: accent,
+          bottom: 0,
+          left: 0,
+          position: "absolute",
+          top: 0,
+          width: 2,
+        }}
+      />
     </Box>
   );
 }
@@ -741,96 +951,6 @@ function CompactCollectionCard({ collection }: { collection: CollectionSummary }
       ) : null}
       <Typography color="text.secondary" sx={{ mt: 0.5 }} variant="caption">
         {`${collection.itemCount} title${collection.itemCount === 1 ? "" : "s"}`}
-      </Typography>
-    </Box>
-  );
-}
-
-function StartHerePanel({
-  accent,
-  genre,
-  items,
-  mediaNoun,
-}: {
-  accent: string;
-  genre: string;
-  items: DiscoverItem[];
-  mediaNoun: string;
-}) {
-  return (
-    <DiscoveryPanel accent={accent}>
-      <Typography variant="eyebrow" sx={{ color: accent }}>
-        Start here
-      </Typography>
-      <Typography component="h2" sx={sectionTitleSx}>
-        {`Gateway ${mediaNoun} for ${genre}`}
-      </Typography>
-      <Box
-        sx={{
-          display: "grid",
-          gap: 1,
-          gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)" },
-          mt: 1.25,
-        }}
-      >
-        {items.map((item, index) => (
-          <GatewayCard accent={accent} index={index} item={item} key={item.id} />
-        ))}
-      </Box>
-      {items.length === 0 ? <EmptyText>No entries yet.</EmptyText> : null}
-    </DiscoveryPanel>
-  );
-}
-
-function GatewayCard({
-  accent,
-  index,
-  item,
-}: {
-  accent: string;
-  index: number;
-  item: DiscoverItem;
-}) {
-  return (
-    <Box
-      component="a"
-      href={`/media/${item.id}`}
-      sx={{
-        alignItems: "center",
-        bgcolor: "surface.1",
-        border: "1px solid",
-        borderColor: "border.subtle",
-        borderLeft: `2px solid ${accent}`,
-        borderRadius: 2,
-        color: "inherit",
-        display: "grid",
-        gap: 1,
-        gridTemplateColumns: "58px 1fr auto",
-        minHeight: 86,
-        overflow: "hidden",
-        p: 1,
-        textDecoration: "none",
-        transition: "border-color 160ms ease, transform 160ms ease",
-        "&:hover": {
-          borderColor: "border.strong",
-          transform: "translateY(-2px)",
-        },
-      }}
-    >
-      <PosterImage item={item} />
-      <Box sx={{ minWidth: 0 }}>
-        <Typography noWrap sx={{ fontWeight: 600, lineHeight: 1.2 }}>
-          {item.title}
-        </Typography>
-        <Typography color="text.secondary" noWrap variant="body2">
-          {item.tags
-            .map((entry) => entry.tag.name)
-            .slice(0, 2)
-            .join(" · ") || "Essential entry point"}
-        </Typography>
-      </Box>
-      <Typography sx={{ color: "text.disabled", fontSize: "1.1rem", fontWeight: 700 }}>
-        {String(index + 1).padStart(2, "0")}
       </Typography>
     </Box>
   );

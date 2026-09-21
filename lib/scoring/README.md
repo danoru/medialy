@@ -231,7 +231,7 @@ The four sections are pairwise disjoint and chosen in this order:
 | Hidden Gems | Of what's left: Quality ≥ pool median and reach percentile ≤ 0.6, ranked by min-max Quality × (1 − reach percentile). |
 | If You Liked | Seeds = the viewer's titles in the world scored at or above their own mean (top 4), else the Essentials. Partner = most similar unshown title by `0.7 × taxonomySimilarity + 0.3 × shared non-actor credits`, floor 0.25, each partner used once. |
 
-Worlds (the genre cards) are ordered by mean Quality, then size. Poster captions show the Quality score, not the viewer's own rating.
+Worlds (the marquee cards) are ordered by mean Quality shrunk toward the pool mean by `DISCOVER.worldRankPrior` pseudo-titles, then size, so a four-title world needs a big margin to outrank Drama. Poster captions show the Quality score, not the viewer's own rating.
 
 ### Debugging
 

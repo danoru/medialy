@@ -203,24 +203,36 @@ export function buildWorlds(
     }
   }
 
+  // Worlds are ordered by a shrunk mean so a four-title world with one
+  // beloved film does not outrank a 130-title world of broad 8s.
+  const poolMean =
+    pool.length > 0
+      ? pool.reduce((sum, item) => sum + item.quality, 0) / pool.length
+      : 0;
+  const rankScore = (sum: number, count: number) =>
+    (sum + DISCOVER.worldRankPrior * poolMean) /
+    (count + DISCOVER.worldRankPrior);
+
   return [...worlds.entries()]
     .map(([name, items]) => {
       const sorted = [...items].sort(compareByQuality);
-      return {
+      const sum = sorted.reduce((total, item) => total + item.quality, 0);
+      const world: DiscoverWorld = {
         name,
         count: sorted.length,
-        averageQuality:
-          sorted.reduce((sum, item) => sum + item.quality, 0) / sorted.length,
+        averageQuality: sum / sorted.length,
         items: sorted,
         subgenres: buildSubgenres(sorted, mediaType, name),
       };
+      return { world, rank: rankScore(sum, sorted.length) };
     })
     .sort(
       (a, b) =>
-        b.averageQuality - a.averageQuality ||
-        b.count - a.count ||
-        a.name.localeCompare(b.name),
-    );
+        b.rank - a.rank ||
+        b.world.count - a.world.count ||
+        a.world.name.localeCompare(b.world.name),
+    )
+    .map((entry) => entry.world);
 }
 
 function buildSubgenres(
