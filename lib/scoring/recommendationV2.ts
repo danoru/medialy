@@ -78,9 +78,19 @@ export type Signal = {
   value: number | null; // 0–100; null is unknown, 50 is neutral
   reliability: number; // 0–1; amount of independent supporting evidence
   evidence: number;
+  /** Technical explanation for the admin pages. */
   detail: string;
   /** The single title that best explains this signal, when there is one. */
   because?: { id: string; title: string; rating: number };
+  /** The strongest feature (a genre, tag or creator) behind a profile signal. */
+  feature?: { label: string; direction: "above" | "below" | "around" };
+  /** The person who best explains a social signal. */
+  person?: {
+    userId: string;
+    rating: number | null;
+    status: string;
+    compatibility: number;
+  };
 };
 export type SignalKey = keyof typeof RECOMMENDATION_V2.weights;
 export type V2Explanation = Signal & {
@@ -102,8 +112,17 @@ export const SIGNAL_LABELS: Record<SignalKey, string> = {
   tag: "Tag taste",
   contributor: "Creator taste",
   friends: "Friends",
+  twins: "People with similar taste",
   consensus: "Critic consensus",
 };
+
+/** Signals that come from the viewer's own history. */
+export const PERSONAL_SIGNALS: readonly SignalKey[] = [
+  "similarity",
+  "genre",
+  "tag",
+  "contributor",
+];
 
 const unknown = (detail: string): Signal => ({
   value: null,
@@ -336,7 +355,14 @@ export function similaritySignal(
     }
     if (support <= 0) return null;
     const reliability = (support / (support + prior)) * factor;
-    const best = [...matched].sort(
+    // The explaining title pulls in the same direction as the signal: a
+    // positive signal is explained by something the viewer loved, never by
+    // a 5/10 that happened to be the closest match.
+    const direction = Math.sign(weighted) || 1;
+    const aligned = matched.filter(
+      (entry) => Math.sign(entry.example.residual) === direction,
+    );
+    const best = [...(aligned.length ? aligned : matched)].sort(
       (a, b) =>
         Math.abs(b.example.residual) * b.sim -
           Math.abs(a.example.residual) * a.sim ||
@@ -431,6 +457,7 @@ function featureSignal(
     value: clamp(50 + delta, 0, 100),
     reliability,
     evidence: new Set(matched.flatMap((m) => [...m.feature.titles])).size,
+    feature: { label: strongest.feature.label, direction },
     detail: `${strongest.feature.label}: you usually rate this ${direction} your average, from ${count} rated title${count === 1 ? "" : "s"}. ${matched.length} of ${distinct.length} feature${distinct.length === 1 ? "" : "s"} known.`,
   };
 }
@@ -515,19 +542,31 @@ export function buildFriendBaselines(friends: FriendRating[]) {
   );
 }
 
+/**
+ * One social signal from a set of people: friends, or taste twins. Each
+ * person's opinion is read relative to their own usual rating and weighted
+ * by their overlap-shrunk agreement with the viewer. `minOverlap` lets the
+ * twins tier require a real shared history before anyone counts.
+ */
 export function friendSignal(
   rows: FriendRating[],
   trust: Map<string, FriendTrust>,
   baselines: Map<string, number> = new Map(),
+  options: { minOverlap?: number; noun?: string } = {},
 ): Signal {
+  const noun = options.noun ?? "friend";
   let weightedDelta = 0;
   let evidence = 0;
   let ratingCount = 0;
   let statusCount = 0;
+  let lead: { person: NonNullable<Signal["person"]>; pull: number } | null = null;
   for (const raw of new Map(rows.map((r) => [r.userId, r])).values()) {
     const row = { ...raw, rating: explicitRating(raw.rating) };
     const key = friendKey(row.userId, row.mediaType);
     const support = trust.get(key);
+    if (options.minOverlap != null && (support?.overlap ?? 0) < options.minOverlap) {
+      continue;
+    }
     const overlapReliability = support
       ? support.overlap / (support.overlap + RECOMMENDATION_V2.overlapPrior)
       : 0;
@@ -558,22 +597,108 @@ export function friendSignal(
     evidence += weight;
     if (row.rating != null) ratingCount++;
     else statusCount++;
+    const pull = Math.abs(opinion - 50) * weight;
+    if (!lead || pull > lead.pull) {
+      lead = {
+        pull,
+        person: {
+          userId: row.userId,
+          rating: row.rating,
+          status: row.status,
+          compatibility: Math.round(support?.compatibility ?? 50),
+        },
+      };
+    }
   }
-  if (!evidence) return unknown("No usable opinions from people you follow.");
+  if (!evidence) {
+    return unknown(
+      noun === "friend"
+        ? "No usable opinions from people you follow."
+        : "Nobody with a proven taste match has weighed in.",
+    );
+  }
   return {
     value: clamp(50 + weightedDelta / evidence, 0, 100),
     reliability: evidence / (evidence + RECOMMENDATION_V2.friendPrior),
     evidence,
-    detail: `${ratingCount} friend rating${ratingCount === 1 ? "" : "s"}, ${statusCount} status-only signal${statusCount === 1 ? "" : "s"}; each relative to that friend's usual rating, weighted by agreement with you and shared-rating count.`,
+    person: lead?.person,
+    detail: `${ratingCount} ${noun} rating${ratingCount === 1 ? "" : "s"}, ${statusCount} status-only signal${statusCount === 1 ? "" : "s"}; each relative to that person's usual rating, weighted by agreement with you and shared-rating count.`,
   };
+}
+
+/** Display names for the people a reason may mention. */
+export type NameLookup = Map<string, string>;
+
+function formatTen(value: number) {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(1);
+}
+
+/**
+ * One plain sentence a reader can act on. The technical `detail` stays for
+ * the admin pages; this is what cards show.
+ */
+export function humanReason(
+  explanation: Pick<V2Explanation, "signal" | "because" | "feature" | "person" | "value">,
+  names: NameLookup = new Map(),
+): string | null {
+  switch (explanation.signal) {
+    case "similarity":
+      return explanation.because
+        ? `Because you rated ${explanation.because.title} ${formatTen(explanation.because.rating)}/10`
+        : null;
+    case "genre":
+    case "tag":
+    case "contributor": {
+      const feature = explanation.feature;
+      if (!feature) return null;
+      if (feature.direction === "above") {
+        return `You usually rate ${feature.label} above your average`;
+      }
+      if (feature.direction === "below") {
+        return `You usually rate ${feature.label} below your average`;
+      }
+      return null;
+    }
+    case "friends":
+    case "twins": {
+      const person = explanation.person;
+      if (!person) return null;
+      const name = names.get(person.userId) ?? "Someone you follow";
+      const match = `your tastes match ${person.compatibility}%`;
+      if (person.rating != null) {
+        return explanation.signal === "twins"
+          ? `${name}, whose ${match}, rated it ${formatTen(person.rating)}/10`
+          : `${name} rated it ${formatTen(person.rating)}/10, and ${match}`;
+      }
+      return person.status === "WATCHLIST"
+        ? `${name} has it on their watchlist`
+        : `${name} has watched it`;
+    }
+    case "consensus": {
+      if (explanation.value == null) return null;
+      const score =
+        RECOMMENDATION_V2.consensusNeutral +
+        (explanation.value - 50) / RECOMMENDATION_V2.consensusPointScale;
+      const shown = score.toFixed(1);
+      if (score >= 8.5) return `Critics love it, ${shown}/10`;
+      if (score >= 7.5) return `Critics rate it well, ${shown}/10`;
+      if (score >= 6) return `Critics are lukewarm, ${shown}/10`;
+      return `Critics rate it ${shown}/10`;
+    }
+    default:
+      return null;
+  }
 }
 
 export function scoreV2(
   item: V2Item,
   profiles: Map<string, TasteProfile>,
   friends: Signal = unknown("No usable opinions from people you follow."),
+  options: { twins?: Signal; names?: NameLookup } = {},
 ): V2Score {
   const profile = profiles.get(item.mediaType);
+  const twins =
+    options.twins ?? unknown("Nobody with a proven taste match has weighed in.");
   const signals: Record<SignalKey, Signal> = {
     similarity: similaritySignal(item, profiles),
     genre: featureSignal(
@@ -592,6 +717,7 @@ export function scoreV2(
       profile?.contributors,
     ),
     friends,
+    twins,
     consensus:
       item.computedConsensusScore == null
         ? unknown("No external ratings available.")
@@ -611,11 +737,35 @@ export function scoreV2(
             detail: `Critics: ${item.computedConsensusScore}/10 against a typical ${RECOMMENDATION_V2.consensusNeutral}; reliability comes from source count and agreement.`,
           },
   };
+  // Tiering: the viewer's own history leads. Friends and taste twins step
+  // back as it grows more reliable, and critics step back as any of the
+  // tiers above them do, so each tier only speaks up when the ones above are
+  // quiet. A brand-new account is therefore ranked by critics alone.
+  const backoff = RECOMMENDATION_V2.backoff;
+  const personalReliability = Math.max(
+    ...PERSONAL_SIGNALS.map((key) => signals[key].reliability),
+  );
+  const socialReliability = Math.max(
+    personalReliability,
+    signals.friends.reliability,
+    signals.twins.reliability,
+  );
+  const effectiveWeight = (signal: SignalKey) => {
+    const base = RECOMMENDATION_V2.weights[signal];
+    if (!backoff.enabled) return base;
+    if (signal === "consensus") {
+      return base * (1 - backoff.consensusFade * socialReliability);
+    }
+    if (signal === "friends" || signal === "twins") {
+      return base * (1 - backoff.friendFade * personalReliability);
+    }
+    return base;
+  };
   const explanations: V2Explanation[] = (
     Object.keys(signals) as SignalKey[]
   ).map((signal) => {
     const data = signals[signal];
-    const weight = RECOMMENDATION_V2.weights[signal];
+    const weight = effectiveWeight(signal);
     return {
       ...data,
       signal,
@@ -642,7 +792,7 @@ export function scoreV2(
   // at least half as much weight: "closest to X, which you loved" is more
   // useful than "critics like it" even when critics contributed slightly more.
   const positive = [...explanations]
-    .filter((e) => e.contribution > 0.1)
+    .filter((e) => e.contribution > 0.1 && humanReason(e, options.names) != null)
     .sort((a, b) => b.contribution - a.contribution);
   const top = positive[0];
   const personal = positive.find((e) => e.signal !== "consensus");
@@ -655,10 +805,10 @@ export function scoreV2(
     score: clamp(total, 0, 100),
     confidence,
     reason:
-      lead?.detail ??
+      (lead && humanReason(lead, options.names)) ??
       (confidence > 0
-        ? "Available evidence is neutral or below your usual preferences."
-        : "Not enough evidence to personalize this title yet."),
+        ? "Nothing here points above your usual rating."
+        : "Not enough to go on yet. Rate a few titles and this sharpens."),
     explanations,
   };
 }

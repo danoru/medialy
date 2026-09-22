@@ -5,6 +5,7 @@ import {
   buildTasteProfiles,
   friendKey,
   friendSignal,
+  humanReason,
   observedTaste,
   scoreV2,
   type FriendRating,
@@ -419,5 +420,130 @@ describe("v2 friend baselines", () => {
       friendSignal(rows.filter((r) => r.mediaId === "candidate" && r.userId === userId), new Map(), baselines).value!;
     expect(opinion("friend")).toBeLessThan(50);
     expect(opinion("harsh")).toBeGreaterThan(50);
+  });
+});
+
+describe("v2 tiering, twins and reasons", () => {
+  const tagged = (name: string, category = "SUBGENRE") => ({
+    tag: { name, status: "APPROVED", category },
+  });
+
+  it("lets critics lead a brand-new account and step back once the viewer has history", () => {
+    const candidate = item("c", {
+      genres: genre("Horror"),
+      computedConsensusScore: 9.5,
+      consensusConfidence: 0.9,
+    });
+    const cold = scoreV2(candidate, buildTasteProfiles([]));
+    const warm = scoreV2(
+      candidate,
+      buildTasteProfiles([
+        ...Array.from({ length: 15 }, (_, i) =>
+          observation(`h${i}`, 3, { media: item(`h${i}`, { genres: genre("Horror") }) }),
+        ),
+        ...Array.from({ length: 15 }, (_, i) =>
+          observation(`d${i}`, 8, { media: item(`d${i}`, { genres: genre("Drama") }) }),
+        ),
+      ]),
+    );
+    const critics = (result: typeof cold) =>
+      result.explanations.find((e) => e.signal === "consensus")!;
+    expect(cold.score).toBeGreaterThan(50);
+    expect(critics(warm).weight).toBeLessThan(critics(cold).weight);
+    // Fifteen disliked horror films outweigh the critics.
+    expect(warm.score).toBeLessThan(50);
+  });
+
+  it("counts a non-followed user only once the shared history is large enough", () => {
+    const twin = "twin";
+    const rows = (n: number) => [
+      ...Array.from({ length: n }, (_, i) =>
+        friend(9, { userId: twin, mediaId: `shared${i}` }),
+      ),
+      friend(9.5, { userId: twin, mediaId: "candidate" }),
+    ];
+    const viewer = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ mediaId: `shared${i}`, rating: 9 }));
+    const signal = (n: number) =>
+      friendSignal(
+        rows(n).filter((r) => r.mediaId === "candidate"),
+        buildFriendTrust(viewer(n), rows(n)),
+        new Map(),
+        { minOverlap: 15, noun: "taste-twin" },
+      );
+    expect(signal(5).value).toBeNull();
+    expect(signal(20).value).toBeGreaterThan(50);
+    expect(signal(20).person?.userId).toBe(twin);
+  });
+
+  it("writes reasons a reader can act on", () => {
+    const names = new Map([["anna", "Anna"]]);
+    expect(
+      humanReason({ signal: "similarity", value: 80, because: { id: "x", title: "Cure", rating: 9 } }, names),
+    ).toBe("Because you rated Cure 9/10");
+    expect(
+      humanReason({ signal: "tag", value: 70, feature: { label: "Slow burn", direction: "above" } }, names),
+    ).toBe("You usually rate Slow burn above your average");
+    expect(
+      humanReason(
+        { signal: "friends", value: 80, person: { userId: "anna", rating: 9, status: "COMPLETED", compatibility: 84 } },
+        names,
+      ),
+    ).toBe("Anna rated it 9/10, and your tastes match 84%");
+    expect(
+      humanReason(
+        { signal: "twins", value: 80, person: { userId: "anna", rating: 8.5, status: "COMPLETED", compatibility: 77 } },
+        names,
+      ),
+    ).toBe("Anna, whose your tastes match 77%, rated it 8.5/10");
+    expect(humanReason({ signal: "consensus", value: 100 }, names)).toBe("Critics love it, 9.5/10");
+    expect(humanReason({ signal: "consensus", value: null }, names)).toBeNull();
+  });
+
+  it("prefers a personal reason over critics when it carries real weight", () => {
+    const profiles = buildTasteProfiles([
+      observation("loved", 10, {
+        media: item("loved", { genres: genre("Horror"), tags: [tagged("Slasher")] }),
+      }),
+      ...Array.from({ length: 8 }, (_, i) =>
+        observation(`mid${i}`, 6.5, { media: item(`mid${i}`, { genres: genre("Drama") }) }),
+      ),
+    ]);
+    const result = scoreV2(
+      item("c", {
+        genres: genre("Horror"),
+        tags: [tagged("Slasher")],
+        computedConsensusScore: 9,
+        consensusConfidence: 0.9,
+      }),
+      profiles,
+    );
+    expect(result.reason).toBe("Because you rated loved 10/10");
+  });
+});
+
+describe("v2 explaining title", () => {
+  it("explains a positive signal with a loved title, not the closest disliked one", () => {
+    const tagged = (name: string) => ({ tag: { name, status: "APPROVED", category: "SUBGENRE" } });
+    const profiles = buildTasteProfiles([
+      observation("dud", 4, {
+        media: item("dud", { genres: genre("Crime"), tags: [tagged("Neo-noir"), tagged("Heist")] }),
+      }),
+      ...Array.from({ length: 4 }, (_, i) =>
+        observation(`gem${i}`, 9.5, {
+          media: item(`gem${i}`, { genres: genre("Crime"), tags: [tagged("Neo-noir")] }),
+        }),
+      ),
+      ...Array.from({ length: 6 }, (_, i) =>
+        observation(`mid${i}`, 6.5, { media: item(`mid${i}`, { genres: genre("Drama") }) }),
+      ),
+    ]);
+    const result = scoreV2(
+      item("c", { genres: genre("Crime"), tags: [tagged("Neo-noir"), tagged("Heist")] }),
+      profiles,
+    );
+    const similarity = result.explanations.find((e) => e.signal === "similarity")!;
+    expect(similarity.value).toBeGreaterThan(50);
+    expect(similarity.because?.title.startsWith("gem")).toBe(true);
   });
 });

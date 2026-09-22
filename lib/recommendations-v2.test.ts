@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/prisma", () => ({
-  prisma: { userMedia: { findMany: vi.fn() } },
+  prisma: { userMedia: { findMany: vi.fn() }, user: { findMany: vi.fn() } },
 }));
 vi.mock("@/lib/db/catalog", () => ({ getCatalogWithUser: vi.fn() }));
 vi.mock("@/lib/social/follows", () => ({ getFollowingIds: vi.fn() }));
@@ -36,6 +36,8 @@ function catalogItem(
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getFollowingIds).mockResolvedValue([]);
+  vi.mocked(prisma.userMedia.findMany).mockResolvedValue([]);
+  vi.mocked(prisma.user.findMany).mockResolvedValue([]);
 });
 
 describe("v2 recommendation service", () => {
@@ -55,7 +57,8 @@ describe("v2 recommendation service", () => {
     });
     expect(result.map((r) => r.media.id)).toEqual(["eligible"]);
     expect(getCatalogWithUser).toHaveBeenCalledWith("viewer");
-    expect(prisma.userMedia.findMany).not.toHaveBeenCalled();
+    // Other users' public rows are read once for friends and taste twins.
+    expect(prisma.userMedia.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("does not train on stale stored scores for unrated titles", async () => {

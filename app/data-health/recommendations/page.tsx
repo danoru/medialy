@@ -50,6 +50,7 @@ export default async function RecommendationComparisonPage({
     context.observations,
     context.friends,
     medium,
+    context.others,
   );
   const percent = (value: number | null) =>
     value == null

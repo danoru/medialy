@@ -14,7 +14,7 @@ import {
   V1_LOVED_THRESHOLD,
 } from "./affinityProfile";
 import { calculateMedialyMatch } from "./medialyMatch";
-import { RECOMMENDATION_EVALUATION } from "./config";
+import { RECOMMENDATION_EVALUATION, RECOMMENDATION_V2 } from "./config";
 import type { CalibrationSample } from "./calibration";
 
 // Stable folds do not depend on scores, database order or random state.
@@ -59,6 +59,8 @@ export function evaluateRecommendations(
   observations: TasteObservation[],
   friends: FriendRating[],
   medium: string,
+  /** Rows from users the viewer does not follow; taste twins come from here. */
+  others: FriendRating[] = [],
 ): EvaluationResult {
   const rated = observations.filter(
     (row) =>
@@ -75,13 +77,18 @@ export function evaluateRecommendations(
     rated.length > 0
       ? rated.reduce((sum, row) => sum + row.personalRating!, 0) / rated.length
       : null;
-  const friendRows = new Map<string, FriendRating[]>();
-  for (const row of friends) {
-    const group = friendRows.get(row.mediaId) ?? [];
-    group.push(row);
-    friendRows.set(row.mediaId, group);
-  }
-  const baselines = buildFriendBaselines(friends);
+  const groupByMedia = (rows: FriendRating[]) => {
+    const map = new Map<string, FriendRating[]>();
+    for (const row of rows) {
+      const group = map.get(row.mediaId) ?? [];
+      group.push(row);
+      map.set(row.mediaId, group);
+    }
+    return map;
+  };
+  const friendRows = groupByMedia(friends);
+  const otherRows = groupByMedia(others);
+  const baselines = buildFriendBaselines([...friends, ...others]);
 
   let pairs = 0;
   let v2Wins = 0;
@@ -104,14 +111,12 @@ export function evaluateRecommendations(
       continue;
     }
     const profiles = buildTasteProfiles(training);
-    const trust = buildFriendTrust(
-      training.map((row) => ({
-        mediaId: row.media.id,
-        rating: row.personalRating!,
-      })),
-      friends,
-      excluded,
-    );
+    const viewerRatings = training.map((row) => ({
+      mediaId: row.media.id,
+      rating: row.personalRating!,
+    }));
+    const trust = buildFriendTrust(viewerRatings, friends, excluded);
+    const twinTrust = buildFriendTrust(viewerRatings, others, excluded);
     const affinity = buildAffinityMaps(
       training
         .filter((row) => row.personalRating! >= V1_LOVED_THRESHOLD)
@@ -123,6 +128,14 @@ export function evaluateRecommendations(
         row.media,
         profiles,
         friendSignal(friendRows.get(row.media.id) ?? [], trust, baselines),
+        {
+          twins: friendSignal(
+            otherRows.get(row.media.id) ?? [],
+            twinTrust,
+            baselines,
+            { minOverlap: RECOMMENDATION_V2.twinMinOverlap, noun: "taste-twin" },
+          ),
+        },
       ).score;
       const v1 = calculateMedialyMatch({
         ...candidateAffinity(row.media, affinity),

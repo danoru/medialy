@@ -290,8 +290,24 @@ export const RECOMMENDATION_V2 = {
     genre: 0.05,
     tag: 0.04,
     contributor: 0.06,
-    friends: 0.25,
-    consensus: 0.35,
+    friends: 0.22,
+    twins: 0.1,
+    consensus: 0.28,
+  },
+  /** Shared ratings a non-followed user needs before counting as a taste twin. */
+  twinMinOverlap: 15,
+  /**
+   * Tiering: the friends and twins weights fade by how reliable the viewer's
+   * own taste signals are, and the critics weight fades by how reliable any
+   * tier above it is, so each tier only speaks up when the ones above are
+   * quiet. Chosen September 22, 2026: costs about 1.6 points of holdout
+   * accuracy against flat weights and makes the viewer's own history the
+   * primary driver.
+   */
+  backoff: {
+    enabled: true,
+    friendFade: 0.5,
+    consensusFade: 0.7,
   },
   similarity: {
     /** Nearest rated titles considered per candidate. */
@@ -359,13 +375,14 @@ export const RECOMMENDATION_EVALUATION = {
  * your own average"). Fitted by `npm run recommendations:evaluate -- --all`
  * on held-out ratings; paste the printed values here after a refit.
  *
- * Fitted September 21, 2026 on 1,563 held-out ratings from three users
- * (Brier 0.2125 against 0.25 for a constant guess). A raw 50 shows as 46%,
- * a raw 70 as 90%, a raw 35 as 11%.
+ * Fitted September 22, 2026 on 1,399 held-out ratings from three users with
+ * tiering and taste twins on (Brier 0.2158 against 0.25 for a constant
+ * guess). A raw 50 shows as 47%, a raw 60 as 94%, a raw 40 as 4%: the tiered
+ * score moves less than the flat one did, so the curve is steeper.
  */
 export const MATCH_CALIBRATION = {
-  intercept: -0.1747,
-  slope: 0.1869,
+  intercept: -0.1351,
+  slope: 0.3004,
 } as const;
 
 // -----------------------------------------------------------------------------

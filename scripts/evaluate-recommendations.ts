@@ -7,7 +7,7 @@
  *                                                  calibration fit to paste
  *                                                  into MATCH_CALIBRATION
  *
- * Reads each evaluated user's rated rows and their friends' rows once; it
+ * Reads each evaluated user's rated rows and every other user's public rows once; it
  * never writes.
  */
 import "dotenv/config";
@@ -43,33 +43,38 @@ async function loadUser(userId: string) {
     }),
     getFollowingIds(userId),
   ]);
-  const friendRows = following.length
-    ? await prisma.userMedia.findMany({
-        where: {
-          userId: { in: following },
-          isArchived: false,
-          OR: [
-            { personalRating: { not: null } },
-            { status: { in: ["COMPLETED", "WATCHLIST"] } },
-          ],
-        },
-        select: {
-          userId: true,
-          mediaId: true,
-          personalRating: true,
-          status: true,
-          media: { select: { mediaType: true } },
-        },
-      })
-    : [];
-  const friends = friendRows.map((row) => ({
+  // Every other user's public rows; friends are the followed ones, the rest
+  // may qualify as taste twins by overlap.
+  const rows = await prisma.userMedia.findMany({
+    where: {
+      userId: { not: userId },
+      isArchived: false,
+      OR: [
+        { personalRating: { not: null } },
+        { status: { in: ["COMPLETED", "WATCHLIST"] } },
+      ],
+    },
+    select: {
+      userId: true,
+      mediaId: true,
+      personalRating: true,
+      status: true,
+      media: { select: { mediaType: true } },
+    },
+  });
+  const followed = new Set(following);
+  const social = rows.map((row) => ({
     userId: row.userId,
     mediaId: row.mediaId,
     mediaType: row.media.mediaType,
     rating: row.personalRating,
     status: row.status,
   }));
-  return { observations, friends };
+  return {
+    observations,
+    friends: social.filter((row) => followed.has(row.userId)),
+    others: social.filter((row) => !followed.has(row.userId)),
+  };
 }
 
 function summarize(result: EvaluationResult) {
@@ -113,9 +118,9 @@ async function main() {
       select: { id: true },
     });
     if (!user) throw new Error(`User ${userId} not found.`);
-    const { observations, friends } = await loadUser(userId);
+    const { observations, friends, others } = await loadUser(userId);
     for (const medium of VISIBLE_MEDIA_TYPES) {
-      const result = evaluateRecommendations(observations, friends, medium);
+      const result = evaluateRecommendations(observations, friends, medium, others);
       if (result.ratedTitles === 0) continue;
       pooled.push(...result.samples);
       report.push({ user: userId.slice(0, 8), medium, ...summarize(result) });
