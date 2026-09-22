@@ -1,15 +1,30 @@
 import type { ScoredMediaItem } from "@/lib/scoring/types";
 import { COMPARISON_RELEVANCE } from "@/lib/scoring/config";
 import { clamp } from "@/lib/scoring/pairwise";
+import {
+  facetSimilarity,
+  type FeatureRarity,
+  type SimilarityItem,
+} from "@/lib/scoring/similarity";
 
+/**
+ * How worthwhile it is to pit two titles against each other in /compare.
+ * Alike titles (same director, subgenre, era, leads) make for a meaningful
+ * head-to-head; so do titles the viewer rates about the same. The alikeness
+ * half is the shared facet similarity from `lib/scoring/similarity.ts`.
+ */
 export function calculateComparisonRelevance(
   first: ScoredMediaItem,
   second: ScoredMediaItem,
+  rarity: FeatureRarity = new Map(),
 ) {
   if (first.mediaType !== second.mediaType) return 0;
 
-  const genreScore = genreOverlapScore(first, second);
-  const tagScore = tagOverlapScore(first, second);
+  const alike = facetSimilarity(
+    toSimilarityItem(first),
+    toSimilarityItem(second),
+    rarity,
+  ).score;
   const ratingScore = proximityScore(
     first.personalRating,
     second.personalRating,
@@ -20,53 +35,31 @@ export function calculateComparisonRelevance(
     second.pairwiseScore,
     COMPARISON_RELEVANCE.pairwiseMaxDistance,
   );
-  const yearScore = proximityScore(
-    yearFromDate(first.releaseDate),
-    yearFromDate(second.releaseDate),
-    COMPARISON_RELEVANCE.yearMaxDistance,
-  );
 
   return round(
     clamp(
       COMPARISON_RELEVANCE.base +
-        genreScore * COMPARISON_RELEVANCE.genre +
-        tagScore * COMPARISON_RELEVANCE.tag +
+        alike * COMPARISON_RELEVANCE.similarity +
         ratingScore * COMPARISON_RELEVANCE.rating +
-        pairwiseScore * COMPARISON_RELEVANCE.pairwise +
-        yearScore * COMPARISON_RELEVANCE.year,
+        pairwiseScore * COMPARISON_RELEVANCE.pairwise,
       0,
       1,
     ),
   );
 }
 
-function tagOverlapScore(first: ScoredMediaItem, second: ScoredMediaItem) {
-  const firstTags = new Set((first.tags ?? []).map((entry) => entry.tag.name));
-  const secondTags = new Set(
-    (second.tags ?? []).map((entry) => entry.tag.name),
-  );
-  if (firstTags.size === 0 || secondTags.size === 0) return 0;
-  const shared = [...firstTags].filter((name) => secondTags.has(name)).length;
-  return shared / Math.max(firstTags.size, secondTags.size);
+function toSimilarityItem(item: ScoredMediaItem): SimilarityItem {
+  return {
+    genres: item.genres ?? [],
+    tags: item.tags ?? [],
+    credits: item.credits ?? [],
+    releaseDate: item.releaseDate,
+  };
 }
 
 export function relevanceToEloWeight(relevance: number) {
   const floor = COMPARISON_RELEVANCE.eloWeightFloor;
   return round(clamp(floor + relevance * (1 - floor), floor, 1));
-}
-
-function genreOverlapScore(first: ScoredMediaItem, second: ScoredMediaItem) {
-  const firstGenres = new Set(
-    (first.genres ?? []).map((entry) => entry.genre.name),
-  );
-  const secondGenres = new Set(
-    (second.genres ?? []).map((entry) => entry.genre.name),
-  );
-  if (firstGenres.size === 0 || secondGenres.size === 0) return 0;
-  const shared = [...firstGenres].filter((name) =>
-    secondGenres.has(name),
-  ).length;
-  return shared / Math.max(firstGenres.size, secondGenres.size);
 }
 
 function proximityScore(
@@ -76,12 +69,6 @@ function proximityScore(
 ) {
   if (first == null || second == null) return 0;
   return clamp(1 - Math.abs(first - second) / maxDistance, 0, 1);
-}
-
-function yearFromDate(value: Date | string | null | undefined) {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isFinite(date.getTime()) ? date.getUTCFullYear() : null;
 }
 
 function round(value: number) {

@@ -19,6 +19,7 @@ import {
   type V2Score,
 } from "@/lib/scoring/recommendationV2";
 import { RECOMMENDATION_V2 } from "@/lib/scoring/config";
+import { buildFeatureRarity } from "@/lib/scoring/similarity";
 import { calibratedMatch } from "@/lib/scoring/calibration";
 import { toMediaItemDTO } from "@/lib/media";
 import type { Recommendation } from "@/lib/types";
@@ -104,6 +105,7 @@ export const getRecommendationV2Context = cache(async (userId: string) => {
     friendRatingsByMedia: byMedia(friends),
     otherRatingsByMedia: byMedia(others),
     profiles: buildTasteProfiles(observations),
+    rarity: buildFeatureRarity(catalog),
     trust: buildFriendTrust(viewerRatings, friends),
     twinTrust: buildFriendTrust(viewerRatings, others),
     baselines: buildFriendBaselines(social),
@@ -155,6 +157,7 @@ export function scoreCatalogItem(
           { minOverlap: RECOMMENDATION_V2.twinMinOverlap, noun: "taste-twin" },
         ),
         names: context.names,
+        rarity: context.rarity,
       },
     ),
   };

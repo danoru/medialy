@@ -7,7 +7,7 @@ import {
   scoreCatalogItem,
 } from "@/lib/recommendations-v2";
 import { calibratedMatch } from "@/lib/scoring/calibration";
-import { explicitRating } from "@/lib/scoring/recommendationV2";
+import { explicitRating, humanReason } from "@/lib/scoring/recommendationV2";
 
 /**
  * Single-item Medialy Match summary for the media detail page. Distinct from
@@ -63,13 +63,10 @@ export async function getMediaItemMatch(
   const similarity = scored.explanations.find((e) => e.signal === "similarity");
   const contributor = scored.explanations.find((e) => e.signal === "contributor");
   let contributorReason: string | null = null;
-  if (similarity?.because && similarity.contribution > 0) {
-    const rating = similarity.because.rating;
-    contributorReason = `Closest to ${similarity.because.title}, which you rated ${
-      Number.isInteger(rating) ? rating : rating.toFixed(1)
-    }/10`;
+  if (similarity?.because) {
+    contributorReason = humanReason(similarity, context.names);
   } else if (contributor && contributor.contribution > 0) {
-    contributorReason = contributor.detail.split(". ")[0];
+    contributorReason = humanReason(contributor, context.names);
   }
 
   return {

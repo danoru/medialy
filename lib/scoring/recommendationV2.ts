@@ -11,8 +11,8 @@
  * Signals:
  *  - similarity: "because you rated X" — the candidate's nearest rated
  *    titles, weighted by how far above or below the viewer's usual rating
- *    they landed. Cosine over genres, tags, creators and country, so a title
- *    with more tags gets no extra credit.
+ *    they landed. Nearness is the facet similarity in `similarity.ts`:
+ *    director, subgenre, genre, theme, era and place, leads.
  *  - genre / tag / contributor: signed per-medium feature profiles. Unknown
  *    features lower reliability instead of disappearing; breadth of agreement
  *    raises it.
@@ -24,6 +24,7 @@ import { calculatePersonalScore } from "./personalScore";
 import { clamp } from "./pairwise";
 import { calculateRatingCompatibility } from "./compatibility";
 import { RECOMMENDATION_V2 } from "./config";
+import { facetSimilarity, type FeatureRarity } from "./similarity";
 
 export type V2Tag = {
   name: string;
@@ -37,6 +38,7 @@ export type V2Item = {
   genres: Array<{ genre: { name: string } }>;
   tags: Array<{ tag: V2Tag }>;
   credits: Array<{ role: string; contributor: { id: string; name: string } }>;
+  releaseDate?: Date | string | null;
   computedConsensusScore: number | null;
   consensusConfidence: number;
 };
@@ -62,9 +64,7 @@ export type TasteExample = {
   /** Rating minus the medium baseline, in 0–100 points, clamped ±50. */
   residual: number;
   weight: number;
-  vector: Map<string, number>;
-  /** Genres and portable tags only, for cross-medium comparison. */
-  portable: Map<string, number>;
+  item: V2Item;
 };
 export type TasteProfile = {
   baseline: number;
@@ -80,8 +80,14 @@ export type Signal = {
   evidence: number;
   /** Technical explanation for the admin pages. */
   detail: string;
-  /** The single title that best explains this signal, when there is one. */
-  because?: { id: string; title: string; rating: number };
+  /** The closest rated title, when there is one, and whether the viewer rated it above their usual. */
+  because?: {
+    id: string;
+    title: string;
+    rating: number;
+    direction: "above" | "below";
+    similarity: number;
+  };
   /** The strongest feature (a genre, tag or creator) behind a profile signal. */
   feature?: { label: string; direction: "above" | "below" | "around" };
   /** The person who best explains a social signal. */
@@ -140,19 +146,8 @@ function roleWeight(role: string): number {
     ] ?? 0
   );
 }
-function tagWeight(category: string | null | undefined): number {
-  const weights: Record<string, number> =
-    RECOMMENDATION_V2.similarity.tagCategoryWeights;
-  const weight = category ? weights[category] : undefined;
-  return weight ?? weights.default;
-}
 function approvedTags(item: V2Item) {
   return item.tags.filter((entry) => entry.tag.status === "APPROVED");
-}
-function isPortableTag(tag: V2Tag) {
-  return (RECOMMENDATION_V2.similarity.portableTagCategories as readonly string[]).includes(
-    tag.category ?? "",
-  );
 }
 
 /**
@@ -184,56 +179,6 @@ export function observedTaste(row: TasteObservation) {
     rating: result.score,
     weight: explicit != null ? 1 : result.confidence,
   };
-}
-
-/** Weighted feature vector for cosine similarity. Duplicates collapse to one entry. */
-export function itemVector(item: V2Item): Map<string, number> {
-  const vector = new Map<string, number>();
-  for (const name of unique(item.genres.map((g) => g.genre.name))) {
-    vector.set(`g:${name}`, RECOMMENDATION_V2.similarity.genreWeight);
-  }
-  const seenTags = new Set<string>();
-  for (const entry of approvedTags(item)) {
-    if (seenTags.has(entry.tag.name)) continue;
-    seenTags.add(entry.tag.name);
-    vector.set(`t:${entry.tag.name}`, tagWeight(entry.tag.category));
-  }
-  const seenCredits = new Set<string>();
-  for (const credit of item.credits) {
-    const key = creditKey(credit);
-    const weight = roleWeight(credit.role);
-    if (weight <= 0 || seenCredits.has(key)) continue;
-    seenCredits.add(key);
-    vector.set(`c:${key}`, weight);
-  }
-  return vector;
-}
-
-/** Genres plus theme/mood/country tags: the part of taste that crosses media. */
-export function portableVector(item: V2Item): Map<string, number> {
-  const vector = new Map<string, number>();
-  for (const name of unique(item.genres.map((g) => g.genre.name))) {
-    vector.set(`g:${name}`, RECOMMENDATION_V2.similarity.genreWeight);
-  }
-  for (const entry of approvedTags(item)) {
-    if (!isPortableTag(entry.tag)) continue;
-    vector.set(`t:${entry.tag.name}`, tagWeight(entry.tag.category));
-  }
-  return vector;
-}
-
-export function cosine(a: Map<string, number>, b: Map<string, number>) {
-  if (a.size === 0 || b.size === 0) return 0;
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-  for (const [key, weight] of a) {
-    na += weight * weight;
-    const other = b.get(key);
-    if (other != null) dot += weight * other;
-  }
-  for (const weight of b.values()) nb += weight * weight;
-  return dot === 0 ? 0 : dot / Math.sqrt(na * nb);
 }
 
 export function buildTasteProfiles(
@@ -307,8 +252,7 @@ export function buildTasteProfiles(
         rating,
         residual,
         weight,
-        vector: itemVector(row.media),
-        portable: portableVector(row.media),
+        item: row.media,
       });
     }
     profiles.set(medium, profile);
@@ -324,21 +268,22 @@ export function buildTasteProfiles(
 export function similaritySignal(
   item: V2Item,
   profiles: Map<string, TasteProfile>,
+  rarity: FeatureRarity = new Map(),
 ): Signal {
   const { neighbours, minSimilarity, prior, crossMediumFactor } =
     RECOMMENDATION_V2.similarity;
-  const vector = itemVector(item);
-  const portable = portableVector(item);
 
   const score = (
     examples: TasteExample[],
-    pick: (example: TasteExample) => Map<string, number>,
-    against: Map<string, number>,
+    portable: boolean,
     factor: number,
   ) => {
     const matched = examples
       .filter((example) => example.id !== item.id)
-      .map((example) => ({ example, sim: cosine(against, pick(example)) }))
+      .map((example) => ({
+        example,
+        sim: facetSimilarity(item, example.item, rarity, { portable }).score,
+      }))
       .filter((entry) => entry.sim >= minSimilarity)
       .sort(
         (a, b) =>
@@ -355,37 +300,25 @@ export function similaritySignal(
     }
     if (support <= 0) return null;
     const reliability = (support / (support + prior)) * factor;
-    // The explaining title pulls in the same direction as the signal: a
-    // positive signal is explained by something the viewer loved, never by
-    // a 5/10 that happened to be the closest match.
-    const direction = Math.sign(weighted) || 1;
-    const aligned = matched.filter(
-      (entry) => Math.sign(entry.example.residual) === direction,
-    );
-    const best = [...(aligned.length ? aligned : matched)].sort(
-      (a, b) =>
-        Math.abs(b.example.residual) * b.sim -
-          Math.abs(a.example.residual) * a.sim ||
-        a.example.id.localeCompare(b.example.id),
-    )[0].example;
+    // The explaining title is simply the closest one. If the viewer rated it
+    // below their usual, the reason says so; that is the honest evidence.
+    const closest = matched[0];
     return {
       value: clamp(50 + weighted / support, 0, 100),
       reliability,
       evidence: matched.length,
-      best,
+      closest,
     };
   };
 
   const own = profiles.get(item.mediaType);
-  const same = own
-    ? score(own.examples, (e) => e.vector, vector, 1)
-    : null;
+  const same = own ? score(own.examples, false, 1) : null;
   let result = same;
   if (!same || same.reliability < RECOMMENDATION_V2.similarity.crossMediumBelow) {
     const others = [...profiles.entries()]
       .filter(([medium]) => medium !== item.mediaType)
       .flatMap(([, profile]) => profile.examples);
-    const cross = score(others, (e) => e.portable, portable, crossMediumFactor);
+    const cross = score(others, true, crossMediumFactor);
     if (cross && (!result || cross.reliability > result.reliability)) {
       result = cross;
     }
@@ -397,18 +330,20 @@ export function similaritySignal(
         : "No rated history for this medium yet.",
     );
   }
-  const direction =
-    result.best.residual > 0 ? "above" : result.best.residual < 0 ? "below" : "at";
+  const { example, sim } = result.closest;
+  const direction = example.residual >= 0 ? "above" : "below";
   return {
     value: result.value,
     reliability: result.reliability,
     evidence: result.evidence,
     because: {
-      id: result.best.id,
-      title: result.best.title,
-      rating: result.best.rating,
+      id: example.id,
+      title: example.title,
+      rating: example.rating,
+      direction,
+      similarity: sim,
     },
-    detail: `Closest to ${result.best.title}, which you rated ${formatRating(result.best.rating)} (${direction} your usual). ${result.evidence} similar rated title${result.evidence === 1 ? "" : "s"} considered.`,
+    detail: `Most like ${example.title} (similarity ${sim.toFixed(2)}), which you rated ${formatRating(example.rating)}, ${direction} your usual. ${result.evidence} similar rated title${result.evidence === 1 ? "" : "s"} considered.`,
   };
 }
 
@@ -642,10 +577,14 @@ export function humanReason(
   names: NameLookup = new Map(),
 ): string | null {
   switch (explanation.signal) {
-    case "similarity":
-      return explanation.because
-        ? `Because you rated ${explanation.because.title} ${formatTen(explanation.because.rating)}/10`
-        : null;
+    case "similarity": {
+      const because = explanation.because;
+      if (!because) return null;
+      const rating = `${formatTen(because.rating)}/10`;
+      return because.direction === "above"
+        ? `Because you rated ${because.title} ${rating}`
+        : `Most like ${because.title}, which you rated ${rating}`;
+    }
     case "genre":
     case "tag":
     case "contributor": {
@@ -694,13 +633,13 @@ export function scoreV2(
   item: V2Item,
   profiles: Map<string, TasteProfile>,
   friends: Signal = unknown("No usable opinions from people you follow."),
-  options: { twins?: Signal; names?: NameLookup } = {},
+  options: { twins?: Signal; names?: NameLookup; rarity?: FeatureRarity } = {},
 ): V2Score {
   const profile = profiles.get(item.mediaType);
   const twins =
     options.twins ?? unknown("Nobody with a proven taste match has weighed in.");
   const signals: Record<SignalKey, Signal> = {
-    similarity: similaritySignal(item, profiles),
+    similarity: similaritySignal(item, profiles, options.rarity),
     genre: featureSignal(
       item.genres.map((g) => ({ key: g.genre.name, strength: 1 })),
       profile?.genres,

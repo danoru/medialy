@@ -431,6 +431,8 @@ describe("v2 tiering, twins and reasons", () => {
   it("lets critics lead a brand-new account and step back once the viewer has history", () => {
     const candidate = item("c", {
       genres: genre("Horror"),
+      tags: [tagged("Slasher")],
+      credits: [{ role: "DIRECTOR", contributor: { id: "carpenter", name: "Carpenter" } }],
       computedConsensusScore: 9.5,
       consensusConfidence: 0.9,
     });
@@ -439,7 +441,13 @@ describe("v2 tiering, twins and reasons", () => {
       candidate,
       buildTasteProfiles([
         ...Array.from({ length: 15 }, (_, i) =>
-          observation(`h${i}`, 3, { media: item(`h${i}`, { genres: genre("Horror") }) }),
+          observation(`h${i}`, 3, {
+            media: item(`h${i}`, {
+              genres: genre("Horror"),
+              tags: [tagged("Slasher")],
+              credits: [{ role: "DIRECTOR", contributor: { id: "carpenter", name: "Carpenter" } }],
+            }),
+          }),
         ),
         ...Array.from({ length: 15 }, (_, i) =>
           observation(`d${i}`, 8, { media: item(`d${i}`, { genres: genre("Drama") }) }),
@@ -479,7 +487,7 @@ describe("v2 tiering, twins and reasons", () => {
   it("writes reasons a reader can act on", () => {
     const names = new Map([["anna", "Anna"]]);
     expect(
-      humanReason({ signal: "similarity", value: 80, because: { id: "x", title: "Cure", rating: 9 } }, names),
+      humanReason({ signal: "similarity", value: 80, because: { id: "x", title: "Cure", rating: 9, direction: "above", similarity: 0.6 } }, names),
     ).toBe("Because you rated Cure 9/10");
     expect(
       humanReason({ signal: "tag", value: 70, feature: { label: "Slow burn", direction: "above" } }, names),
@@ -502,8 +510,21 @@ describe("v2 tiering, twins and reasons", () => {
 
   it("prefers a personal reason over critics when it carries real weight", () => {
     const profiles = buildTasteProfiles([
+      ...Array.from({ length: 3 }, (_, i) =>
+        observation(`loved${i}`, 10, {
+          media: item(`loved${i}`, {
+            genres: genre("Horror"),
+            tags: [tagged("Slasher")],
+            credits: [{ role: "DIRECTOR", contributor: { id: "craven", name: "Craven" } }],
+          }),
+        }),
+      ),
       observation("loved", 10, {
-        media: item("loved", { genres: genre("Horror"), tags: [tagged("Slasher")] }),
+        media: item("loved", {
+          genres: genre("Horror"),
+          tags: [tagged("Slasher")],
+          credits: [{ role: "DIRECTOR", contributor: { id: "craven", name: "Craven" } }],
+        }),
       }),
       ...Array.from({ length: 8 }, (_, i) =>
         observation(`mid${i}`, 6.5, { media: item(`mid${i}`, { genres: genre("Drama") }) }),
@@ -513,17 +534,18 @@ describe("v2 tiering, twins and reasons", () => {
       item("c", {
         genres: genre("Horror"),
         tags: [tagged("Slasher")],
+        credits: [{ role: "DIRECTOR", contributor: { id: "craven", name: "Craven" } }],
         computedConsensusScore: 9,
         consensusConfidence: 0.9,
       }),
       profiles,
     );
-    expect(result.reason).toBe("Because you rated loved 10/10");
+    expect(result.reason).toMatch(/^Because you rated loved\d? 10\/10$/);
   });
 });
 
 describe("v2 explaining title", () => {
-  it("explains a positive signal with a loved title, not the closest disliked one", () => {
+  it("names the closest title honestly, even when the viewer rated it below average", () => {
     const tagged = (name: string) => ({ tag: { name, status: "APPROVED", category: "SUBGENRE" } });
     const profiles = buildTasteProfiles([
       observation("dud", 4, {
@@ -544,6 +566,10 @@ describe("v2 explaining title", () => {
     );
     const similarity = result.explanations.find((e) => e.signal === "similarity")!;
     expect(similarity.value).toBeGreaterThan(50);
-    expect(similarity.because?.title.startsWith("gem")).toBe(true);
+    // The dud shares both tags; the gems share one. Closest wins the caption,
+    // and the wording says the viewer did not love it.
+    expect(similarity.because?.title).toBe("dud");
+    expect(similarity.because?.direction).toBe("below");
+    expect(humanReason(similarity)).toBe("Most like dud, which you rated 4/10");
   });
 });

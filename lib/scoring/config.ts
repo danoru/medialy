@@ -309,29 +309,20 @@ export const RECOMMENDATION_V2 = {
     friendFade: 0.5,
     consensusFade: 0.7,
   },
+  /**
+   * Nearest-neighbour settings. Nearness itself is the facet similarity in
+   * `SIMILARITY_FACETS` / `lib/scoring/similarity.ts`.
+   */
   similarity: {
     /** Nearest rated titles considered per candidate. */
-    neighbours: 20,
-    /** Cosine below this is not a neighbour at all. */
+    neighbours: 40,
+    /** Facet similarity below this is not a neighbour at all. */
     minSimilarity: 0.1,
     /** Squared-similarity support needed for half reliability. */
-    prior: 1.5,
-    /** Weight of a genre in the item vector; tags use the category weights. */
-    genreWeight: 1.5,
-    tagCategoryWeights: {
-      SUBGENRE: 1,
-      THEME: 0.8,
-      MOOD: 0.8,
-      MECHANIC: 0.7,
-      COUNTRY: 0.5,
-      FORMAT: 0.3,
-      default: 0.6,
-    },
-    /** Tag categories that mean the same thing across movies, TV and games. */
-    portableTagCategories: ["THEME", "MOOD", "COUNTRY"],
+    prior: 0.8,
     /** Same-medium reliability under which other media are consulted too. */
     crossMediumBelow: 0.3,
-    /** Reliability multiplier for neighbours from another medium. */
+    /** Reliability multiplier for neighbours from another medium (portable facets only: genre, theme, era). */
     crossMediumFactor: 0.4,
   },
   roleWeights: {
@@ -375,14 +366,13 @@ export const RECOMMENDATION_EVALUATION = {
  * your own average"). Fitted by `npm run recommendations:evaluate -- --all`
  * on held-out ratings; paste the printed values here after a refit.
  *
- * Fitted September 22, 2026 on 1,399 held-out ratings from three users with
- * tiering and taste twins on (Brier 0.2158 against 0.25 for a constant
- * guess). A raw 50 shows as 47%, a raw 60 as 94%, a raw 40 as 4%: the tiered
- * score moves less than the flat one did, so the curve is steeper.
+ * Fitted September 22, 2026 on 1,400 held-out ratings from three users with
+ * tiering, taste twins and facet similarity on (Brier 0.2122 against 0.25 for
+ * a constant guess). A raw 50 shows as 45%, a raw 60 as 95%, a raw 40 as 3%.
  */
 export const MATCH_CALIBRATION = {
-  intercept: -0.1351,
-  slope: 0.3004,
+  intercept: -0.2115,
+  slope: 0.3192,
 } as const;
 
 // -----------------------------------------------------------------------------
@@ -391,15 +381,13 @@ export const MATCH_CALIBRATION = {
 
 export const COMPARISON_RELEVANCE = {
   base: 0.25,
-  genre: 0.35,
-  tag: 0.08,
+  /** Facet similarity (director, subgenre, genre, theme, era, leads). */
+  similarity: 0.45,
   rating: 0.2,
   pairwise: 0.1,
-  year: 0.05,
   /** Distance budgets — proximity collapses linearly to zero past these. */
   ratingMaxDistance: 4,
   pairwiseMaxDistance: 500,
-  yearMaxDistance: 30,
   /** How relevance maps to Elo weight: floor + (1 - floor) * relevance. */
   eloWeightFloor: 0.35,
 } as const;
@@ -410,10 +398,18 @@ export const COMPARISON_RELEVANCE = {
 
 export const RATING_COMPATIBILITY = {
   /**
-   * Compatibility = max(0, 100 - averageRatingDistance * penalty). 12 means a
+   * Distance half: max(0, 100 - averageRatingDistance * penalty). 12 means a
    * 1-point average gap drops you to 88; a 5-point gap drops you to 40.
    */
   ratingDistancePenalty: 12,
+  /**
+   * Agreement half: Pearson correlation of the two rating series, mapped to
+   * 0–100. Rewards agreeing on which titles are better even when one person
+   * rates everything harsher. Blended in only once there are enough pairs
+   * for a correlation to mean anything.
+   */
+  pearsonMinPairs: 8,
+  pearsonShare: 0.5,
 } as const;
 
 // -----------------------------------------------------------------------------
@@ -439,6 +435,34 @@ export const FRIEND_SIGNAL = {
   evidencePrior: 1,
   completedInterest: 15,
   watchlistInterest: 8,
+} as const;
+
+// -----------------------------------------------------------------------------
+// Title-to-title similarity (see `lib/scoring/similarity.ts`)
+// -----------------------------------------------------------------------------
+
+/**
+ * What makes two titles alike, in the order a person would name them: the
+ * same director, the same subgenre, the same genres, the same themes, the
+ * same era and place, the same leads. Used by the recommendation engine's
+ * "because you rated X" signal, Discover's If You Liked, and the comparison
+ * picker.
+ */
+export const SIMILARITY_FACETS = {
+  weights: {
+    director: 0.25,
+    subgenre: 0.25,
+    genre: 0.15,
+    theme: 0.1,
+    culture: 0.1,
+    actor: 0.15,
+  },
+  /** Overlap credit for exactly one shared lead; two or more is full credit. */
+  singleActorCredit: 0.7,
+  /** Lowest rarity weight a feature can have (the commonest genre). */
+  rarityFloor: 0.35,
+  /** Rarity for a feature the catalog has never seen. */
+  defaultRarity: 1,
 } as const;
 
 // -----------------------------------------------------------------------------
@@ -482,9 +506,7 @@ export const DISCOVER = {
   ifYouLiked: {
     limit: 4,
     /** Chains below this similarity are dropped rather than shown as filler. */
-    minSimilarity: 0.25,
-    taxonomyWeight: 0.7,
-    creditWeight: 0.3,
+    minSimilarity: 0.12,
   },
   /** Posters shown on a world card on the Discover landing. */
   worldMosaicSize: 3,

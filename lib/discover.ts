@@ -5,7 +5,11 @@ import {
   type OverallTopRankingContext,
 } from "@/lib/db/dashboard";
 import { DISCOVER } from "@/lib/scoring/config";
-import { calculateTaxonomySimilarity } from "@/lib/scoring/taxonomySimilarity";
+import {
+  buildFeatureRarity,
+  facetSimilarity,
+  type FeatureRarity,
+} from "@/lib/scoring/similarity";
 import {
   getPromotedDiscoverTagsForMediaType,
   isDiscoverSubgenreForGenre,
@@ -436,62 +440,26 @@ export function pickSeeds(
   return essentials.slice(0, limit);
 }
 
-function nonActorCredits(item: DiscoverItem) {
-  return new Map(
-    item.credits
-      .filter((credit) => credit.role !== "ACTOR")
-      .map((credit) => [credit.contributor.id, credit.contributor.name]),
-  );
+/**
+ * 0–1: the shared facet similarity (director, subgenre, genre, theme, era
+ * and place, leads). `rarity` comes from the pool so common genres count
+ * less than rare tags.
+ */
+export function itemSimilarity(
+  seed: DiscoverItem,
+  candidate: DiscoverItem,
+  rarity: FeatureRarity = new Map(),
+) {
+  return facetSimilarity(seed, candidate, rarity).score;
 }
 
-/** 0–1: taxonomy overlap plus shared directors/creators/studios. */
-export function itemSimilarity(seed: DiscoverItem, candidate: DiscoverItem) {
-  const taxonomy = calculateTaxonomySimilarity(
-    {
-      genres: seed.genres.map((entry) => entry.genre.name),
-      tags: approvedTags(seed).map((entry) => entry.tag.name),
-    },
-    {
-      genres: candidate.genres.map((entry) => entry.genre.name),
-      tags: approvedTags(candidate).map((entry) => entry.tag.name),
-    },
-  );
-  const seedCredits = nonActorCredits(seed);
-  const candidateCredits = nonActorCredits(candidate);
-  let shared = 0;
-  for (const id of candidateCredits.keys()) if (seedCredits.has(id)) shared += 1;
-  const smaller = Math.min(seedCredits.size, candidateCredits.size);
-  const creditOverlap = smaller > 0 ? shared / smaller : 0;
-  return (
-    (taxonomy.score / 100) * DISCOVER.ifYouLiked.taxonomyWeight +
-    creditOverlap * DISCOVER.ifYouLiked.creditWeight
-  );
-}
-
-/** The most specific thing two titles share: a subgenre tag, then any tag, then a genre, then a credit. */
+/** The most specific thing two titles share, as the similarity module names it. */
 export function sharedFacet(
   seed: DiscoverItem,
   candidate: DiscoverItem,
+  rarity: FeatureRarity = new Map(),
 ): string | null {
-  const seedTags = approvedTags(seed);
-  const candidateTagNames = new Set(
-    approvedTags(candidate).map((entry) => entry.tag.name),
-  );
-  const subgenre = seedTags.find(
-    (entry) =>
-      entry.tag.category === "SUBGENRE" && candidateTagNames.has(entry.tag.name),
-  );
-  if (subgenre) return subgenre.tag.name;
-  const tag = seedTags.find((entry) => candidateTagNames.has(entry.tag.name));
-  if (tag) return tag.tag.name;
-  const candidateGenres = new Set(candidate.genres.map((e) => e.genre.name));
-  const genre = seed.genres.find((entry) => candidateGenres.has(entry.genre.name));
-  if (genre) return genre.genre.name;
-  const candidateCredits = nonActorCredits(candidate);
-  for (const [id, name] of nonActorCredits(seed)) {
-    if (candidateCredits.has(id)) return name;
-  }
-  return null;
+  return facetSimilarity(seed, candidate, rarity).shared?.label ?? null;
 }
 
 /**
@@ -502,6 +470,7 @@ export function pickIfYouLiked(
   seeds: DiscoverItem[],
   pool: DiscoverItem[],
   exclude: ReadonlySet<string>,
+  rarity: FeatureRarity = new Map(),
 ): DiscoverChain[] {
   const used = new Set(exclude);
   for (const seed of seeds) used.add(seed.id);
@@ -510,7 +479,7 @@ export function pickIfYouLiked(
     let best: { item: DiscoverItem; similarity: number } | null = null;
     for (const candidate of pool) {
       if (used.has(candidate.id)) continue;
-      const similarity = itemSimilarity(seed, candidate);
+      const similarity = itemSimilarity(seed, candidate, rarity);
       if (similarity < DISCOVER.ifYouLiked.minSimilarity) continue;
       if (
         !best ||
@@ -526,7 +495,7 @@ export function pickIfYouLiked(
     chains.push({
       seed,
       next: best.item,
-      sharedFacet: sharedFacet(seed, best.item),
+      sharedFacet: sharedFacet(seed, best.item, rarity),
     });
   }
   return chains;
@@ -570,7 +539,12 @@ export function buildSections(input: {
   for (const item of hiddenGems) shown.add(item.id);
 
   const seeds = pickSeeds(input.worldItems, essentials, input.viewerMean);
-  const ifYouLiked = pickIfYouLiked(seeds, input.pool, shown);
+  const ifYouLiked = pickIfYouLiked(
+    seeds,
+    input.pool,
+    shown,
+    buildFeatureRarity([...input.worldItems, ...input.pool]),
+  );
 
   return { essentials, gateway, hiddenGems, ifYouLiked };
 }

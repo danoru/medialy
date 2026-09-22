@@ -2,9 +2,10 @@ import type { MediaStatus, MediaType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isVisibleMediaType, visibleMediaTypeFilter } from "@/lib/media-types";
 import { calculateComparisonRelevance } from "@/lib/scoring/comparisonRelevance";
+import { buildFeatureRarity } from "@/lib/scoring/similarity";
 import { requireUserId } from "@/lib/user";
 import { mergeUserMedia, userMediaSelect } from "@/lib/db/user-media";
-import { LEAN_MEDIA_WITH_TAXONOMY_SELECT } from "@/lib/db/media-select";
+import { LEAN_MEDIA_WITH_CREDITS_SELECT } from "@/lib/db/media-select";
 
 export type ComparisonSelectionItem = {
   id: string;
@@ -16,7 +17,8 @@ export type ComparisonSelectionItem = {
   releaseDate: Date | string | null;
   posterUrl: string | null;
   genres: Array<{ genre: { name: string } }>;
-  tags?: Array<{ tag: { name: string } }>;
+  tags?: Array<{ tag: { name: string; status?: string; category?: string | null } }>;
+  credits?: Array<{ role: string; contributor: { id: string; name: string } }>;
 };
 
 type PairCandidate<TItem extends ComparisonSelectionItem> = {
@@ -58,7 +60,7 @@ const COMPARISON_ELIGIBLE_STATUSES: MediaStatus[] = [
  */
 function comparisonItemSelect(userId: string) {
   return {
-    ...LEAN_MEDIA_WITH_TAXONOMY_SELECT,
+    ...LEAN_MEDIA_WITH_CREDITS_SELECT,
     description: true,
     ...userMediaSelect(userId),
   } as const;
@@ -202,6 +204,10 @@ function buildPairCandidates<TItem extends ComparisonSelectionItem>(
   focusId?: string,
 ): Array<PairCandidate<TItem>> {
   const weightedPairs: Array<PairCandidate<TItem>> = [];
+  // Rarity from the viewer's own library: Sports says more than Drama.
+  const rarity = buildFeatureRarity(
+    items.map((item) => ({ genres: item.genres, tags: item.tags ?? [], credits: item.credits ?? [], releaseDate: item.releaseDate })),
+  );
 
   for (let firstIndex = 0; firstIndex < items.length; firstIndex += 1) {
     for (
@@ -216,7 +222,7 @@ function buildPairCandidates<TItem extends ComparisonSelectionItem>(
       if (recentKeys.has(comparisonKey(first.id, second.id))) continue;
 
       const sharedGenres = countSharedGenres(first, second);
-      const relevance = calculateComparisonRelevance(first, second);
+      const relevance = calculateComparisonRelevance(first, second, rarity);
       const lowDataWeight = Math.max(
         1,
         6 - Math.min(first.comparisonCount, second.comparisonCount),

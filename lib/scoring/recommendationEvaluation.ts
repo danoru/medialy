@@ -15,6 +15,7 @@ import {
 } from "./affinityProfile";
 import { calculateMedialyMatch } from "./medialyMatch";
 import { RECOMMENDATION_EVALUATION, RECOMMENDATION_V2 } from "./config";
+import { buildFeatureRarity } from "./similarity";
 import type { CalibrationSample } from "./calibration";
 
 // Stable folds do not depend on scores, database order or random state.
@@ -89,6 +90,7 @@ export function evaluateRecommendations(
   const friendRows = groupByMedia(friends);
   const otherRows = groupByMedia(others);
   const baselines = buildFriendBaselines([...friends, ...others]);
+  const rarity = buildFeatureRarity(observations.map((row) => row.media));
 
   let pairs = 0;
   let v2Wins = 0;
@@ -135,6 +137,7 @@ export function evaluateRecommendations(
             baselines,
             { minOverlap: RECOMMENDATION_V2.twinMinOverlap, noun: "taste-twin" },
           ),
+          rarity,
         },
       ).score;
       const v1 = calculateMedialyMatch({

@@ -1,7 +1,13 @@
 import type { ExternalRatingSource, MediaType } from "@prisma/client";
 
 export type ScoredGenre = { genre: { name: string } };
-export type ScoredTag = { tag: { name: string } };
+export type ScoredTag = {
+  tag: { name: string; status?: string; category?: string | null };
+};
+export type ScoredCredit = {
+  role: string;
+  contributor: { id: string; name: string };
+};
 
 export type ScoredMediaItem = {
   mediaType: MediaType;
@@ -15,6 +21,7 @@ export type ScoredMediaItem = {
   releaseDate?: Date | string | null;
   genres?: ScoredGenre[];
   tags?: ScoredTag[];
+  credits?: ScoredCredit[];
 };
 
 export type ExternalRatingLike = {

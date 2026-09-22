@@ -21,6 +21,7 @@ import {
   PAIRWISE,
   PERSONAL_SCORE,
   RECOMMENDATION_V2,
+  SIMILARITY_FACETS,
   SOURCE_MEDIA_APPLICABILITY,
   SOURCE_TRUST_WEIGHTS,
 } from "@/lib/scoring/config";
@@ -193,22 +194,20 @@ export default async function ScoringConfigPage() {
         />
         <Row
           label="Similarity — cross-medium fallback"
-          info="Below this same-medium reliability, other media are consulted through the portable vector (genres + theme/mood/country tags), at the listed reliability multiplier."
+          info="Below this same-medium reliability, other media are consulted through the portable facets (genre, theme, era), at the listed reliability multiplier."
           value={`below ${RECOMMENDATION_V2.similarity.crossMediumBelow} · ×${RECOMMENDATION_V2.similarity.crossMediumFactor}`}
         />
         <Row
-          label="Genre / tag weights in the item vector"
-          info="Weight of a genre vs. each tag category when building the cosine vector."
-          value={`genre ${RECOMMENDATION_V2.similarity.genreWeight} · ${Object.entries(
-            RECOMMENDATION_V2.similarity.tagCategoryWeights,
-          )
-            .map(([k, v]) => `${k.toLowerCase()} ${v}`)
-            .join(" · ")}`}
+          label="Facet weights"
+          info="What makes two titles alike, in order: same director, same subgenre, same genres, same themes, same era and place, same leads. Rare genres and tags count more than common ones. Facets either title lacks are dropped and the rest renormalized, with thin coverage capping the score."
+          value={Object.entries(SIMILARITY_FACETS.weights)
+            .map(([k, v]) => `${k} ${v}`)
+            .join(" · ")}
         />
         <Row
-          label="Portable tag categories"
-          info="Tag categories that mean the same thing across movies, TV and games, used for the cross-medium fallback."
-          value={RECOMMENDATION_V2.similarity.portableTagCategories.join(", ")}
+          label="Facet details"
+          info="One shared lead earns this share of the actor facet; rarity weights floor at rarityFloor. Facets either title lacks count as no similarity."
+          value={`single lead ${SIMILARITY_FACETS.singleActorCredit} · rarity floor ${SIMILARITY_FACETS.rarityFloor}`}
         />
         <Row
           label="Role weights"
@@ -324,15 +323,17 @@ export default async function ScoringConfigPage() {
         description="How relevant is a head-to-head matchup? Used to weight Elo updates and to pick which pairs to surface on the compare page."
       >
         <Row label="Base" value={COMPARISON_RELEVANCE.base} />
-        <Row label="Genre weight" value={COMPARISON_RELEVANCE.genre} />
-        <Row label="Tag weight" value={COMPARISON_RELEVANCE.tag} />
+        <Row
+          label="Similarity weight"
+          info="Facet similarity from lib/scoring/similarity.ts: director, subgenre, genre, theme, era and leads."
+          value={COMPARISON_RELEVANCE.similarity}
+        />
         <Row label="Rating proximity weight" value={COMPARISON_RELEVANCE.rating} />
         <Row label="Pairwise proximity weight" value={COMPARISON_RELEVANCE.pairwise} />
-        <Row label="Year proximity weight" value={COMPARISON_RELEVANCE.year} />
         <Row
           label="Proximity budgets"
           info="Distance past these collapses the proximity score to 0."
-          value={`rating ±${COMPARISON_RELEVANCE.ratingMaxDistance} · pairwise ±${COMPARISON_RELEVANCE.pairwiseMaxDistance} · year ±${COMPARISON_RELEVANCE.yearMaxDistance}`}
+          value={`rating ±${COMPARISON_RELEVANCE.ratingMaxDistance} · pairwise ±${COMPARISON_RELEVANCE.pairwiseMaxDistance}`}
         />
         <Row
           label="Elo weight floor"
