@@ -101,7 +101,7 @@ The weights above are targets, not fixed shares. Each candidate's signals fire i
 
 This is deliberate cold-start behaviour: a brand-new account has no personal or social reliability, so both fades are zero and the candidate is ranked by critics alone. There is no separate "hero" gate for new accounts — tiering already produces a critics-led main page before any history exists, which is intentional; there must be something to show.
 
-**Similarity** (`similaritySignal`) — the candidate's `RECOMMENDATION_V2.similarity.neighbours` (20) nearest same-medium rated titles by cosine similarity (`cosine ≥ minSimilarity`), weighted by squared similarity × example weight. The value is the weighted mean of those neighbours' residuals (rating minus the viewer's medium baseline, in points, clamped ±50). When same-medium reliability falls below `crossMediumBelow` (0.3), titles from other media are consulted too through a portable vector (genres plus theme/mood/country tags only), at `crossMediumFactor` (0.4) reliability. Cosine normalization means a title with more tags gets no extra credit.
+**Similarity** (`similaritySignal`) — the candidate's `RECOMMENDATION_V2.similarity.neighbours` (40) nearest same-medium rated titles by facet similarity (`facetSimilarity`, see [Title similarity](#title-similarity-similarityts) below; `similarity ≥ minSimilarity` 0.10), weighted by squared similarity × example weight. The value is the weighted mean of those neighbours' residuals (rating minus the viewer's medium baseline, in points, clamped ±50). When same-medium reliability falls below `crossMediumBelow` (0.3), titles from other media are consulted too through the portable facets only (genre, theme, culture — no director/subgenre/actor), at `crossMediumFactor` (0.4) reliability. The reason line names the genuinely closest rated title: "Because you rated X N/10" when the viewer rated it above their average, "Most like X, which you rated N/10" when below.
 
 **Genre / tag / contributor** (`featureSignal`) — signed per-medium feature profiles built in `buildTasteProfiles`. Each rated title's residual is added to every genre/tag/contributor-role it carries. A candidate's value is the reliability-weighted mean of its *known* features' residuals; reliability grows both with how well-supported each known feature is (`featurePrior`) and with how many of the candidate's features are known at all (`featureBreadthPrior`) — so a title whose features you have never rated moves the score little, and three loved genres beat one. Unknown features lower reliability instead of disappearing.
 
@@ -122,7 +122,7 @@ probability = sigmoid(MATCH_CALIBRATION.intercept + MATCH_CALIBRATION.slope × (
 match = round(probability × 100)
 ```
 
-Fitted September 22, 2026 on 1,399 held-out ratings, with tiering and taste twins on: intercept −0.1351, slope 0.3004, Brier 0.2158 (vs. 0.25 for a constant guess). A raw 50 shows as 47%, a raw 60 as 94%, a raw 40 as 4%. The tiered score moves less than the flat one did — most candidates cluster nearer 50 — so the fitted curve had to get steeper to keep spreading them out.
+Refit September 22, 2026 on 1,400 held-out ratings from three users, with tiering, taste twins and facet similarity on: intercept −0.2115, slope 0.3192, Brier 0.2122 (vs. 0.25 for a constant guess). A raw 50 shows as 45%, a raw 60 as 95%, a raw 40 as 3%.
 
 ### Diversity — the dashboard picks (`diversity.ts`, `DIVERSITY`)
 
@@ -130,19 +130,21 @@ Short recommendation rows (dashboard picks) run their ranked candidates through 
 
 ### Holdout (`recommendationEvaluation.ts`, `RECOMMENDATION_EVALUATION`)
 
-`npm run recommendations:evaluate -- --all`, run September 22, 2026 with tiering and taste twins enabled. A five-fold, per-medium, retrospective diagnostic: a held-out title is "liked" when rated `likedMargin` (1) above the viewer's own mean rating in that medium, "disliked" when `dislikedMargin` (1) below it; the reported accuracy is the fraction of liked/disliked pairs each ranker orders correctly (0.5 = chance).
+`npm run recommendations:evaluate -- --all`, run September 22, 2026 with tiering, taste twins and facet similarity all enabled. A five-fold, per-medium, retrospective diagnostic: a held-out title is "liked" when rated `likedMargin` (1) above the viewer's own mean rating in that medium, "disliked" when `dislikedMargin` (1) below it; the reported accuracy is the fraction of liked/disliked pairs each ranker orders correctly (0.5 = chance).
 
-Pooled pair accuracy: **v2 ≈ 83.9%**, v1 ~68–76%, critics-alone ~75–93%, on the two biggest movie histories.
+Pooled pair accuracy: **v2 ≈ 86.9%**, v1 ~60–76%, critics-alone ~75–93%.
 
 | Cell | Pairs | V2 | V1 | Critics alone |
 |---|---:|---:|---:|---:|
-| User A, movies | 2,742 | 81.1% | 68.0% | 82.8% |
-| Main user, movies | 1,863 | 87.0% | 76.1% | 92.5% |
-| Third user, movies | 75 | 89.3% | 60.0% | 75.3% |
+| User A, movies | 2,742 | 84.8% | 69.4% | 83.0% |
+| Main user, movies | 1,863 | 90.3% | 76.1% | 92.5% |
+| Third user, movies | 75 | 86.7% | 60.0% | 75.3% |
 
-Pooled accuracy is down from 86.0% under the previous flat weights — a roughly 2-point cost, accepted deliberately so personal taste, not critics, drives the ranking whenever the viewer has enough history; tiering only lets critics take over when personal and social signals are quiet. Critics alone still edge out v2 on the two largest histories, where personal taste and critical consensus mostly agree; v2's margin over v1 is largest where a user's taste diverges most from critics (the third user's cell).
+Pooled accuracy is up from 83.9% with the old cosine similarity and tiering — replacing cosine over raw genre/tag/credit/country vectors with the rarity-weighted facet score (director, subgenre, genre, theme, culture, actor; see [Title similarity](#title-similarity-similarityts)) found genuinely closer neighbours, which more than made up the roughly 2-point cost tiering took from leaning on critics. Critics alone still edge out v2 on the two largest histories, where personal taste and critical consensus mostly agree; v2's margin over v1 is largest where a user's taste diverges most from critics.
 
 Stored ratings of 0 are read as no rating by the engine (`explicitRating`, `minExplicitRating: 0.5`) — of the 164 zero-valued rows found, 163 belong to the main account's unplayed games and are placeholders, not real opinions. The database rows themselves still need a manual cleanup (set `personalRating` to `NULL` where it is 0, then `npm run ratings:recompute`), because a stored 0 still counts as a vote in community averages even though the engine ignores it.
+
+**Data gap (found September 22, 2026, facet similarity):** 506 of 1,618 movies have no genres, 788 no credits, and 801 no tags — titles this thin are invisible to `similaritySignal`, `featureSignal` and the comparison picker alike, since every facet they'd need is unknown rather than negative. On the main account specifically, 201 of its rated films have no genres and 207 no credits (Letterboxd imports were never enriched with TMDB metadata). `npm run metadata:backfill` fills blank genres/tags/credits from TMDB without overwriting anything already set (see the "never overwrite curated metadata" rule); until it's run, those titles keep contributing zero coverage to every facet-based score above.
 
 ---
 
@@ -317,9 +319,40 @@ Worlds (the marquee cards) are ordered by mean Quality shrunk toward the pool me
 
 ---
 
+## Title similarity (`similarity.ts`)
+
+How alike two titles are, as facets a person would actually name, rather than a single cosine over a flattened tag bag. Used by three surfaces: the recommendation engine's similarity signal (`similaritySignal` in `recommendationV2.ts`, "because you rated X"), Discover's If You Liked (`lib/discover.ts`), and the comparison picker's relevance score (`comparisonRelevance.ts`, below).
+
+`facetSimilarity(a, b, rarity)` computes six facets, in order of how specific a shared one is (`SIMILARITY_FACETS.weights`):
+
+| Facet | Weight | What counts as a match |
+|---|---:|---|
+| Director | .25 | Same director/creator/studio credit = 1, else 0 |
+| Subgenre | .25 | Rarity-weighted Jaccard of `SUBGENRE` tags |
+| Genre | .15 | Rarity-weighted Jaccard of genres |
+| Theme | .10 | Rarity-weighted Jaccard of `THEME`/`MOOD`/`MECHANIC` tags |
+| Culture | .10 | Same decade = 1, adjacent decade = .5; shared country when both titles have one; averaged when both parts apply |
+| Actor | .15 | One shared lead = .7 (`singleActorCredit`), two or more = 1 |
+
+**Rarity.** Genre and subgenre/theme tag overlaps are weighted by `log(N / df)` per feature (`buildFeatureRarity`), floored at `.35` (`rarityFloor`) so even the commonest genre still counts a little, and computed fresh from the catalog on each request — a shared "Sports" tag says more than a shared "Drama" tag because fewer titles carry it.
+
+**Missing-facet rule.** A facet either title lacks is skipped, not filled in or renormalized away: `score = weighted / possible`, where `possible` sums *all six* facet weights regardless of what could be compared (`coverage` reports separately how much of that weight was actually available). A decade-only match with everything else unknown therefore cannot outrank a title that shares a real director or subgenre — it is capped by how little was actually compared, not credited for what's missing.
+
+**Cross-medium.** Neighbours from another medium (used by the engine's similarity signal when same-medium history is thin) drop director, subgenre and actor entirely and compare only genre, theme and culture (`options.portable`), since a shared director or lead rarely survives a jump between books and games.
+
+**Worked example**, against *Days of Thunder* (Motorsports, dir. Tony Scott, Cruise): *Top Gun* ≈ .45, *F1* ≈ .29, *Seven Samurai* ≈ .04. The previous cosine-over-flattened-vectors approach gave .67 / .70 / .59 for the same three — barely distinguishing a genuine genre-and-director match from a samurai film that only shares a release-era tag.
+
+---
+
 ## Comparison relevance (`comparisonRelevance.ts`)
 
-Which Elo matchups to surface on `/compare`. Score is 0–1, weighted by `COMPARISON_RELEVANCE` (genre, tag, rating proximity, pairwise proximity, year proximity, plus a base floor). Cross-media-type pairs return 0 — we don't compare movies to video games.
+Which Elo matchups to surface on `/compare`. Score is 0–1 (`COMPARISON_RELEVANCE`):
+
+```
+relevance = base (.25) + facetSimilarity × .45 + ratingProximity × .20 + pairwiseProximity × .10
+```
+
+`facetSimilarity` is the title-to-title score from `similarity.ts` above (director/subgenre/genre/theme/culture/actor), replacing the old separate genre/tag/year proximity rows. Rating and pairwise proximity collapse linearly to 0 past `ratingMaxDistance` (4) and `pairwiseMaxDistance` (500) Elo points. Cross-media-type pairs return 0 — we don't compare movies to video games.
 
 The relevance score then maps to **Elo weight** via:
 
@@ -333,15 +366,19 @@ So even low-relevance comparisons still update the Elo (at the floor), but high-
 
 ## Rating compatibility (`compatibility.ts`)
 
-Pairwise user-vs-user similarity. Given overlapping rated items, compute average per-item rating distance and convert:
+Pairwise user-vs-user similarity. Given overlapping rated items, blend two halves (`RATING_COMPATIBILITY`):
 
 ```
-compatibility = max(0, 100 − averageDistance × RATING_COMPATIBILITY.ratingDistancePenalty)
+distanceScore = max(0, 100 − averageDistance × ratingDistancePenalty)   // 12: a 1-point gap → 88, a 5-point gap → 40
+correlation   = pearson(pairs)   // once there are ≥ pearsonMinPairs (8) shared ratings, else null
+score = correlation == null
+  ? distanceScore
+  : distanceScore × (1 − pearsonShare) + (50 + 50 × correlation) × pearsonShare   // pearsonShare = 0.5
 ```
 
-With `ratingDistancePenalty=12`: a 1-point average gap → 88; a 5-point average gap → 40.
+The distance half penalizes a harsh rater and a generous one for looking different even when they agree on ranking; the Pearson half rewards agreeing on which titles are *better*, regardless of scale, and only joins once there's enough shared history (8+ pairs) for a correlation to mean anything.
 
-Used in `/friends` and as the per-follower weight in Medialy Match's friend signal.
+Used in `/friends` and as the per-follower weight in Medialy Match's friend signal, and (since September 22, 2026) to qualify and weight taste twins the same way.
 
 ---
 
