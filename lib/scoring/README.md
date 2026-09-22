@@ -81,7 +81,7 @@ score = 50 + Σ(weightᵢ × reliabilityᵢ × (valueᵢ − 50))
 confidence = Σ(weightᵢ × reliabilityᵢ)
 ```
 
-### The six signals (`RECOMMENDATION_V2.weights`)
+### The seven signals (`RECOMMENDATION_V2.weights`)
 
 | Signal | Weight | What it measures |
 |---|---:|---|
@@ -89,18 +89,29 @@ confidence = Σ(weightᵢ × reliabilityᵢ)
 | Genre | 0.05 | Signed per-medium genre profile |
 | Tag | 0.04 | Signed per-medium approved-tag profile |
 | Contributor | 0.06 | Signed per-medium director/creator/developer/publisher profile |
-| Friends | 0.25 | Followers' ratings, centered on each friend's own baseline |
-| Consensus | 0.35 | External critics, centered on the catalog's typical 7 |
+| Friends | 0.22 | Followers' ratings, centered on each friend's own baseline |
+| Twins | 0.10 | Non-followed users who share at least `twinMinOverlap` rated titles, scored like friends |
+| Consensus | 0.28 | External critics, centered on the catalog's typical 7 |
 
-Weights were chosen by the holdout sweep of September 21, 2026 (see below); critics carry the most weight because for the two largest histories they were the best single predictor, and the personal signals add most where taste and critics part ways.
+Weights were chosen by the holdout sweep of September 21, 2026, then re-swept September 22, 2026 to add tiering and taste twins (see below); critics still carry the most weight of any single signal, but tiering means the viewer's own history is what actually leads once it exists.
+
+### Tiering — who leads (`RECOMMENDATION_V2.backoff`)
+
+The weights above are targets, not fixed shares. Each candidate's signals fire in tiers: the viewer's own history (similarity, genre, tag, contributor) leads; friends and taste twins fade out by `backoff.friendFade` (0.5) times the viewer's best personal-signal reliability; critics fade out by `backoff.consensusFade` (0.7) times the best reliability among personal, friends and twins combined. Each tier only speaks up when the ones above it are quiet.
+
+This is deliberate cold-start behaviour: a brand-new account has no personal or social reliability, so both fades are zero and the candidate is ranked by critics alone. There is no separate "hero" gate for new accounts — tiering already produces a critics-led main page before any history exists, which is intentional; there must be something to show.
 
 **Similarity** (`similaritySignal`) — the candidate's `RECOMMENDATION_V2.similarity.neighbours` (20) nearest same-medium rated titles by cosine similarity (`cosine ≥ minSimilarity`), weighted by squared similarity × example weight. The value is the weighted mean of those neighbours' residuals (rating minus the viewer's medium baseline, in points, clamped ±50). When same-medium reliability falls below `crossMediumBelow` (0.3), titles from other media are consulted too through a portable vector (genres plus theme/mood/country tags only), at `crossMediumFactor` (0.4) reliability. Cosine normalization means a title with more tags gets no extra credit.
 
 **Genre / tag / contributor** (`featureSignal`) — signed per-medium feature profiles built in `buildTasteProfiles`. Each rated title's residual is added to every genre/tag/contributor-role it carries. A candidate's value is the reliability-weighted mean of its *known* features' residuals; reliability grows both with how well-supported each known feature is (`featurePrior`) and with how many of the candidate's features are known at all (`featureBreadthPrior`) — so a title whose features you have never rated moves the score little, and three loved genres beat one. Unknown features lower reliability instead of disappearing.
 
-**Friends** (`friendSignal`) — each followed user's opinion of the candidate, centered on *that friend's own* usual rating in the medium (`buildFriendBaselines`), not a flat neutral. Compatibility is shrunk toward neutral by shared-rating overlap (`overlapPrior`); completing or watchlisting without a rating counts only as weak interest (`statusOnlyInterest`), never stacked on top of a rating.
+**Friends** (`friendSignal`) — each followed user's opinion of the candidate, centered on *that friend's own* usual rating in the medium (`buildFriendBaselines`), not a flat neutral. Compatibility is shrunk toward neutral by shared-rating overlap (`overlapPrior`); completing or watchlisting without a rating counts only as weak interest (`statusOnlyInterest`), never stacked on top of a rating. **Twins** reuse the same `friendSignal` function against users the viewer does not follow, gated by `options.minOverlap` (`RECOMMENDATION_V2.twinMinOverlap`, 15): a twin only counts once you and they have rated at least that many of the same titles, so a passing one-title coincidence never qualifies someone as a taste twin.
 
 **Consensus** — critics, centered on `consensusNeutral` (7, the catalog's typical critic score, not 5) at `consensusPointScale` (20) points per critic point away from it; reliability is the consensus pipeline's own confidence.
+
+### Reasons (`humanReason`)
+
+Each signal's technical `detail` string is for the admin pages only. `humanReason` turns the leading signal into one plain sentence for product surfaces: "Because you rated Cure 9/10" (similarity), "You usually rate Slow burn above your average" (genre/tag/contributor), "Anna rated it 9/10, and your tastes match 84%" (friends) or "Anna, whose your tastes match 77%, rated it 8.5/10" (twins — compatibility is named up front since the relationship itself is the news), and "Critics love it, 9.5/10" (consensus). `scoreV2` picks the reason: the strongest positive signal wins, but a personal or social signal is preferred over critics whenever it carries at least half the top contribution, since "because you loved X" is more useful than "critics like it" even when critics scored slightly higher.
 
 ### Calibration — what Match now means (`calibration.ts`, `MATCH_CALIBRATION`)
 
@@ -111,7 +122,7 @@ probability = sigmoid(MATCH_CALIBRATION.intercept + MATCH_CALIBRATION.slope × (
 match = round(probability × 100)
 ```
 
-Fitted September 21, 2026 on 1,563 held-out ratings: intercept −0.1747, slope 0.1869, Brier 0.2125 (vs. 0.25 for a constant guess). A raw 50 shows as 46%, a raw 70 as 90%, a raw 35 as 11%.
+Fitted September 22, 2026 on 1,399 held-out ratings, with tiering and taste twins on: intercept −0.1351, slope 0.3004, Brier 0.2158 (vs. 0.25 for a constant guess). A raw 50 shows as 47%, a raw 60 as 94%, a raw 40 as 4%. The tiered score moves less than the flat one did — most candidates cluster nearer 50 — so the fitted curve had to get steeper to keep spreading them out.
 
 ### Diversity — the dashboard picks (`diversity.ts`, `DIVERSITY`)
 
@@ -119,17 +130,17 @@ Short recommendation rows (dashboard picks) run their ranked candidates through 
 
 ### Holdout (`recommendationEvaluation.ts`, `RECOMMENDATION_EVALUATION`)
 
-`npm run recommendations:evaluate -- --all`, run September 21, 2026. A five-fold, per-medium, retrospective diagnostic: a held-out title is "liked" when rated `likedMargin` (1) above the viewer's own mean rating in that medium, "disliked" when `dislikedMargin` (1) below it; the reported accuracy is the fraction of liked/disliked pairs each ranker orders correctly (0.5 = chance).
+`npm run recommendations:evaluate -- --all`, run September 22, 2026 with tiering and taste twins enabled. A five-fold, per-medium, retrospective diagnostic: a held-out title is "liked" when rated `likedMargin` (1) above the viewer's own mean rating in that medium, "disliked" when `dislikedMargin` (1) below it; the reported accuracy is the fraction of liked/disliked pairs each ranker orders correctly (0.5 = chance).
 
-Pooled pair accuracy: **v2 86.1%**, v1 ~72%, critics-alone ~87%, on the two biggest movie histories.
+Pooled pair accuracy: **v2 ≈ 83.9%**, v1 ~68–76%, critics-alone ~75–93%, on the two biggest movie histories.
 
 | Cell | Pairs | V2 | V1 | Critics alone |
 |---|---:|---:|---:|---:|
-| User A, movies | 2,742 | 82.3% | 68.0% | 82.8% |
-| Main user, movies | 1,863 | 91.4% | 76.1% | 92.5% |
-| Third user, movies | 75 | 86.7% | 60.0% | 75.3% |
+| User A, movies | 2,742 | 81.1% | 68.0% | 82.8% |
+| Main user, movies | 1,863 | 87.0% | 76.1% | 92.5% |
+| Third user, movies | 75 | 89.3% | 60.0% | 75.3% |
 
-Critics alone edge out v2 on the two largest histories, where personal taste and critical consensus mostly agree; v2's margin over v1 is largest where a user's taste diverges most from critics (the third user's cell).
+Pooled accuracy is down from 86.0% under the previous flat weights — a roughly 2-point cost, accepted deliberately so personal taste, not critics, drives the ranking whenever the viewer has enough history; tiering only lets critics take over when personal and social signals are quiet. Critics alone still edge out v2 on the two largest histories, where personal taste and critical consensus mostly agree; v2's margin over v1 is largest where a user's taste diverges most from critics (the third user's cell).
 
 Stored ratings of 0 are read as no rating by the engine (`explicitRating`, `minExplicitRating: 0.5`) — of the 164 zero-valued rows found, 163 belong to the main account's unplayed games and are placeholders, not real opinions. The database rows themselves still need a manual cleanup (set `personalRating` to `NULL` where it is 0, then `npm run ratings:recompute`), because a stored 0 still counts as a vote in community averages even though the engine ignores it.
 
