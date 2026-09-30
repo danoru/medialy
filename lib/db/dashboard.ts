@@ -250,6 +250,10 @@ export function getDashboardOverallTopItemsByMediaType(
  * the raw top five. Near-duplicates (same franchise, creator or genre mix)
  * are pushed down and one slot goes to a strong pick outside the viewer's
  * usual genres. See `lib/scoring/diversity.ts`.
+ *
+ * Variety decides which five make the row; the row itself reads best-first by
+ * Match, since that's the number each card shows. The featured pick is the top
+ * score either way.
  */
 export function getDashboardTonightPicksByMediaType(
   recommendations: DashboardRecommendationEntry[],
@@ -274,7 +278,9 @@ export function getDashboardTonightPicksByMediaType(
     );
     return {
       mediaType,
-      recommendations: picks.map((pick) => byId.get(pick.id)!),
+      recommendations: [...picks]
+        .sort((a, b) => b.score - a.score)
+        .map((pick) => byId.get(pick.id)!),
     };
   });
 }

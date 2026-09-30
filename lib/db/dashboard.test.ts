@@ -283,4 +283,29 @@ describe("dashboard tonight picks", () => {
       grouped.find((entry) => entry.mediaType === "TV_SHOW")?.recommendations,
     ).toEqual([]);
   });
+
+  it("shows the varied picks best-first by Match", () => {
+    // Two near-identical films by one director: variety pushes the second one
+    // below a less similar, lower-scored film when choosing, but the row still
+    // reads in Match order.
+    const byDirector = (id: string, score: number): Recommendation => ({
+      ...recommendation(id, "MOVIE", score),
+      media: media(id, "MOVIE", "UNTRACKED", {
+        genres: ["Crime"],
+        credits: [{ role: "DIRECTOR", kind: "PERSON", name: "Same Director", order: 0 }],
+      }),
+    });
+    const grouped = getDashboardTonightPicksByMediaType([
+      byDirector("a", 95),
+      byDirector("b", 92),
+      {
+        ...recommendation("c", "MOVIE", 86),
+        media: media("c", "MOVIE", "UNTRACKED", { genres: ["Comedy"] }),
+      },
+    ]);
+    const scores = grouped
+      .find((entry) => entry.mediaType === "MOVIE")!
+      .recommendations.map((entry) => entry.score);
+    expect(scores).toEqual([95, 92, 86]);
+  });
 });
