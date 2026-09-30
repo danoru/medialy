@@ -47,6 +47,14 @@ import {
 import { PageAccentBackground } from "@/components/shared/PageAccentBackground";
 import { matchesMediaTitleSearch } from "@/lib/media-search";
 import {
+  LibraryPeopleStrip,
+  PersonFilterChip,
+} from "@/components/people/LibraryPeopleStrip";
+import {
+  getLibraryPeopleMatches,
+  type LibraryPeopleMatches,
+} from "@/lib/db/people";
+import {
   getCanonicalTagDefinitions,
   getGenresForMediaType,
 } from "@/lib/taxonomy";
@@ -67,13 +75,16 @@ export default async function MediaPage({
 }) {
   const params = await searchParams;
   const titleFilter = titleFilterParam(params);
+  const personFilter = stringParam(params.person) ?? "";
   const selectedGenre = stringParam(params.genre) ?? "";
   const selectedTag = stringParam(params.tag) ?? "";
   const sort = stringParam(params.sort) || "title";
   const direction =
     sortDirectionParam(params.direction) ?? defaultDirection(sort);
   const requestedType = stringParam(params.type);
-  const hasSearchFilters = Boolean(titleFilter || selectedGenre || selectedTag);
+  const hasSearchFilters = Boolean(
+    titleFilter || personFilter || selectedGenre || selectedTag,
+  );
   const selectedType =
     requestedType === ALL_MEDIA_TYPES
       ? ALL_MEDIA_TYPES
@@ -102,6 +113,8 @@ export default async function MediaPage({
   if (selectedGenre)
     where.genres = { some: { genre: { name: selectedGenre } } };
   if (selectedTag) where.tags = { some: { tag: { name: selectedTag } } };
+  // One person's titles, from the credits table itself — exact and fresh.
+  if (personFilter) where.credits = { some: { contributorId: personFilter } };
 
   const statusParam = stringParam(params.status);
   const favoriteParam = stringParam(params.favorite);
@@ -138,10 +151,46 @@ export default async function MediaPage({
     }
   }
 
+  // The search box matches titles and people. People come from the cached
+  // catalog; a name that matches as whole words adds its titles to the results.
+  const [peopleMatches, personFilterName] = await Promise.all([
+    titleFilter
+      ? getLibraryPeopleMatches(titleFilter)
+      : Promise.resolve<LibraryPeopleMatches>({
+          people: [],
+          wholeWordCount: 0,
+          merged: [],
+          mergedMediaIds: [],
+        }),
+    personFilter
+      ? prisma.contributor
+          .findUnique({ where: { id: personFilter }, select: { name: true } })
+          .then((row) => row?.name ?? null)
+      : Promise.resolve(null),
+  ]);
+
+  let titleOnlyCount = 0;
   if (titleFilter) {
-    const matchingIds = await mediaIdsMatchingTitleFilter(where, titleFilter);
-    where.id = { in: matchingIds };
+    const [matchingIds, mergedVisible] = await Promise.all([
+      mediaIdsMatchingTitleFilter(where, titleFilter),
+      // Only claim a person's titles are in the results if the current tab and
+      // filters actually let some through.
+      peopleMatches.mergedMediaIds.length
+        ? prisma.mediaItem.count({
+            where: { ...where, id: { in: peopleMatches.mergedMediaIds } },
+          })
+        : Promise.resolve(0),
+    ]);
+    titleOnlyCount = matchingIds.length;
+    if (!mergedVisible) peopleMatches.merged = [];
+    where.id = {
+      in: [...new Set([...matchingIds, ...peopleMatches.mergedMediaIds])],
+    };
   }
+  // A partial name ("scors") earns the People card only when titles found
+  // nothing; otherwise the card would crowd an ordinary title search.
+  const showPeople =
+    peopleMatches.wholeWordCount > 0 || (titleFilter !== "" && titleOnlyCount === 0);
 
   const { items, total } = await findMediaPageItems({
     direction,
@@ -247,11 +296,14 @@ export default async function MediaPage({
             {selectedType ? (
               <input name="type" type="hidden" value={selectedType} />
             ) : null}
+            {personFilter ? (
+              <input name="person" type="hidden" value={personFilter} />
+            ) : null}
             <TextField
               defaultValue={titleFilter}
-              label="Title"
+              label="Title or person"
               name="title"
-              placeholder="Title"
+              placeholder="Title or person"
               size="small"
               sx={{ minWidth: { md: 220 } }}
             />
@@ -355,8 +407,36 @@ export default async function MediaPage({
               Apply
             </Button>
           </LibraryFilters>
+          {personFilter && personFilterName ? (
+            <Box sx={{ mt: 2 }}>
+              <PersonFilterChip
+                clearHref={buildMediaHref(params, {
+                  page: undefined,
+                  person: undefined,
+                })}
+                name={personFilterName}
+              />
+            </Box>
+          ) : null}
         </CardContent>
       </Card>
+
+      {showPeople ? (
+        <LibraryPeopleStrip
+          matches={peopleMatches}
+          personHref={Object.fromEntries(
+            peopleMatches.people.map((person) => [
+              person.id,
+              buildMediaHref(params, {
+                page: undefined,
+                person: person.id,
+                title: undefined,
+                type: ALL_MEDIA_TYPES,
+              }),
+            ]),
+          )}
+        />
+      ) : null}
 
       <Card sx={{ overflow: "hidden" }} variant="outlined">
         {items.length === 0 ? (
@@ -660,6 +740,7 @@ function buildMediaHref(
   overrides: Partial<
     Record<
       | "title"
+      | "person"
       | "genre"
       | "tag"
       | "type"
@@ -677,6 +758,7 @@ function buildMediaHref(
 
   for (const key of [
     "title",
+    "person",
     "genre",
     "tag",
     "type",
@@ -700,6 +782,7 @@ function mediaHrefParam(
   params: Record<string, string | string[] | undefined>,
   key:
     | "title"
+    | "person"
     | "genre"
     | "tag"
     | "type"

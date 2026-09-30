@@ -118,3 +118,18 @@ export function availableStatuses(mediaType?: MediaType | null): MediaStatus[] {
   if (!mediaType) return ALL_STATUSES;
   return STATUSES_BY_TYPE[mediaType] ?? ALL_STATUSES;
 }
+
+/** Types you play rather than watch. */
+function isPlayed(mediaType?: MediaType | null) {
+  return mediaType === "VIDEO_GAME" || mediaType === "BOARD_GAME";
+}
+
+/** The word for counts of titles you've experienced: "4 seen", "4 played". */
+export function experiencedWord(mediaType?: MediaType | null): string {
+  return isPlayed(mediaType) ? "played" : "seen";
+}
+
+/** Its opposite: "2 unseen", "2 unplayed". */
+export function unexperiencedWord(mediaType?: MediaType | null): string {
+  return isPlayed(mediaType) ? "unplayed" : "unseen";
+}

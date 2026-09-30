@@ -15,6 +15,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import MovieIcon from "@mui/icons-material/Movie";
 import PeopleIcon from "@mui/icons-material/People";
+import RecentActorsIcon from "@mui/icons-material/RecentActors";
 import PersonIcon from "@mui/icons-material/Person";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import SearchIcon from "@mui/icons-material/Search";
@@ -87,6 +88,13 @@ const navItems: NavItem[] = [
     href: "/discover",
     icon: <FavoriteIcon />,
     description: "Explore essentials, gateways, and hidden gems by genre.",
+    visibility: "public",
+  },
+  {
+    label: "People",
+    href: "/people",
+    icon: <RecentActorsIcon />,
+    description: "Directors, cast and studios, and how you rate their work.",
     visibility: "public",
   },
   {
@@ -274,9 +282,9 @@ export function AppShell({
             <SearchIcon sx={{ fontSize: 18 }} />
             <input name="type" type="hidden" value="ALL" />
             <InputBase
-              inputProps={{ "aria-label": "Search media library" }}
+              inputProps={{ "aria-label": "Search titles and people" }}
               name="title"
-              placeholder="Search"
+              placeholder="Search titles or people"
               sx={{
                 color: "text.primary",
                 flex: 1,

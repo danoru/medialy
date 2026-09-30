@@ -228,10 +228,12 @@ export const getUserMediaMap = cache(
         comparisonCount: true,
         isFavorite: true,
         isArchived: true,
+        completedAt: true,
+        completedAtUnsure: true,
       },
     });
     return new Map(
-      rows.map(({ mediaId, ...fields }) => [mediaId, fields as UserMediaFields]),
+      rows.map(({ mediaId, ...fields }) => [mediaId, fields]),
     );
   },
 );

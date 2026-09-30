@@ -305,35 +305,43 @@ function tmdbCredits(
   endpoint: TmdbEndpoint,
 ): CreditInput[] {
   const credits = recordValue(record.credits);
-  const cast = arrayValue(credits.cast)
-    .slice(0, 8)
-    .map((entry) => stringValue(recordValue(entry).name))
-    .filter(isPresent);
+  // Names with their TMDB person ids, so the credit records who it is and not
+  // only what they're called.
+  const people = (entries: unknown[]) =>
+    entries
+      .map((entry) => {
+        const person = recordValue(entry);
+        const name = stringValue(person.name);
+        const id = person.id;
+        return name
+          ? { name, id: typeof id === "number" || typeof id === "string" ? String(id) : null }
+          : null;
+      })
+      .filter(isPresent);
+  const credit = (role: CreditInput["role"], list: Array<{ name: string; id: string | null }>) => ({
+    role,
+    kind: "PERSON" as const,
+    names: list.map((person) => person.name),
+    source: "tmdb",
+    sourceIds: list.map((person) => person.id),
+  });
 
   const out: CreditInput[] = [];
 
   // Movies credit a DIRECTOR; series credit a CREATOR (see CREDIT_ROLES_BY_
   // MEDIA_TYPE) — and TMDB exposes them through different fields.
   if (endpoint === "movie") {
-    const directors = arrayValue(credits.crew)
-      .filter((entry) => recordValue(entry).job === "Director")
-      .map((entry) => stringValue(recordValue(entry).name))
-      .filter(isPresent);
-    if (directors.length > 0) {
-      out.push({ role: "DIRECTOR", kind: "PERSON", names: directors });
-    }
+    const directors = people(
+      arrayValue(credits.crew).filter((entry) => recordValue(entry).job === "Director"),
+    );
+    if (directors.length > 0) out.push(credit("DIRECTOR", directors));
   } else {
-    const creators = arrayValue(record.created_by)
-      .map((entry) => stringValue(recordValue(entry).name))
-      .filter(isPresent);
-    if (creators.length > 0) {
-      out.push({ role: "CREATOR", kind: "PERSON", names: creators });
-    }
+    const creators = people(arrayValue(record.created_by));
+    if (creators.length > 0) out.push(credit("CREATOR", creators));
   }
 
-  if (cast.length > 0) {
-    out.push({ role: "ACTOR", kind: "PERSON", names: cast });
-  }
+  const cast = people(arrayValue(credits.cast).slice(0, 8));
+  if (cast.length > 0) out.push(credit("ACTOR", cast));
   return out;
 }
 

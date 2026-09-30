@@ -17,7 +17,7 @@ import TvRoundedIcon from "@mui/icons-material/TvRounded";
 import type { CreditRole, MediaStatus, MediaType } from "@prisma/client";
 import Image from "next/image";
 import Link from "next/link";
-import type { ReactElement, ReactNode } from "react";
+import { Fragment, type ReactElement, type ReactNode } from "react";
 import {
   Box,
   Button,
@@ -47,7 +47,12 @@ import { ActionToastButton } from "@/components/shared/Toasts";
 import { FriendMediaActivity } from "@/components/social/FriendMediaActivity";
 import { StarRating } from "@/components/media/StarRating";
 import { Sparkline } from "@/components/shared/Sparkline";
-import { CREDIT_ROLES_BY_MEDIA_TYPE, creditLabel } from "@/lib/credits";
+import {
+  CREDIT_ROLES_BY_MEDIA_TYPE,
+  creditLabel,
+  creditRoleNoun,
+} from "@/lib/credits";
+import type { CreditStat } from "@/lib/db/people";
 import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
 import { formatMediaType, mediaTypeNoun } from "@/lib/format";
 import { calendarIsoDate, formatCalendarDate } from "@/lib/date-labels";
@@ -60,7 +65,11 @@ import type {
   RelationView,
   ReleaseEventView,
 } from "@/components/media/MediaConnectionsPanel";
-import { availableStatuses, statusLabel } from "@/lib/status-labels";
+import {
+  availableStatuses,
+  experiencedWord,
+  statusLabel,
+} from "@/lib/status-labels";
 import { useRef, useState, useTransition } from "react";
 import type { UserMediaFields } from "@/lib/db/user-media";
 import type { FriendMediaEntry } from "@/lib/social/visibility";
@@ -74,7 +83,7 @@ import type { WatchAvailability } from "@/lib/tmdb";
  * fetching and passes a plain JSON-serializable `item` down.
  */
 
-type ContributorLite = { name: string };
+type ContributorLite = { id: string; name: string };
 type CreditLite = {
   role: CreditRole;
   order: number;
@@ -134,6 +143,7 @@ export type MediaDetailViewItem = UserMediaFields & {
 };
 
 export function MediaDetailView({
+  creditStats = {},
   friendActivity,
   item,
   pendingSuggestionCount = 0,
@@ -141,6 +151,8 @@ export function MediaDetailView({
   releaseEvents,
   userId,
 }: {
+  /** Your record with each credited person, keyed by contributor id. */
+  creditStats?: Record<string, CreditStat>;
   friendActivity: FriendMediaEntry[];
   item: MediaDetailViewItem;
   /** Unresolved edit suggestions for this item. Admin-only; 0 for everyone else. */
@@ -207,10 +219,10 @@ export function MediaDetailView({
     : null;
   const creditsByRole = CREDIT_ROLES_BY_MEDIA_TYPE[item.mediaType]
     .map((role) => ({
-      names: namesForRole(item.credits, role),
+      people: peopleForRole(item.credits, role),
       role,
     }))
-    .filter((entry) => entry.names.length > 0);
+    .filter((entry) => entry.people.length > 0);
   const primaryCredit = creditsByRole.find((entry) => entry.role !== "ACTOR");
   const missingFields = [
     item.description ? null : "description",
@@ -311,7 +323,18 @@ export function MediaDetailView({
                     component="span"
                     sx={{ color: "text.primary", fontWeight: 600 }}
                   >
-                    {primaryCredit.names.join(", ")}
+                    {primaryCredit.people.map((person, index) => (
+                      <Fragment key={person.id}>
+                        {index > 0 ? ", " : null}
+                        <Box
+                          component={Link}
+                          href={`/people/${person.id}`}
+                          sx={personLinkSx}
+                        >
+                          {person.name}
+                        </Box>
+                      </Fragment>
+                    ))}
                   </Box>
                 </Typography>
               ) : null}
@@ -773,28 +796,53 @@ export function MediaDetailView({
             <Box sx={creditsGridSx}>
               {creditsByRole
                 .flatMap((entry) =>
-                  entry.names.map((name) => ({
-                    name,
-                    role: creditLabel(item.mediaType, entry.role),
+                  entry.people.map((person) => ({
+                    ...person,
+                    role: creditRoleNoun(entry.role),
                   })),
                 )
-                .map((credit, index) => (
-                  <Box key={`${credit.name}-${index}`} sx={creditCardSx}>
-                    <Box sx={creditAvatarSx}>
-                      {credit.name
-                        .split(" ")
-                        .map((word) => word[0])
-                        .filter(Boolean)
-                        .slice(0, 2)
-                        .join("")
-                        .toUpperCase()}
+                .map((credit) => {
+                  const stat = creditStats[credit.id];
+                  // Only worth saying once they have other work here.
+                  const record =
+                    stat && stat.titles > 1
+                      ? [
+                          stat.average != null
+                            ? `${stat.average.toFixed(1)} avg`
+                            : null,
+                          `${stat.seen} of ${stat.titles} ${experiencedWord(item.mediaType)}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")
+                      : null;
+                  return (
+                    <Box
+                      component={Link}
+                      href={`/people/${credit.id}`}
+                      key={`${credit.id}-${credit.role}`}
+                      sx={creditCardSx}
+                    >
+                      <Box sx={creditAvatarSx}>
+                        {credit.name
+                          .split(" ")
+                          .map((word) => word[0])
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .join("")
+                          .toUpperCase()}
+                      </Box>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography className="credit-name" sx={creditNameSx}>
+                          {credit.name}
+                        </Typography>
+                        <Typography sx={creditRoleSx}>
+                          {credit.role}
+                          {record ? ` · ${record}` : null}
+                        </Typography>
+                      </Box>
                     </Box>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={creditNameSx}>{credit.name}</Typography>
-                      <Typography sx={creditRoleSx}>{credit.role}</Typography>
-                    </Box>
-                  </Box>
-                ))}
+                  );
+                })}
             </Box>
           </Box>
         ) : null}
@@ -1453,10 +1501,10 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
-function namesForRole(
+function peopleForRole(
   credits: Array<{
     role: CreditRole;
-    contributor: { name: string };
+    contributor: ContributorLite;
     order: number;
   }>,
   role: CreditRole,
@@ -1464,7 +1512,7 @@ function namesForRole(
   return credits
     .filter((credit) => credit.role === role)
     .sort((first, second) => first.order - second.order)
-    .map((credit) => credit.contributor.name);
+    .map((credit) => ({ id: credit.contributor.id, name: credit.contributor.name }));
 }
 
 function formatExternalRating(score: number, scale: number) {
@@ -1978,9 +2026,26 @@ const creditCardSx: SxProps<Theme> = {
   border: "1px solid",
   borderColor: "border.subtle",
   borderRadius: 2,
+  color: "inherit",
   display: "flex",
   gap: 1.5,
+  minWidth: 0,
   p: 1.5,
+  textDecoration: "none",
+  transition: "border-color 160ms ease, background-color 160ms ease",
+  "&:hover": {
+    bgcolor: "surface.2",
+    borderColor: "border.strong",
+    "& .credit-name": { color: "primary.main" },
+  },
+};
+
+/** A credited name in the hero line: reads as text, turns peach on hover. */
+const personLinkSx: SxProps<Theme> = {
+  color: "text.primary",
+  fontWeight: 600,
+  textDecoration: "none",
+  "&:hover": { color: "primary.main" },
 };
 
 const creditAvatarSx: SxProps<Theme> = {
@@ -2008,8 +2073,10 @@ const creditNameSx: SxProps<Theme> = {
 const creditRoleSx: SxProps<Theme> = {
   color: "text.secondary",
   fontSize: "0.875rem",
-  letterSpacing: "0.05em",
   mt: 0.25,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const textareaSx: SxProps<Theme> = {

@@ -2,7 +2,12 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { MediaStatus, type MediaType, Prisma } from "@prisma/client";
+import { type CreditRole, MediaStatus, type MediaType, Prisma } from "@prisma/client";
+import { creditKindForRole } from "@/lib/credits";
+import {
+  searchCatalogPeople,
+  type ContributorSuggestion,
+} from "@/lib/db/people";
 import {
   clearComparisonsForMedia,
   findExistingMediaItem,
@@ -513,4 +518,16 @@ export async function searchMediaItemsForRelation(
     orderBy: { title: "asc" },
     take: 10,
   });
+}
+
+/**
+ * Name suggestions for a credit field ("Directed by", "Developed by"…), from
+ * the cached catalog. The role decides whether people or companies are offered.
+ */
+export async function searchCreditNames(
+  role: CreditRole,
+  query: string,
+): Promise<ContributorSuggestion[]> {
+  await requireUserId();
+  return searchCatalogPeople(query, creditKindForRole(role));
 }

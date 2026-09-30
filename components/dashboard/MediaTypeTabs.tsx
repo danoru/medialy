@@ -17,9 +17,12 @@ export const SWITCHER_MEDIA_TYPES: MediaType[] = [
 
 export function MediaTypeTabs({
   onChange,
+  types = SWITCHER_MEDIA_TYPES,
   value,
 }: {
   onChange: (value: MediaType) => void;
+  /** Limit the switcher to the types a page has content for. */
+  types?: readonly MediaType[];
   value: MediaType;
 }) {
   return (
@@ -59,7 +62,7 @@ export function MediaTypeTabs({
       }}
       value={value}
     >
-      {SWITCHER_MEDIA_TYPES.map((mediaType) => {
+      {types.map((mediaType) => {
         const accent = mediaAccent(mediaType);
         return (
           <ToggleButton

@@ -14,17 +14,24 @@ import {
   MediaTypeTabs,
   SWITCHER_MEDIA_TYPES,
 } from "@/components/dashboard/MediaTypeTabs";
+import { MediaThumb, MediaTitleLink } from "@/components/media/MediaThumb";
 import { PosterTile } from "@/components/media/PosterCard";
 import { RankedPosterTile } from "@/components/media/RankedPosterTile";
-import { ScoreBadge } from "@/components/media/ScoreDisplay";
+import {
+  BackdropMarquee,
+  MARQUEE_MUTED,
+  MarqueeFeature,
+  MarqueeTitle,
+} from "@/components/shared/BackdropMarquee";
+import {
+  EmptyHint,
+  StatCount,
+  StatCountDivider,
+} from "@/components/shared/StatCount";
 import { UserAvatar } from "@/components/social/UserAvatar";
 import { releaseYearLabel } from "@/lib/date-labels";
 import { formatMediaType } from "@/lib/format";
-import {
-  mediaAccent,
-  posterFallback,
-  shortMediaTypeLabel,
-} from "@/lib/media-ui-helpers";
+import { mediaAccent, shortMediaTypeLabel } from "@/lib/media-ui-helpers";
 import { relativeLabel, type ProfileActivity, type ProfileTile } from "@/lib/profile";
 import { statusLabel } from "@/lib/status-labels";
 import type { ProfileData, ProfileTypeSection } from "@/lib/db/profile";
@@ -272,10 +279,10 @@ export function ProfileClient({ data }: { data: ProfileData }) {
                     py: 1,
                   }}
                 >
-                  <Thumb item={note.media} />
+                  <MediaThumb item={note.media} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography sx={{ fontSize: "0.875rem", lineHeight: 1.4 }}>
-                      <MediaLink item={note.media} />{" "}
+                      <MediaTitleLink item={note.media} />{" "}
                       <Box component="span" sx={{ color: "text.secondary" }}>
                         · {relativeLabel(note.updatedAt)}
                       </Box>
@@ -306,10 +313,8 @@ export function ProfileClient({ data }: { data: ProfileData }) {
 }
 
 /**
- * The backdrop marquee. The top-ranked title's poster is painted twice: zoomed
- * and blurred behind everything as a colour wash, and sharp at its real 2:3
- * shape on the right — so a portrait poster never gets stretched into a
- * banner. This is the page's one featured glow.
+ * The profile's marquee: the top-ranked title's poster is the backdrop, the
+ * viewer's identity and counts sit on the left.
  */
 function Marquee({
   accent,
@@ -328,141 +333,57 @@ function Marquee({
   // "Watched" for film and TV, "Played" for games — the same verb the status
   // picker uses for this type.
   const completedLabel = statusLabel("COMPLETED", mediaType);
-  const wash = hero?.media.posterUrl
-    ? `url(${hero.media.posterUrl})`
-    : posterFallback(mediaType);
   return (
-    <Box
-      sx={{
-        bgcolor: "background.paper",
-        border: "1px solid",
-        borderColor: "border.default",
-        borderRadius: `${12}px`,
-        boxShadow: `0 24px 60px rgba(0, 0, 0, 0.45), 0 0 48px -12px ${alpha(accent, 0.45)}, 0 1px 0 ${alpha("#FFFFFF", 0.04)} inset`,
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
-      {/*
-        The poster painted twice: soft and zoomed here as the backdrop, sharp
-        at its real 2:3 shape on the right. The blur is light enough that the
-        art still reads as art, and the overlay only darkens where text sits.
-      */}
-      <Box
-        aria-hidden
-        sx={{
-          backgroundImage: wash,
-          backgroundPosition: "center 25%",
-          backgroundSize: "cover",
-          filter: "blur(18px) saturate(1.25)",
-          inset: -40,
-          position: "absolute",
-          transform: "scale(1.12)",
-        }}
-      />
-      <Box
-        aria-hidden
-        sx={{
-          background:
-            "linear-gradient(90deg, rgba(10,8,16,0.9) 0%, rgba(10,8,16,0.72) 40%, rgba(10,8,16,0.28) 72%, rgba(10,8,16,0.12) 100%), linear-gradient(180deg, rgba(10,8,16,0.05) 0%, rgba(10,8,16,0.45) 100%)",
-          inset: 0,
-          position: "absolute",
-        }}
-      />
-      <Stack
-        direction={{ xs: "column", md: "row" }}
-        sx={{
-          alignItems: { md: "flex-end" },
-          gap: 3,
-          justifyContent: "space-between",
-          minHeight: { md: 320 },
-          p: { xs: 2, md: 3.5 },
-          position: "relative",
-        }}
-      >
-        <Stack direction="row" sx={{ alignItems: "flex-end", gap: 2.5, minWidth: 0 }}>
-          <UserAvatar
-            avatarColor={user.avatarColor}
-            displayName={user.displayName}
-            image={user.image}
-            size={72}
+    <BackdropMarquee
+      accent={accent}
+      aside={
+        hero ? (
+          <MarqueeFeature
+            accent={accent}
+            eyebrow={`Your №1 ${shortMediaTypeLabel(mediaType).replace(/s$/, "").toLowerCase()}`}
+            item={hero.media}
+            meta={yearMeta(hero.media)}
+            score={hero.score}
           />
-          <Box sx={{ minWidth: 0 }}>
-            <Typography
-              component="h1"
-              sx={{
-                fontFamily: (theme) => theme.typography.h2.fontFamily,
-                fontSize: { xs: "2rem", md: "2.75rem" },
-                fontWeight: 700,
-                letterSpacing: "-0.035em",
-                lineHeight: 1.02,
-              }}
-            >
-              {user.displayName}
-            </Typography>
-            <Typography
-              sx={{ color: alpha("#F4EEFA", 0.72), fontSize: "0.875rem", mt: 0.75 }}
-            >
-              On Medialy since {user.memberSince} ·{" "}
-              <FriendsLink>{friends.followingCount} following</FriendsLink> ·{" "}
-              <FriendsLink>{friends.followersCount} followers</FriendsLink>
-            </Typography>
-            <Stack
-              direction="row"
-              sx={{ alignItems: "center", flexWrap: "wrap", gap: 3, mt: 2.5 }}
-            >
-              <Count label={completedLabel} value={counts.completed} />
-              <CountDivider />
-              <Count label="This year" value={counts.thisYear} />
-              <CountDivider />
-              <Count label="Rated" value={counts.rated} />
-              <CountDivider />
-              <Count label="Ranked" value={counts.ranked} />
-            </Stack>
-          </Box>
-        </Stack>
-
-        {hero ? (
-          <Stack
-            direction="row"
-            sx={{ alignItems: "flex-end", flexShrink: 0, gap: 2 }}
-          >
-            <Box sx={{ pb: 0.75, textAlign: "right" }}>
-              <Typography variant="eyebrow" sx={{ color: accent, display: "block" }}>
-                Your №1 {shortMediaTypeLabel(mediaType).replace(/s$/, "").toLowerCase()}
-              </Typography>
-              <Typography
-                sx={{
-                  fontFamily: (theme) => theme.typography.h5.fontFamily,
-                  fontSize: "1.125rem",
-                  fontWeight: 650,
-                  letterSpacing: "-0.02em",
-                  mt: 0.5,
-                }}
-              >
-                {hero.media.title}
-              </Typography>
-            </Box>
-            <Box sx={{ boxShadow: "0 16px 40px rgba(0, 0, 0, 0.55)", width: 148 }}>
-              <PosterTile
-                item={hero.media}
-                meta={yearMeta(hero.media)}
-                scoreBadge={
-                  hero.score != null ? <ScoreBadge score={hero.score} /> : undefined
-                }
-              />
-            </Box>
-          </Stack>
         ) : (
-          <Typography
-            sx={{ color: alpha("#F4EEFA", 0.72), fontSize: "0.875rem", maxWidth: 260 }}
-          >
+          <Typography sx={{ color: MARQUEE_MUTED, fontSize: "0.875rem", maxWidth: 260 }}>
             Rate a few {formatMediaType(mediaType).toLowerCase()} titles and
             your №1 takes over this banner.
           </Typography>
-        )}
+        )
+      }
+      mediaType={mediaType}
+      posterUrl={hero?.media.posterUrl}
+    >
+      <Stack direction="row" sx={{ alignItems: "flex-end", gap: 2.5, minWidth: 0 }}>
+        <UserAvatar
+          avatarColor={user.avatarColor}
+          displayName={user.displayName}
+          image={user.image}
+          size={72}
+        />
+        <Box sx={{ minWidth: 0 }}>
+          <MarqueeTitle>{user.displayName}</MarqueeTitle>
+          <Typography sx={{ color: MARQUEE_MUTED, fontSize: "0.875rem", mt: 0.75 }}>
+            On Medialy since {user.memberSince} ·{" "}
+            <FriendsLink>{friends.followingCount} following</FriendsLink> ·{" "}
+            <FriendsLink>{friends.followersCount} followers</FriendsLink>
+          </Typography>
+          <Stack
+            direction="row"
+            sx={{ alignItems: "center", flexWrap: "wrap", gap: 3, mt: 2.5 }}
+          >
+            <StatCount label={completedLabel} value={counts.completed} />
+            <StatCountDivider />
+            <StatCount label="This year" value={counts.thisYear} />
+            <StatCountDivider />
+            <StatCount label="Rated" value={counts.rated} />
+            <StatCountDivider />
+            <StatCount label="Ranked" value={counts.ranked} />
+          </Stack>
+        </Box>
       </Stack>
-    </Box>
+    </BackdropMarquee>
   );
 }
 
@@ -483,84 +404,9 @@ function FriendsLink({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Count({ label, value }: { label: string; value: number }) {
-  return (
-    <Box>
-      <Typography
-        sx={{
-          fontFamily: NUMBER_FONT,
-          fontSize: "1.5rem",
-          fontWeight: 700,
-          letterSpacing: "-0.035em",
-          lineHeight: 1,
-        }}
-      >
-        {value.toLocaleString()}
-      </Typography>
-      <Typography variant="eyebrow" sx={{ display: "block", mt: 0.5 }}>
-        {label}
-      </Typography>
-    </Box>
-  );
-}
-
-function CountDivider() {
-  return (
-    <Box
-      sx={{
-        bgcolor: alpha("#FFFFFF", 0.16),
-        display: { xs: "none", sm: "block" },
-        height: 30,
-        width: "1px",
-      }}
-    />
-  );
-}
-
 function yearMeta(item: ProfileTile): string[] | undefined {
   const year = releaseYearLabel(item.releaseDate);
   return year ? [year] : undefined;
-}
-
-function Thumb({ item }: { item: ProfileTile }) {
-  return (
-    <Box
-      component={Link}
-      href={`/media/${item.id}`}
-      sx={{
-        backgroundImage: item.posterUrl
-          ? `url(${item.posterUrl})`
-          : posterFallback(item.mediaType),
-        backgroundPosition: "center",
-        backgroundSize: "cover",
-        border: "1px solid",
-        borderColor: "border.subtle",
-        borderLeft: `2px solid ${mediaAccent(item.mediaType)}`,
-        borderRadius: "6px",
-        display: "block",
-        flexShrink: 0,
-        height: 54,
-        width: 36,
-      }}
-    />
-  );
-}
-
-function MediaLink({ item }: { item: ProfileTile }) {
-  return (
-    <Box
-      component={Link}
-      href={`/media/${item.id}`}
-      sx={{
-        color: "inherit",
-        fontWeight: 600,
-        textDecoration: "none",
-        "&:hover": { color: "primary.main" },
-      }}
-    >
-      {item.title}
-    </Box>
-  );
 }
 
 function ActivityRow({
@@ -582,22 +428,22 @@ function ActivityRow({
         py: 0.875,
       }}
     >
-      <Thumb item={thumb} />
+      <MediaThumb item={thumb} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography sx={{ fontSize: "0.875rem", lineHeight: 1.4 }}>
           {event.kind === "rated" ? (
             <>
-              Rated <MediaLink item={event.media} /> ·{" "}
+              Rated <MediaTitleLink item={event.media} /> ·{" "}
               <strong>{event.rating.toFixed(1)}</strong>
             </>
           ) : event.kind === "completed" ? (
             <>
-              Finished <MediaLink item={event.media} />
+              Finished <MediaTitleLink item={event.media} />
             </>
           ) : (
             <>
-              Ranked <MediaLink item={event.winner} /> above{" "}
-              <MediaLink item={event.loser} />
+              Ranked <MediaTitleLink item={event.winner} /> above{" "}
+              <MediaTitleLink item={event.loser} />
             </>
           )}
         </Typography>
@@ -910,25 +756,5 @@ function FriendsPanel({ friends }: { friends: ProfileData["friends"] }) {
         </Typography>
       </Stack>
     </Stack>
-  );
-}
-
-function EmptyHint({ text }: { text: string }) {
-  return (
-    <Box
-      sx={{
-        alignItems: "center",
-        color: "text.secondary",
-        display: "flex",
-        flex: 1,
-        fontSize: "0.875rem",
-        justifyContent: "center",
-        minHeight: 120,
-        px: 2,
-        textAlign: "center",
-      }}
-    >
-      {text}
-    </Box>
   );
 }

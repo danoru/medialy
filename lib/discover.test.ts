@@ -9,6 +9,7 @@ import {
   itemSimilarity,
   pickHiddenGems,
   pickSeeds,
+  sharedFacet,
   scoreDiscoverItems,
   viewerMeanScore,
   type DiscoverItem,
@@ -311,5 +312,42 @@ describe("discover worlds", () => {
     }
     const worlds = buildWorlds(score(specs), "MOVIE");
     expect(worlds.map((world) => world.name)).toEqual(["Drama", "Musical", "Comedy"]);
+  });
+});
+
+describe("sharedFacet phrasing", () => {
+  const make = (
+    genres: string[],
+    credits: Array<{ role: string; id: string; name: string }> = [],
+  ) =>
+    ({
+      id: "x",
+      genres: genres.map((name) => ({ genre: { name } })),
+      tags: [],
+      credits: credits.map((c) => ({
+        role: c.role,
+        contributor: { id: c.id, name: c.name },
+      })),
+      releaseDate: null,
+    }) as unknown as DiscoverItem;
+
+  it("phrases a shared director as 'by <name>'", () => {
+    const a = make(["Drama"], [{ role: "DIRECTOR", id: "d1", name: "Tony Scott" }]);
+    const b = make(["Horror"], [{ role: "DIRECTOR", id: "d1", name: "Tony Scott" }]);
+    expect(sharedFacet(a, b)).toBe("by Tony Scott");
+  });
+
+  it("phrases shared actors as 'with <name>'", () => {
+    const a = make(["Drama"], [{ role: "ACTOR", id: "a1", name: "Denzel Washington" }]);
+    const b = make(["Horror"], [{ role: "ACTOR", id: "a1", name: "Denzel Washington" }]);
+    expect(sharedFacet(a, b)).toBe("with Denzel Washington");
+  });
+
+  it("uses the bare label for a shared genre", () => {
+    expect(sharedFacet(make(["Thriller"]), make(["Thriller"]))).toBe("Thriller");
+  });
+
+  it("returns null when nothing is shared", () => {
+    expect(sharedFacet(make(["Drama"]), make(["Horror"]))).toBeNull();
   });
 });

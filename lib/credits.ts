@@ -14,6 +14,11 @@ export type CreditInput = {
   kind: ContributorKind;
   names: string[];
   source?: string;
+  /**
+   * The provider's id for each name, aligned with `names` (TMDB person ids).
+   * Recorded on the credit so people who share a name can be told apart later.
+   */
+  sourceIds?: Array<string | null>;
 };
 
 export type CreditDTO = {
@@ -63,6 +68,24 @@ export function creditLabel(mediaType: MediaType, role: CreditRole) {
     .join(" ");
 }
 
+/** The role as a noun for a person ("Director", "Actor"). */
+export function creditRoleNoun(role: CreditRole): string {
+  switch (role) {
+    case "DIRECTOR":
+      return "Director";
+    case "CREATOR":
+      return "Creator";
+    case "DEVELOPER":
+      return "Developer";
+    case "PUBLISHER":
+      return "Publisher";
+    case "ACTOR":
+      return "Actor";
+    default:
+      return creditLabel("MOVIE", role);
+  }
+}
+
 export function creditFieldName(role: CreditRole) {
   if (role === "DIRECTOR") return "directorCredits";
   if (role === "CREATOR") return "creatorCredits";
@@ -82,11 +105,29 @@ export async function replaceMediaCredits(
   credits: CreditInput[],
 ) {
   const roles = credits.map((credit) => credit.role);
+  // Credits are replaced wholesale, but a provider id recorded earlier must
+  // survive an edit that only resubmits names (the edit form, an approved
+  // suggestion). Remember what each (role, person) carried before the delete.
+  const previous = new Map(
+    (
+      await client.mediaCredit.findMany({
+        where: { mediaId, role: { in: roles } },
+        select: { contributorId: true, role: true, source: true, sourceId: true },
+      })
+    ).map((row) => [`${row.role}:${row.contributorId}`, row]),
+  );
   await client.mediaCredit.deleteMany({
     where: { mediaId, role: { in: roles } },
   });
 
   for (const credit of credits) {
+    // Keyed by name, not position: de-duplicating names below shifts indexes.
+    const idsByName = new Map<string, string>();
+    credit.names.forEach((name, index) => {
+      const id = credit.sourceIds?.[index];
+      const key = contributorKey(normalizeContributorName(name));
+      if (id && key && !idsByName.has(key)) idsByName.set(key, id);
+    });
     const uniqueNames = [
       ...new Map(
         credit.names
@@ -112,13 +153,16 @@ export async function replaceMediaCredits(
         },
       });
 
+      const before = previous.get(`${credit.role}:${contributor.id}`);
+      const sourceId = idsByName.get(contributorKey(name));
       await client.mediaCredit.create({
         data: {
           mediaId,
           contributorId: contributor.id,
           role: credit.role,
           order: index,
-          source: credit.source,
+          source: sourceId ? credit.source : (credit.source ?? before?.source),
+          sourceId: sourceId ?? before?.sourceId ?? null,
         },
       });
     }

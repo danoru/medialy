@@ -7,6 +7,7 @@ import { mergeUserMedia, userMediaInclude } from "@/lib/db/user-media";
 import { calculateCommunityAverage } from "@/lib/scoring/communityAverage";
 import { calculateConsensusScore } from "@/lib/scoring/consensus";
 import { getMediaItemMatch } from "@/lib/scoring/itemMatch";
+import { getCreditStats, type CreditStat } from "@/lib/db/people";
 import {
   getFriendMediaActivity,
   type FriendMediaEntry,
@@ -120,6 +121,7 @@ export default async function MediaDetailPage({
     otherUserMedia,
     matchSummary,
     friendActivity,
+    creditStats,
   ] = await Promise.all([
     Promise.all([
       prisma.mediaRelation.findMany({
@@ -151,6 +153,15 @@ export default async function MediaDetailPage({
     userId
       ? getFriendMediaActivity(userId, rawItem.id)
       : Promise.resolve<FriendMediaEntry[]>([]),
+    // Your record with each credited person, for the credit tiles: the cached
+    // catalog plus only your rows for those people's titles.
+    userId
+      ? getCreditStats(
+          userId,
+          rawItem.credits.map((credit) => credit.contributor.id),
+          rawItem.mediaType,
+        )
+      : Promise.resolve<Record<string, CreditStat>>({}),
   ]);
   const relations: RelationView[] = [
     ...relationsFrom.map((relation) => ({
@@ -236,6 +247,7 @@ export default async function MediaDetailPage({
 
   return (
     <MediaDetailView
+      creditStats={creditStats}
       friendActivity={friendActivity}
       item={item}
       pendingSuggestionCount={pendingSuggestionCount}

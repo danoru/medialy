@@ -17,6 +17,7 @@ import {
 import { useActionState, useMemo, useState } from "react";
 import { type MediaType, type TagStatus } from "@prisma/client";
 import type { MediaItemDTO } from "@/lib/types";
+import { CreditNamesField } from "@/components/media/CreditNamesField";
 import {
   CREDIT_ROLES_BY_MEDIA_TYPE,
   creditFieldName,
@@ -210,14 +211,13 @@ export function MediaForm({
           </Grid>
           {CREDIT_ROLES_BY_MEDIA_TYPE[mediaType].map((role) => (
             <Grid key={role} size={{ xs: 12, md: 6 }}>
-              <TextField
-                defaultValue={creditsForRole(item?.credits ?? [], role).join(
-                  "; ",
-                )}
-                fullWidth
-                helperText="Separate multiple names with semicolons."
+              <CreditNamesField
+                defaultNames={creditsForRole(item?.credits ?? [], role)}
+                // Remount when the type changes so the role's names reset.
+                key={`${mediaType}-${role}`}
                 label={creditLabel(mediaType, role)}
                 name={creditFieldName(role)}
+                role={role}
               />
             </Grid>
           ))}

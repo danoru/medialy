@@ -3,6 +3,7 @@ import {
   buildFriendBaselines,
   buildFriendTrust,
   buildTasteProfiles,
+  contributorPhrase,
   friendKey,
   friendSignal,
   humanReason,
@@ -571,5 +572,26 @@ describe("v2 explaining title", () => {
     expect(similarity.because?.title).toBe("dud");
     expect(similarity.because?.direction).toBe("below");
     expect(humanReason(similarity)).toBe("Most like dud, which you rated 4/10");
+  });
+});
+
+describe("contributor phrasing", () => {
+  it("names the work by medium and role", () => {
+    expect(contributorPhrase("MOVIE", "DIRECTOR", "Tony Scott")).toBe("films directed by Tony Scott");
+    expect(contributorPhrase("TV_SHOW", "CREATOR", "X")).toBe("shows created by X");
+    expect(contributorPhrase("VIDEO_GAME", "DEVELOPER", "Capcom")).toBe("games developed by Capcom");
+    expect(contributorPhrase("VIDEO_GAME", "PUBLISHER", "X")).toBe("games published by X");
+    expect(contributorPhrase("BOOK", "DIRECTOR", "X")).toBe("titles directed by X");
+    expect(contributorPhrase("MOVIE", "WRITER", "X")).toBe("films by X");
+  });
+
+  it("uses the phrase in a contributor reason", () => {
+    expect(
+      humanReason({
+        signal: "contributor",
+        value: 70,
+        feature: { label: "films directed by Tony Scott", direction: "above" },
+      }),
+    ).toBe("You usually rate films directed by Tony Scott above your average");
   });
 });

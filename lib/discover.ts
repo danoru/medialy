@@ -60,7 +60,7 @@ export type DiscoverWorld = {
 export type DiscoverChain = {
   seed: DiscoverItem;
   next: DiscoverItem;
-  /** What the pair shares, for the "both are …" caption. */
+  /** What the pair shares, phrased to follow "both" in the caption. */
   sharedFacet: string | null;
 };
 
@@ -453,13 +453,21 @@ export function itemSimilarity(
   return facetSimilarity(seed, candidate, rarity).score;
 }
 
-/** The most specific thing two titles share, as the similarity module names it. */
+/**
+ * The most specific thing two titles share, phrased to follow "both": a genre
+ * or theme reads as itself ("both Neo-noir"), a person as who made it or is in
+ * it ("both by Tony Scott", "both with Denzel Washington").
+ */
 export function sharedFacet(
   seed: DiscoverItem,
   candidate: DiscoverItem,
   rarity: FeatureRarity = new Map(),
 ): string | null {
-  return facetSimilarity(seed, candidate, rarity).shared?.label ?? null;
+  const shared = facetSimilarity(seed, candidate, rarity).shared;
+  if (!shared) return null;
+  if (shared.facet === "director") return `by ${shared.label}`;
+  if (shared.facet === "actor") return `with ${shared.label}`;
+  return shared.label;
 }
 
 /**

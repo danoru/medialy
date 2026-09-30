@@ -243,7 +243,7 @@ export function buildTasteProfiles(
           add(
             profile.contributors,
             key,
-            `${credit.contributor.name} (${credit.role.toLowerCase()})`,
+            contributorPhrase(medium, credit.role, credit.contributor.name),
           );
       }
       profile.examples.push({
@@ -566,6 +566,28 @@ export type NameLookup = Map<string, string>;
 
 function formatTen(value: number) {
   return Number.isInteger(value) ? `${value}` : value.toFixed(1);
+}
+
+const WORK_NOUN: Record<string, string> = {
+  MOVIE: "films",
+  TV_SHOW: "shows",
+  VIDEO_GAME: "games",
+};
+const ROLE_PHRASE: Record<string, string> = {
+  DIRECTOR: "directed by",
+  CREATOR: "created by",
+  DEVELOPER: "developed by",
+  PUBLISHER: "published by",
+  ACTOR: "starring",
+};
+
+/**
+ * A contributor as the work a reader recognises: "films directed by Tony
+ * Scott", "games developed by Capcom". Contributor profiles are per medium, so
+ * the medium names the noun.
+ */
+export function contributorPhrase(mediaType: string, role: string, name: string) {
+  return `${WORK_NOUN[mediaType] ?? "titles"} ${ROLE_PHRASE[role] ?? "by"} ${name}`;
 }
 
 /**
