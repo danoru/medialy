@@ -6,10 +6,10 @@ import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
+  accordionClasses,
+  collapseClasses,
   Stack,
   Typography,
-  useMediaQuery,
-  useTheme,
 } from "@mui/material";
 
 /**
@@ -18,34 +18,28 @@ import {
  * On desktop they sit inline, as before. On a phone they used to stack
  * vertically and fill the entire first screen — the first actual movie was
  * below the fold — so there they collapse behind a "Filters" row instead.
+ *
+ * One tree serves both, switched by CSS at the breakpoint: from `md` up the
+ * "Filters" row is hidden and the panel is forced open. Choosing between two
+ * trees in JavaScript meant the server (which has no viewport) and the browser
+ * rendered different markup, a hydration mismatch on every desktop load.
  */
 export function LibraryFilters({ children }: { children: React.ReactNode }) {
-  const theme = useTheme();
-  // noSsr: evaluate on the client only. The server has no viewport, and
-  // guessing wrong here would mean a hydration mismatch on every load.
-  const isDesktop = useMediaQuery(theme.breakpoints.up("md"), { noSsr: true });
-
-  const fields = (
-    <Stack
-      component="form"
-      direction={{ xs: "column", md: "row" }}
-      spacing={2}
-      sx={{ flexWrap: "wrap", width: "100%" }}
-    >
-      {children}
-    </Stack>
-  );
-
-  if (isDesktop) return fields;
-
   return (
     <Accordion
       disableGutters
       elevation={0}
-      sx={{
+      sx={(theme) => ({
         backgroundColor: "transparent",
         "&::before": { display: "none" },
-      }}
+        [theme.breakpoints.up("md")]: {
+          [`& .${accordionClasses.heading}`]: { display: "none" },
+          [`& > .${collapseClasses.root}`]: {
+            height: "auto !important",
+            visibility: "visible !important",
+          },
+        },
+      })}
     >
       <AccordionSummary
         expandIcon={<ExpandMoreRoundedIcon />}
@@ -56,7 +50,16 @@ export function LibraryFilters({ children }: { children: React.ReactNode }) {
           <Typography sx={{ fontWeight: 600 }}>Filters</Typography>
         </Stack>
       </AccordionSummary>
-      <AccordionDetails sx={{ px: 0 }}>{fields}</AccordionDetails>
+      <AccordionDetails sx={{ p: 0, pb: { xs: 2, md: 0 } }}>
+        <Stack
+          component="form"
+          direction={{ xs: "column", md: "row" }}
+          spacing={2}
+          sx={{ flexWrap: "wrap", width: "100%" }}
+        >
+          {children}
+        </Stack>
+      </AccordionDetails>
     </Accordion>
   );
 }
