@@ -6,6 +6,7 @@ import {
   buildPeopleIndex,
   collaborators,
   isSeen,
+  personArt,
   personStats,
   personalScore,
   primaryMediaType,
@@ -495,5 +496,32 @@ describe("labels and helpers", () => {
     ]);
     expect(primaryMediaType(index.get("p")!)).toBe("MOVIE");
     expect(primaryMediaType({ id: "x", name: "x", kind: "PERSON", credits: [] })).toBeNull();
+  });
+});
+
+describe("personArt", () => {
+  const poster = (id: string, overrides: Partial<PeopleSourceRow> = {}) =>
+    makeRow(id, { posterUrl: `https://img/${id}.jpg`, ...overrides });
+
+  it("prefers your highest-rated title, then the best reviewed", () => {
+    const rows = [
+      poster("acclaimed", { computedConsensusScore: 9.5 }),
+      poster("yours", { personalRating: 8, computedPersonalScore: 8, computedConsensusScore: 6 }),
+    ];
+    expect(personArt(rows)?.title).toBe("yours");
+    expect(personArt([poster("a", { computedConsensusScore: 7 }), poster("b", { computedConsensusScore: 9 })])?.title).toBe("b");
+  });
+
+  it("skips excluded titles and titles without a poster", () => {
+    const rows = [
+      poster("inception", { personalRating: 9, computedPersonalScore: 9 }),
+      poster("tenet", { computedConsensusScore: 7 }),
+      makeRow("no-poster", { personalRating: 10, computedPersonalScore: 10 }),
+    ];
+    expect(personArt(rows, new Set(["inception"]))).toEqual({
+      posterUrl: "https://img/tenet.jpg",
+      title: "tenet",
+    });
+    expect(personArt([rows[0]], new Set(["inception"]))).toBeNull();
   });
 });

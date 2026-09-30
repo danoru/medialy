@@ -53,6 +53,7 @@ import {
   creditRoleNoun,
 } from "@/lib/credits";
 import type { CreditStat } from "@/lib/db/people";
+import { PersonAvatar } from "@/components/people/PersonParts";
 import { ACCENTS, mediaAccent } from "@/lib/media-ui-helpers";
 import { formatMediaType, mediaTypeNoun } from "@/lib/format";
 import { calendarIsoDate, formatCalendarDate } from "@/lib/date-labels";
@@ -805,7 +806,7 @@ export function MediaDetailView({
                   const stat = creditStats[credit.id];
                   // Only worth saying once they have other work here.
                   const record =
-                    stat && stat.titles > 1
+                    userId && stat && stat.titles > 1
                       ? [
                           stat.average != null
                             ? `${stat.average.toFixed(1)} avg`
@@ -822,15 +823,7 @@ export function MediaDetailView({
                       key={`${credit.id}-${credit.role}`}
                       sx={creditCardSx}
                     >
-                      <Box sx={creditAvatarSx}>
-                        {credit.name
-                          .split(" ")
-                          .map((word) => word[0])
-                          .filter(Boolean)
-                          .slice(0, 2)
-                          .join("")
-                          .toUpperCase()}
-                      </Box>
+                      <PersonAvatar art={stat?.art} name={credit.name} size={36} />
                       <Box sx={{ minWidth: 0 }}>
                         <Typography className="credit-name" sx={creditNameSx}>
                           {credit.name}
@@ -2046,20 +2039,6 @@ const personLinkSx: SxProps<Theme> = {
   fontWeight: 600,
   textDecoration: "none",
   "&:hover": { color: "primary.main" },
-};
-
-const creditAvatarSx: SxProps<Theme> = {
-  alignItems: "center",
-  bgcolor: (theme) => alpha(theme.palette.primary.main, 0.16),
-  borderRadius: "50%",
-  color: "primary.main",
-  display: "flex",
-  flexShrink: 0,
-  fontSize: "0.875rem",
-  fontWeight: 700,
-  height: 36,
-  justifyContent: "center",
-  width: 36,
 };
 
 const creditNameSx: SxProps<Theme> = {

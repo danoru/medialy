@@ -6,6 +6,7 @@ import type { CreditRole } from "@prisma/client";
 import { searchCreditNames } from "@/app/media/actions";
 import type { ContributorSuggestion } from "@/lib/db/people";
 import { normalizeSearchText } from "@/lib/text-normalization";
+import { PersonAvatar } from "@/components/people/PersonParts";
 
 /** Typing pause before asking for suggestions. */
 const SUGGEST_DELAY_MS = 200;
@@ -173,18 +174,22 @@ export function CreditNamesField({
                 component="li"
                 key={key}
                 {...rest}
-                sx={{ display: "block !important" }}
+                sx={{ alignItems: "center", display: "flex", gap: 1.25 }}
               >
-                <Typography sx={{ fontSize: "0.9375rem", fontWeight: 600 }}>
-                  {option.name}
-                </Typography>
-                <Typography
-                  color="text.secondary"
-                  sx={{ fontSize: "0.8125rem" }}
-                >
-                  {option.roles} · {option.titleCount}{" "}
-                  {option.titleCount === 1 ? "title" : "titles"}
-                </Typography>
+                <PersonAvatar art={option.art} name={option.name} size={32} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography sx={{ fontSize: "0.9375rem", fontWeight: 600 }}>
+                    {option.name}
+                  </Typography>
+                  <Typography
+                    color="text.secondary"
+                    sx={{ fontSize: "0.8125rem" }}
+                  >
+                    {option.roles} · {option.titleCount}{" "}
+                    {option.titleCount === 1 ? "title" : "titles"}
+                    {option.art ? ` · ${option.art.title}` : ""}
+                  </Typography>
+                </Box>
               </Box>
             );
           }}

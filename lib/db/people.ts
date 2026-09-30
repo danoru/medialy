@@ -1,6 +1,10 @@
 import { cache } from "react";
 import type { ContributorKind, MediaType } from "@prisma/client";
-import { getCatalogItems, getCatalogWithUser } from "@/lib/db/catalog";
+import {
+  getCatalogItems,
+  getCatalogWithUser,
+  type CatalogItem,
+} from "@/lib/db/catalog";
 import { prisma } from "@/lib/prisma";
 import { VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import {
@@ -18,7 +22,9 @@ import {
   topPeople,
   unfinishedBusiness,
   userMeans,
+  personArt,
   type PeopleIndex,
+  type PersonArt,
   type PersonCredit,
   type PersonEntry,
   type PeopleSourceRow,
@@ -57,6 +63,8 @@ export type PersonSummary = {
   types: Array<{ mediaType: MediaType; count: number }>;
   /** Titles to show beside the row — unseen ones in "Unfinished business". */
   tiles: PeopleTile[];
+  /** The poster standing in for the person (see `personArt`). */
+  art: PersonArt | null;
   /** A short qualifier: "from Heat", "3 together". */
   note: string | null;
 };
@@ -133,12 +141,15 @@ function summarize(
     roles,
     tiles = [],
     note = null,
+    exclude = [],
   }: {
     mediaType?: MediaType;
     mean?: number | null;
     roles?: PersonCredit["roles"];
     tiles?: PeopleTile[];
     note?: string | null;
+    /** Titles already beside the row, so the avatar doesn't repeat them. */
+    exclude?: string[];
   } = {},
 ): PersonSummary {
   const credits = entry.credits.filter(
@@ -176,6 +187,10 @@ function summarize(
     })),
     tiles,
     note,
+    art: personArt(
+      credits.map((credit) => credit.row),
+      new Set([...exclude, ...tiles.map((tile) => tile.id)]),
+    ),
   };
 }
 
@@ -240,7 +255,12 @@ function hubSection(
       }),
     ),
     recent: recentPeople(index, rows, mediaType).map(({ entry, from }) =>
-      summarize(entry, { mediaType, mean, note: `from ${from.title}` }),
+      summarize(entry, {
+        mediaType,
+        mean,
+        note: `from ${from.title}`,
+        exclude: [from.id],
+      }),
     ),
   };
 }
@@ -280,6 +300,7 @@ const getCatalogPeople = cache(async () => {
       roles: Set<PersonCredit["roles"][number]>;
       mediaIds: Set<string>;
       types: Map<MediaType, number>;
+      art: { posterUrl: string; title: string; score: number } | null;
     }
   >();
   for (const item of await getCatalogItems()) {
@@ -295,11 +316,19 @@ const getCatalogPeople = cache(async () => {
           roles: new Set(),
           mediaIds: new Set(),
           types: new Map(),
+          art: null as { posterUrl: string; title: string; score: number } | null,
         };
         people.set(contributor.id, person);
       }
       person.roles.add(role);
       person.mediaIds.add(item.id);
+      // No viewer here: the best-reviewed title with a poster pictures them.
+      if (item.posterUrl) {
+        const score = item.computedConsensusScore ?? -1;
+        if (!person.art || score > person.art.score) {
+          person.art = { posterUrl: item.posterUrl, title: item.title, score };
+        }
+      }
       if (!counted.has(contributor.id)) {
         counted.add(contributor.id);
         person.types.set(item.mediaType, (person.types.get(item.mediaType) ?? 0) + 1);
@@ -315,6 +344,7 @@ export type ContributorSuggestion = {
   /** "Director · Actor" */
   roles: string;
   titleCount: number;
+  art: PersonArt | null;
 };
 
 /**
@@ -345,6 +375,7 @@ export async function searchCatalogPeople(
       name: person.name,
       roles: rolesLabel(person.roles),
       titleCount: person.mediaIds.size,
+      art: person.art ? { posterUrl: person.art.posterUrl, title: person.art.title } : null,
     }));
 }
 
@@ -400,6 +431,7 @@ export async function getLibraryPeopleMatches(
       ),
       tiles: [],
       note: null,
+      art: person.art ? { posterUrl: person.art.posterUrl, title: person.art.title } : null,
     })),
     merged: merged.map(({ id, name }) => ({ id, name })),
     mergedMediaIds: [...new Set(merged.flatMap((person) => [...person.mediaIds]))],
@@ -466,6 +498,11 @@ export async function getPersonPageData(id: string): Promise<PersonPageData | nu
           mediaType,
           mean,
           note: `${shared} together`,
+          exclude: best
+            ? [best.credit.row.id]
+            : critics
+              ? [critics.row.id]
+              : [],
         }),
       ),
       credits: [...stats.credits].sort(byRelease).map((credit) => ({
@@ -492,66 +529,86 @@ export async function getPersonPageData(id: string): Promise<PersonPageData | nu
 }
 
 /** A credit's record with the viewer, for the caption on a detail-page tile. */
-export type CreditStat = { titles: number; seen: number; average: number | null };
+export type CreditStat = {
+  titles: number;
+  seen: number;
+  average: number | null;
+  /** Another of their titles to picture them by; never the page's own title. */
+  art: PersonArt | null;
+};
 
 /**
  * Per-contributor records within one media type, for the credits on a title's
- * page ("8.2 avg · 3 of 9 seen", "3 of 9 played"). Title pages are the most visited surface, so
- * this never reads the viewer's whole library: the cached catalog says which
- * titles these people made, and only the viewer's rows for those are fetched.
+ * page ("8.2 avg · 3 of 9 seen", "3 of 9 played"). Title pages are the most
+ * visited surface, so this never reads the viewer's whole library: the cached
+ * catalog says which titles these people made, and only the viewer's rows for
+ * those are fetched. Signed-out viewers get the art and counts without rows.
  */
 export async function getCreditStats(
-  userId: string,
+  userId: string | null,
   contributorIds: string[],
   mediaType: MediaType,
+  currentMediaId: string,
 ): Promise<Record<string, CreditStat>> {
   if (!contributorIds.length) return {};
   const wanted = new Set(contributorIds);
-  const titlesBy = new Map<string, Set<string>>();
+  const titlesBy = new Map<string, Map<string, CatalogItem>>();
   for (const item of await getCatalogItems()) {
     if (item.mediaType !== mediaType) continue;
     for (const credit of item.credits) {
       const id = credit.contributor.id;
       if (!wanted.has(id)) continue;
-      const titles = titlesBy.get(id) ?? new Set<string>();
-      titles.add(item.id);
+      const titles = titlesBy.get(id) ?? new Map<string, CatalogItem>();
+      titles.set(item.id, item);
       titlesBy.set(id, titles);
     }
   }
-  const mediaIds = [...new Set([...titlesBy.values()].flatMap((ids) => [...ids]))];
-  const rows = mediaIds.length
-    ? await prisma.userMedia.findMany({
-        where: { userId, mediaId: { in: mediaIds } },
-        select: {
-          mediaId: true,
-          status: true,
-          personalRating: true,
-          computedPersonalScore: true,
-          comparisonCount: true,
-          isArchived: true,
-        },
-      })
-    : [];
+  const mediaIds = [
+    ...new Set([...titlesBy.values()].flatMap((titles) => [...titles.keys()])),
+  ];
+  const rows =
+    userId && mediaIds.length
+      ? await prisma.userMedia.findMany({
+          where: { userId, mediaId: { in: mediaIds } },
+          select: {
+            mediaId: true,
+            status: true,
+            personalRating: true,
+            computedPersonalScore: true,
+            comparisonCount: true,
+            isArchived: true,
+          },
+        })
+      : [];
   const byMedia = new Map(rows.map((row) => [row.mediaId, row]));
+  const exclude = new Set([currentMediaId]);
   const stats: Record<string, CreditStat> = {};
   for (const [id, titles] of titlesBy) {
-    let seen = 0;
-    const scores: number[] = [];
-    for (const mediaId of titles) {
-      const row = byMedia.get(mediaId);
-      if (!row) continue;
-      // Only the fields the two predicates read; the rest keep their defaults.
-      const view = { ...row, pairwiseScore: 1000 } as unknown as PeopleSourceRow;
-      if (isSeen(view)) seen += 1;
-      const score = personalScore(view);
-      if (score != null) scores.push(score);
-    }
+    // Catalog metadata with the viewer's fields laid over it, just enough for
+    // the seen / score predicates and the art rule.
+    const views = [...titles.values()].map(
+      (item) =>
+        ({
+          ...item,
+          status: "UNTRACKED",
+          personalRating: null,
+          computedPersonalScore: null,
+          comparisonCount: 0,
+          isArchived: false,
+          ...byMedia.get(item.id),
+          pairwiseScore: 1000,
+        }) as unknown as PeopleSourceRow,
+    );
+    const scores = views
+      .map((view) => personalScore(view))
+      .filter((score): score is number => score != null);
     stats[id] = {
       titles: titles.size,
-      seen,
+      seen: views.filter((view) => isSeen(view)).length,
       average: scores.length
         ? scores.reduce((sum, score) => sum + score, 0) / scores.length
         : null,
+      art: personArt(views, exclude),
     };
   }
   return stats;

@@ -27,7 +27,7 @@ import { releaseYearLabel } from "@/lib/date-labels";
 import { mediaAccent } from "@/lib/media-ui-helpers";
 import { titleNoun } from "@/lib/people";
 import { statusLabel } from "@/lib/status-labels";
-import { formatDelta, PersonAvatar, PersonRow } from "./PersonParts";
+import { formatDelta, PersonRow } from "./PersonParts";
 
 /** Credits shown before "Show all". */
 const CREDITS_SHOWN = 12;
@@ -105,10 +105,6 @@ export function PersonClient({
         posterUrl={feature?.tile.posterUrl}
       >
         <Stack direction="row" sx={{ alignItems: "flex-end", gap: 2.5, minWidth: 0 }}>
-          {/* On phones the disc would only push the name into a narrow column. */}
-          <Box sx={{ display: { xs: "none", sm: "block" } }}>
-            <PersonAvatar name={data.person.name} size={72} />
-          </Box>
           <Box sx={{ minWidth: 0 }}>
             <MarqueeTitle>{data.person.name}</MarqueeTitle>
             <Typography sx={{ color: MARQUEE_MUTED, fontSize: "0.875rem", mt: 0.75 }}>

@@ -28,7 +28,6 @@ import {
   formatDelta,
   PanelFilter,
   PeopleSearchField,
-  PersonAvatar,
   PersonRow,
 } from "./PersonParts";
 
@@ -259,10 +258,6 @@ function Spotlight({
       posterUrl={feature.tile.posterUrl}
     >
       <Stack direction="row" sx={{ alignItems: "flex-end", gap: 2.5, minWidth: 0 }}>
-        {/* On phones the disc would only push the name into a narrow column. */}
-        <Box sx={{ display: { xs: "none", sm: "block" } }}>
-          <PersonAvatar name={person.name} size={72} />
-        </Box>
         <Box sx={{ minWidth: 0 }}>
           <Typography variant="eyebrow" sx={{ color: accent, display: "block", mb: 0.75 }}>
             Your most trusted {role === "cast" ? "cast member" : role}

@@ -418,3 +418,35 @@ export function creditStatusLabel(row: PeopleSourceRow): string | null {
   if (row.isArchived || row.status === "UNTRACKED") return null;
   return statusLabel(row.status, row.mediaType);
 }
+
+/** The poster that stands in for a person: a title of theirs, and where it came from. */
+export type PersonArt = { posterUrl: string; title: string };
+
+/**
+ * The poster to show as a person's avatar. We hold no portraits, so a person is
+ * pictured by their work: your highest-rated title of theirs, else their best
+ * reviewed, else any with a poster. Titles already on screen beside the avatar
+ * (the page's own title, a row's source) are skipped so the avatar says
+ * something new; if nothing else has a poster, there is no art.
+ */
+export function personArt(
+  rows: Iterable<PeopleSourceRow>,
+  exclude: ReadonlySet<string> = new Set(),
+): PersonArt | null {
+  let best: { row: PeopleSourceRow; rank: [number, number] } | null = null;
+  for (const row of rows) {
+    if (!row.posterUrl || exclude.has(row.id)) continue;
+    const rank: [number, number] = [
+      personalScore(row) ?? -1,
+      row.computedConsensusScore ?? -1,
+    ];
+    if (
+      !best ||
+      rank[0] > best.rank[0] ||
+      (rank[0] === best.rank[0] && rank[1] > best.rank[1])
+    ) {
+      best = { row, rank };
+    }
+  }
+  return best ? { posterUrl: best.row.posterUrl!, title: best.row.title } : null;
+}

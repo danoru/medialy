@@ -14,17 +14,51 @@ import {
 import { MediaThumb } from "@/components/media/MediaThumb";
 import type { PersonSummary } from "@/lib/db/people";
 import { mediaAccent, shortMediaTypeLabel } from "@/lib/media-ui-helpers";
-import { titleNoun } from "@/lib/people";
+import { titleNoun, type PersonArt } from "@/lib/people";
 import { experiencedWord } from "@/lib/status-labels";
 
-/** Initials in a quiet disc. We hold no portraits, and a stand-in face would lie. */
-export function PersonAvatar({ name, size = 40 }: { name: string; size?: number }) {
+/**
+ * A person pictured by their work. We hold no portraits, and a stand-in face
+ * would lie, so the disc is cropped from the poster of a title of theirs (see
+ * `personArt`), named in its tooltip. Without a poster it falls back to
+ * initials in a quiet disc.
+ */
+export function PersonAvatar({
+  art,
+  name,
+  size = 40,
+}: {
+  art?: PersonArt | null;
+  name: string;
+  size?: number;
+}) {
   const initials = name
     .split(/\s+/)
     .filter((word) => /[\p{L}\p{N}]/u.test(word.charAt(0)))
     .slice(0, 2)
     .map((word) => word.charAt(0).toUpperCase())
     .join("");
+  if (art) {
+    return (
+      <Box
+        aria-hidden
+        sx={{
+          backgroundColor: "surface.2",
+          backgroundImage: `url(${art.posterUrl})`,
+          backgroundPosition: "center 30%",
+          backgroundSize: "cover",
+          border: "1px solid",
+          borderColor: "border.default",
+          borderRadius: "50%",
+          boxShadow: "inset 0 0 0 1px rgba(0, 0, 0, 0.25)",
+          flexShrink: 0,
+          height: size,
+          width: size,
+        }}
+        title={art.title}
+      />
+    );
+  }
   return (
     <Box
       aria-hidden
@@ -198,7 +232,7 @@ export function PersonRow({
       }}
     >
       <Box component={Link} href={`${basePath}/${person.id}`} sx={{ lineHeight: 0 }} tabIndex={-1}>
-        <PersonAvatar name={person.name} />
+        <PersonAvatar art={person.art} name={person.name} />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography noWrap sx={{ fontSize: "0.9375rem", lineHeight: 1.35 }}>
