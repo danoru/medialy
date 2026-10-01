@@ -39,7 +39,13 @@ import type { ProfileData, ProfileTypeSection } from "@/lib/db/profile";
 const NUMBER_FONT = (theme: { typography: { statValue: { fontFamily?: string } } }) =>
   theme.typography.statValue.fontFamily;
 
-export function ProfileClient({ data }: { data: ProfileData }) {
+export function ProfileClient({
+  data,
+  isAdmin = false,
+}: {
+  data: ProfileData;
+  isAdmin?: boolean;
+}) {
   // One switcher drives every panel that shows titles: the banner, Favorites,
   // Recent activity, Your Top 10 and Your ratings. Start on the first type
   // with a rated title so the marquee never opens empty.
@@ -221,15 +227,18 @@ export function ProfileClient({ data }: { data: ProfileData }) {
 
         <DashboardSection
           action={
-            <Button
-              component={Link}
-              endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
-              href="/insights"
-              size="small"
-              sx={panelActionSx}
-            >
-              Open Insights
-            </Button>
+            // Insights is admin-only for now.
+            isAdmin ? (
+              <Button
+                component={Link}
+                endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
+                href="/insights"
+                size="small"
+                sx={panelActionSx}
+              >
+                Open Insights
+              </Button>
+            ) : undefined
           }
           title="Taste"
           titleVariant="eyebrow"

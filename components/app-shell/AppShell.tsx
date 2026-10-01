@@ -130,7 +130,7 @@ const navItems: NavItem[] = [
     href: "/insights",
     icon: <BarChartIcon />,
     description: "Genre distribution, strengths, low-data areas.",
-    visibility: "public",
+    visibility: "admin",
   },
   {
     label: "Data Health",
