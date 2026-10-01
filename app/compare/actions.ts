@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { ComparisonContext } from "@prisma/client";
 import {
   isComparisonEligibleStatus,
   isReleasedForComparison,
@@ -23,8 +24,13 @@ import {
 export async function saveComparison(formData: FormData) {
   const winnerId = String(formData.get("winnerId") ?? "");
   const loserId = String(formData.get("loserId") ?? "");
-  const context = String(formData.get("context") ?? "OVERALL") as "OVERALL";
-  const notes = String(formData.get("notes") ?? "").trim();
+  const rawContext = String(formData.get("context") ?? "");
+  const context: ComparisonContext = Object.values(ComparisonContext).includes(
+    rawContext as ComparisonContext,
+  )
+    ? (rawContext as ComparisonContext)
+    : "OVERALL";
+  const notes = String(formData.get("notes") ?? "").trim().slice(0, 2000);
   if (!winnerId || !loserId || winnerId === loserId) return;
 
   const userId = await requireUserId();

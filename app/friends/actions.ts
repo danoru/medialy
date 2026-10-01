@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { followUser, unfollowUser } from "@/lib/social/follows";
 import { requireUserId } from "@/lib/user";
 
@@ -14,7 +15,18 @@ import { requireUserId } from "@/lib/user";
 export async function followUserAction(targetUserId: string) {
   if (!targetUserId) return;
   const viewerId = await requireUserId("/friends");
-  await followUser(viewerId, targetUserId);
+  try {
+    await followUser(viewerId, targetUserId);
+  } catch (error) {
+    // Following a user id that doesn't exist: nothing to do.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      (error.code === "P2003" || error.code === "P2025")
+    ) {
+      return;
+    }
+    throw error;
+  }
   revalidatePath("/friends");
   revalidatePath(`/u/${targetUserId}`);
 }

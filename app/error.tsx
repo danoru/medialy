@@ -19,7 +19,7 @@ export default function Error({
   return (
     <Stack spacing={2}>
       <StatePanel
-        description="Something went wrong while loading this screen. Your local data was not changed."
+        description="Something went wrong while loading this screen. Try again in a moment."
         icon={<ReportProblemIcon sx={{ fontSize: 42 }} />}
         minHeight={340}
         title="This page hit an error"

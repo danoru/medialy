@@ -225,19 +225,24 @@ export async function updateMediaRating(
   const promoted =
     personalRating == null ? null : statusAfterRating(previousStatus);
 
-  await upsertUserMedia(userId, id, {
-    personalRating,
-    ...(promoted
-      ? {
-          status: promoted,
-          ...completionPatchForStatus(
-            previousStatus,
-            promoted,
-            existing ?? DEFAULT_USER_MEDIA,
-          ),
-        }
-      : {}),
-  });
+  // The client rolls back and shows an error toast when this throws, so a stale
+  // id surfaces there rather than as the generic error page.
+  const saved = await guardMissingMedia(() =>
+    upsertUserMedia(userId, id, {
+      personalRating,
+      ...(promoted
+        ? {
+            status: promoted,
+            ...completionPatchForStatus(
+              previousStatus,
+              promoted,
+              existing ?? DEFAULT_USER_MEDIA,
+            ),
+          }
+        : {}),
+    }),
+  );
+  if (!saved) throw new Error("That media item no longer exists.");
   await recomputeMediaScores(id, userId);
   revalidateUserMediaViews(id);
 
@@ -257,7 +262,7 @@ export async function updateMediaStatus(id: string, formData: FormData) {
   }
 
   const userId = await requireUserId();
-  await writeStatus(userId, id, status);
+  if (!(await writeStatus(userId, id, status))) return;
   revalidateUserMediaViews(id);
 }
 
@@ -265,7 +270,7 @@ export async function updateMediaStatus(id: string, formData: FormData) {
 export async function setMediaStatus(id: string, status: MediaStatus) {
   if (!isMediaStatus(status)) return;
   const userId = await requireUserId();
-  await writeStatus(userId, id, status);
+  if (!(await writeStatus(userId, id, status))) return;
   revalidateUserMediaViews(id);
 }
 
@@ -276,7 +281,9 @@ export async function setMediaStatus(id: string, status: MediaStatus) {
  */
 export async function setMediaWatched(id: string, watched: boolean) {
   const userId = await requireUserId();
-  await writeStatus(userId, id, watched ? "COMPLETED" : "UNTRACKED");
+  if (!(await writeStatus(userId, id, watched ? "COMPLETED" : "UNTRACKED"))) {
+    return;
+  }
   revalidateUserMediaViews(id);
 }
 
@@ -284,19 +291,25 @@ export async function setMediaWatched(id: string, watched: boolean) {
  * Every status write goes through here so the completion date follows the
  * status: becoming COMPLETED stamps today, leaving it clears the date.
  */
-async function writeStatus(userId: string, mediaId: string, status: MediaStatus) {
+async function writeStatus(
+  userId: string,
+  mediaId: string,
+  status: MediaStatus,
+): Promise<boolean> {
   const existing = await prisma.userMedia.findUnique({
     where: { userId_mediaId: { userId, mediaId } },
     select: { status: true, completedAt: true, completedAtUnsure: true },
   });
-  await upsertUserMedia(userId, mediaId, {
-    status,
-    ...completionPatchForStatus(
-      existing?.status ?? "UNTRACKED",
+  return guardMissingMedia(() =>
+    upsertUserMedia(userId, mediaId, {
       status,
-      existing ?? DEFAULT_USER_MEDIA,
-    ),
-  });
+      ...completionPatchForStatus(
+        existing?.status ?? "UNTRACKED",
+        status,
+        existing ?? DEFAULT_USER_MEDIA,
+      ),
+    }),
+  );
 }
 
 /**
@@ -321,7 +334,9 @@ export async function setMediaCompletedAt(id: string, formData: FormData) {
     await queueToast("Mark it as finished first.", "error");
     return;
   }
-  await upsertUserMedia(userId, id, resolved);
+  if (!(await guardMissingMedia(() => upsertUserMedia(userId, id, resolved)))) {
+    return;
+  }
   revalidateUserMediaViews(id);
 }
 
@@ -332,7 +347,9 @@ export async function toggleFavoriteMediaItem(id: string) {
     select: { isFavorite: true },
   });
   const isFavorite = !(item?.isFavorite ?? false);
-  await upsertUserMedia(userId, id, { isFavorite });
+  if (!(await guardMissingMedia(() => upsertUserMedia(userId, id, { isFavorite })))) {
+    return;
+  }
   revalidatePath("/library");
   revalidatePath(`/media/${id}`);
   await queueToast(isFavorite ? "Added to favorites." : "Removed favorite.");
@@ -340,7 +357,13 @@ export async function toggleFavoriteMediaItem(id: string) {
 
 export async function archiveMediaItem(id: string) {
   const userId = await requireUserId();
-  await upsertUserMedia(userId, id, { isArchived: true });
+  if (
+    !(await guardMissingMedia(() =>
+      upsertUserMedia(userId, id, { isArchived: true }),
+    ))
+  ) {
+    return;
+  }
   revalidatePath("/library");
   await queueToast("Media item archived.");
   redirect("/library");
@@ -348,7 +371,13 @@ export async function archiveMediaItem(id: string) {
 
 export async function unarchiveMediaItem(id: string) {
   const userId = await requireUserId();
-  await upsertUserMedia(userId, id, { isArchived: false });
+  if (
+    !(await guardMissingMedia(() =>
+      upsertUserMedia(userId, id, { isArchived: false }),
+    ))
+  ) {
+    return;
+  }
   revalidatePath("/library");
   await queueToast("Media item unarchived.");
   redirect(`/media/${id}`);
@@ -460,11 +489,16 @@ const MERGE_FAILURE_MESSAGE = {
     "Those are different media types. Link them as related titles instead.",
 } as const;
 
+const MAX_NOTE_LENGTH = 5000;
+
 export async function addNote(id: string, formData: FormData) {
   const userId = await requireUserId();
-  const body = String(formData.get("body") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim().slice(0, MAX_NOTE_LENGTH);
   if (body) {
-    await prisma.note.create({ data: { userId, mediaId: id, body } });
+    const saved = await guardMissingMedia(() =>
+      prisma.note.create({ data: { userId, mediaId: id, body } }),
+    );
+    if (!saved) return;
   }
   revalidatePath(`/media/${id}`);
 }
@@ -475,7 +509,7 @@ export async function updateNote(
   formData: FormData,
 ) {
   const userId = await requireUserId();
-  const body = String(formData.get("body") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim().slice(0, MAX_NOTE_LENGTH);
   if (body) {
     await prisma.note.updateMany({
       where: { id: noteId, userId },
@@ -494,6 +528,33 @@ function isUniqueMediaTitleError(error: unknown) {
     Array.isArray(error.meta?.target) &&
     error.meta.target.includes("title") &&
     error.meta.target.includes("mediaType")
+  );
+}
+
+/**
+ * Run a per-user write against a media id that may have been deleted (or never
+ * existed). A missing row surfaces as a foreign-key (P2003) or not-found
+ * (P2025) error; turn that into a toast and `false` instead of the generic
+ * error page. Wrap only the Prisma write — never a `redirect()`, which works
+ * by throwing.
+ */
+async function guardMissingMedia(write: () => Promise<unknown>): Promise<boolean> {
+  try {
+    await write();
+    return true;
+  } catch (error) {
+    if (isMissingRecordError(error)) {
+      await queueToast("That media item no longer exists.", "error");
+      return false;
+    }
+    throw error;
+  }
+}
+
+function isMissingRecordError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2003" || error.code === "P2025")
   );
 }
 
