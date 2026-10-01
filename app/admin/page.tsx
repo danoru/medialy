@@ -22,10 +22,12 @@ import LibraryAddIcon from "@mui/icons-material/LibraryAdd";
 import CompareArrowsIcon from "@mui/icons-material/CompareArrows";
 import EditIcon from "@mui/icons-material/Edit";
 import InsightsIcon from "@mui/icons-material/Insights";
+import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import { ReleaseCandidateStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/user";
 import { formatMediaType } from "@/lib/format";
+import { getAdminReviewCounts } from "@/lib/db/admin-review";
 import { getAdminSignals } from "@/lib/db/admin-signals";
 import { Sparkline } from "@/components/admin/Sparkline";
 
@@ -34,34 +36,29 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
   await requireAdmin("/admin");
-  const [
-    pendingTagCount,
-    pendingSuggestionCount,
-    pendingCandidateCount,
-    signals,
-    userAddedMedia,
-  ] = await Promise.all([
-    prisma.tag.count({ where: { status: "PENDING" } }),
-    prisma.mediaEditSuggestion.count({ where: { status: "PENDING" } }),
-    prisma.releaseCandidate.count({
-      where: { status: ReleaseCandidateStatus.PENDING },
-    }),
-    getAdminSignals(),
-    // `createdById` is null for everything seeded or backfilled, so a non-null
-    // value is exactly "a user put this in the shared catalog".
-    prisma.mediaItem.findMany({
-      where: { createdById: { not: null } },
-      select: {
-        id: true,
-        title: true,
-        mediaType: true,
-        createdAt: true,
-        createdBy: { select: { displayName: true } },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 25,
-    }),
-  ]);
+  const [counts, pendingCandidateCount, signals, userAddedMedia] =
+    await Promise.all([
+      getAdminReviewCounts(),
+      prisma.releaseCandidate.count({
+        where: { status: ReleaseCandidateStatus.PENDING },
+      }),
+      getAdminSignals(),
+      // `createdById` is null for everything seeded or backfilled, so a non-null
+      // value is exactly "a user put this in the shared catalog".
+      prisma.mediaItem.findMany({
+        where: { createdById: { not: null } },
+        select: {
+          id: true,
+          title: true,
+          mediaType: true,
+          createdAt: true,
+          reviewedAt: true,
+          createdBy: { select: { displayName: true, isAdmin: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 25,
+      }),
+    ]);
 
   return (
     <Stack spacing={4}>
@@ -218,10 +215,7 @@ export default async function AdminPage() {
                           </Typography>
                         </TableCell>
                         <TableCell align="right">
-                          <Typography
-                            color="text.secondary"
-                            variant="caption"
-                          >
+                          <Typography color="text.secondary" variant="caption">
                             {formatRelative(user.createdAt)}
                           </Typography>
                         </TableCell>
@@ -261,10 +255,7 @@ export default async function AdminPage() {
                         {event.userName.slice(0, 1).toUpperCase()}
                       </Avatar>
                       <FeedIcon kind={event.kind} />
-                      <Typography
-                        sx={{ flex: 1, minWidth: 0 }}
-                        variant="body2"
-                      >
+                      <Typography sx={{ flex: 1, minWidth: 0 }} variant="body2">
                         <Box component="span" sx={{ fontWeight: 600 }}>
                           {event.userName}
                         </Box>{" "}
@@ -287,10 +278,17 @@ export default async function AdminPage() {
       <Stack spacing={2}>
         <Typography variant="eyebrow">Moderation</Typography>
         <AdminCard
+          description="Titles users added through search or imports. They're live already — check the data and mark them reviewed."
+          href="/admin/review"
+          icon={<PlaylistAddCheckIcon color="primary" />}
+          pendingCount={counts.newItems}
+          title="New catalog items"
+        />
+        <AdminCard
           description="Review user-proposed edits and additions before they apply to shared media data."
           href="/admin/edits"
           icon={<EditNoteIcon color="primary" />}
-          pendingCount={pendingSuggestionCount}
+          pendingCount={counts.suggestions}
           title="Suggested Edits"
         />
         <AdminCard
@@ -304,7 +302,7 @@ export default async function AdminPage() {
           description="Approve or reject freeform tags users submit from media forms."
           href="/admin/tags"
           icon={<LocalOfferIcon color="primary" />}
-          pendingCount={pendingTagCount}
+          pendingCount={counts.tags}
           title="Tag Moderation"
         />
       </Stack>
@@ -329,8 +327,8 @@ export default async function AdminPage() {
                       Recommendation Debugger
                     </Typography>
                     <Typography color="text.secondary" variant="body2">
-                      Pick a user and inspect their Tonight&apos;s pick / Up next
-                      with the signals and match % behind each result.
+                      Pick a user and inspect their Tonight&apos;s pick / Up
+                      next with the signals and match % behind each result.
                     </Typography>
                   </Stack>
                 </Stack>
@@ -344,8 +342,9 @@ export default async function AdminPage() {
         <Stack spacing={0.5}>
           <Typography variant="eyebrow">Recently added by users</Typography>
           <Typography color="text.secondary" variant="body2">
-            Catalog items a real user introduced via search-and-add. Seeded and
-            backfilled entries have no creator and never appear here.
+            Catalog items a real user introduced via search-and-add or an
+            import. Seeded and backfilled entries have no creator and never
+            appear here. Items an admin added count as reviewed.
           </Typography>
         </Stack>
         <Card variant="outlined">
@@ -363,6 +362,7 @@ export default async function AdminPage() {
                   <TableCell>Type</TableCell>
                   <TableCell>Added by</TableCell>
                   <TableCell>When</TableCell>
+                  <TableCell>Status</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -375,8 +375,11 @@ export default async function AdminPage() {
                     <TableCell>
                       {item.createdBy?.displayName ?? "Unknown"}
                     </TableCell>
+                    <TableCell>{item.createdAt.toLocaleDateString()}</TableCell>
                     <TableCell>
-                      {item.createdAt.toLocaleDateString()}
+                      {item.reviewedAt || item.createdBy?.isAdmin
+                        ? "Reviewed"
+                        : "Awaiting review"}
                     </TableCell>
                   </TableRow>
                 ))}

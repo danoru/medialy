@@ -17,7 +17,7 @@ import {
 } from "@/lib/media";
 import { prisma } from "@/lib/prisma";
 import { recomputeMediaScores } from "@/lib/scoring/recompute";
-import { requireUserId } from "@/lib/user";
+import { requireUser, requireUserId } from "@/lib/user";
 import { upsertUserMedia } from "@/lib/db/user-media";
 import { parseCompletedAtInput } from "@/lib/completion";
 import type {
@@ -514,18 +514,22 @@ function mergeLetterboxdInputs(
   };
 }
 
+/**
+ * Previews only report create/match counts, so they read the cached catalog
+ * instead of scanning `MediaItem` on every upload. The import itself still
+ * matches against fresh rows via `ImportMediaIndex`. Imported dynamically to
+ * keep `next/cache` out of the Vitest module graph.
+ */
+async function getCatalogForPreview() {
+  const { getCatalogItems } = await import("@/lib/db/catalog");
+  return getCatalogItems();
+}
+
 export async function previewLetterboxdImport(
   rows: MediaFormInput[],
   initialErrors: ImportPreview["errors"] = [],
 ): Promise<ImportPreview> {
-  const existing = await prisma.mediaItem.findMany({
-    select: {
-      title: true,
-      mediaType: true,
-      externalUrl: true,
-      releaseDate: true,
-    },
-  });
+  const existing = await getCatalogForPreview();
   const existingUrls = new Set(
     existing.map((item) => item.externalUrl).filter(Boolean),
   );
@@ -564,14 +568,7 @@ export async function previewLetterboxdImport(
 export async function previewMediaImport(
   rows: CsvMediaRow[],
 ): Promise<ImportPreview> {
-  const existing = await prisma.mediaItem.findMany({
-    select: {
-      title: true,
-      mediaType: true,
-      externalUrl: true,
-      releaseDate: true,
-    },
-  });
+  const existing = await getCatalogForPreview();
   const existingUrls = new Set(
     existing.map((item) => item.externalUrl).filter(Boolean),
   );
@@ -617,7 +614,8 @@ export async function importMediaRowsWithSource(
   sourceType: "CSV" | "XLSX",
   fileName?: string,
 ): Promise<ImportResult> {
-  const userId = await requireUserId();
+  const importer = await requireImporter();
+  const userId = importer.userId;
   const errors: ImportResult["errors"] = [];
   const mediaIndex = new ImportMediaIndex();
   let importedCount = 0;
@@ -626,10 +624,10 @@ export async function importMediaRowsWithSource(
     try {
       const { media, isNew } = await upsertImportedMedia(
         input,
-        userId,
+        importer,
         mediaIndex,
       );
-      await writeImportedRelations(media.id, input, isNew);
+      await writeImportedRelations(media.id, input, isNew, importer);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
@@ -642,6 +640,7 @@ export async function importMediaRowsWithSource(
 
   await prisma.importJob.create({
     data: {
+      userId,
       sourceType,
       fileName,
       status:
@@ -663,7 +662,8 @@ export async function importLetterboxdRows(
   rows: MediaFormInput[],
   fileName?: string,
 ): Promise<ImportResult> {
-  const userId = await requireUserId();
+  const importer = await requireImporter();
+  const userId = importer.userId;
   const errors: ImportResult["errors"] = [];
   const mediaIndex = new ImportMediaIndex();
   let importedCount = 0;
@@ -672,11 +672,11 @@ export async function importLetterboxdRows(
     try {
       const { media, isNew } = await upsertImportedMedia(
         input,
-        userId,
+        importer,
         mediaIndex,
         "fill-blanks",
       );
-      await writeImportedRelations(media.id, input, isNew);
+      await writeImportedRelations(media.id, input, isNew, importer);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
@@ -689,6 +689,7 @@ export async function importLetterboxdRows(
 
   await prisma.importJob.create({
     data: {
+      userId,
       sourceType: "CSV",
       fileName,
       status:
@@ -712,7 +713,8 @@ export async function importJsonExport(
 ): Promise<ImportResult> {
   assertExportVersion(input);
   const bundle = input as MedialyExport;
-  const userId = await requireUserId();
+  const importer = await requireImporter();
+  const userId = importer.userId;
   const errors: ImportResult["errors"] = [];
   const mediaIndex = new ImportMediaIndex();
   let importedCount = 0;
@@ -762,10 +764,10 @@ export async function importJsonExport(
       });
       const { media, isNew } = await upsertImportedMedia(
         input,
-        userId,
+        importer,
         mediaIndex,
       );
-      await writeImportedRelations(media.id, input, isNew);
+      await writeImportedRelations(media.id, input, isNew, importer);
       await recomputeMediaScores(media.id, userId);
       importedCount += 1;
     } catch (error) {
@@ -778,6 +780,7 @@ export async function importJsonExport(
 
   await prisma.importJob.create({
     data: {
+      userId,
       sourceType: "JSON",
       fileName,
       status:
@@ -831,6 +834,26 @@ function jsonCreditNames(
 type UserMediaStrategy = "overwrite" | "fill-blanks";
 
 /**
+ * Who is importing. An import is the one path where an ordinary user's file
+ * reaches the shared catalog without admin review, so what it may write there
+ * depends on this:
+ *
+ *   - anyone may *create* an item that isn't in the catalog yet. It is stamped
+ *     with `createdById`, which puts it in the admin review queue;
+ *   - only an admin's import may touch an item that already exists, and then
+ *     only to fill blank fields and add taxonomy/credits — never to replace a
+ *     value that is already there;
+ *   - a non-admin import that matches an existing item writes the importer's
+ *     own `UserMedia` (status, rating, favorite) and nothing else.
+ */
+export type Importer = { userId: string; isAdmin: boolean };
+
+async function requireImporter(): Promise<Importer> {
+  const user = await requireUser();
+  return { userId: user.id, isAdmin: user.isAdmin };
+}
+
+/**
  * Writes genres/tags/credits from an import row, choosing semantics based on
  * whether the matched MediaItem already existed:
  *   - new item: replace-all (the standard form-submit behavior)
@@ -842,48 +865,60 @@ async function writeImportedRelations(
   mediaId: string,
   input: MediaFormInput,
   isNew: boolean,
+  importer: Importer,
 ) {
   if (isNew) {
     await upsertMediaRelations(mediaId, input);
     return;
   }
+  // Existing shared item: only an admin's import may add to it.
+  if (!importer.isAdmin) return;
   await addImportedTaxonomy(mediaId, input.genres, input.tags, input.mediaType);
   await addImportedCredits(mediaId, input.credits ?? []);
 }
 
 async function upsertImportedMedia(
   input: MediaFormInput,
-  userId: string,
+  importer: Importer,
   index: ImportMediaIndex,
   userMediaStrategy: UserMediaStrategy = "overwrite",
 ): Promise<{ media: { id: string }; isNew: boolean }> {
+  const { userId } = importer;
   return prisma.$transaction(async (tx) => {
     const existing = await findExistingImportedMedia(tx, input, index);
 
     if (existing) {
-      const current = await tx.mediaItem.findUnique({
-        where: { id: existing.id },
-      });
-      const merged = mergeMediaScalarsForImport(input, current);
-      const updated = await tx.mediaItem.update({
-        where: { id: existing.id },
-        data: merged,
-      });
-      index.register(updated);
+      // See `Importer`: a non-admin match leaves the catalog row untouched.
+      if (importer.isAdmin) {
+        const current = await tx.mediaItem.findUnique({
+          where: { id: existing.id },
+        });
+        if (current) {
+          const updated = await tx.mediaItem.update({
+            where: { id: existing.id },
+            data: blankFillsForImport(input, current),
+          });
+          index.register(updated);
+        }
+      }
       await upsertUserMediaWithStrategy(
         tx,
         userId,
-        updated.id,
+        existing.id,
         input,
         userMediaStrategy,
       );
-      return { media: updated, isNew: false };
+      return { media: { id: existing.id }, isNew: false };
     }
 
     const data = await mediaMutationDataWithUniqueTitle(tx, input, undefined, {
       candidates: await index.candidatesFor(tx, input.mediaType),
     });
-    const created = await tx.mediaItem.create({ data });
+    // Provenance: `createdById` is what lands the item in the admin review
+    // queue.
+    const created = await tx.mediaItem.create({
+      data: { ...data, createdById: userId },
+    });
     index.register(created);
     await upsertUserMediaWithStrategy(
       tx,
@@ -897,35 +932,33 @@ async function upsertImportedMedia(
 }
 
 /**
- * Returns scalar `MediaItem` fields for an import that matched an existing
- * row. We only fill in values that are blank on the existing item — a
- * re-import (e.g. a fresh Letterboxd CSV with no description) must never
- * overwrite curation the user already entered.
+ * Scalar `MediaItem` fields an admin import may write onto a row it matched:
+ * only values that are blank on the existing item. `title` and `mediaType` are
+ * deliberately absent — a match can be fuzzy ("Wake Up Dead Man" against the
+ * subtitled title), and an import must never rename the catalog item it matched.
  *
- * `metadataJson` is shallow-merged at the top level so each source's
- * namespace (e.g. `letterboxd`, `tmdb`) is preserved or updated independently.
+ * `metadataJson` is merged per top-level namespace (`letterboxd`, `tmdb`, …):
+ * a namespace the item already has is kept as-is, new ones are added.
  */
-function mergeMediaScalarsForImport(
+export function blankFillsForImport(
   input: MediaFormInput,
-  existing: { [k: string]: unknown } | null,
+  existing: {
+    originalTitle: string | null;
+    description: string | null;
+    externalUrl: string | null;
+    releaseDate: Date | null;
+    metadataJson: string | null;
+  },
 ) {
   const base = mediaMutationData(input);
-  if (!existing) return base;
   const keep = <T>(existingValue: T, incoming: T) =>
     existingValue == null || existingValue === "" ? incoming : existingValue;
   return {
-    ...base,
-    originalTitle: keep(
-      existing.originalTitle as string | null,
-      base.originalTitle,
-    ),
-    description: keep(existing.description as string | null, base.description),
-    externalUrl: keep(existing.externalUrl as string | null, base.externalUrl),
-    releaseDate: (existing.releaseDate as Date | null) ?? base.releaseDate,
-    metadataJson: mergeMetadataJson(
-      existing.metadataJson as string | null,
-      base.metadataJson,
-    ),
+    originalTitle: keep(existing.originalTitle, base.originalTitle),
+    description: keep(existing.description, base.description),
+    externalUrl: keep(existing.externalUrl, base.externalUrl),
+    releaseDate: existing.releaseDate ?? base.releaseDate,
+    metadataJson: mergeMetadataJson(existing.metadataJson, base.metadataJson),
   };
 }
 
@@ -946,7 +979,8 @@ function mergeMetadataJson(
       !Array.isArray(a) &&
       !Array.isArray(b)
     ) {
-      return JSON.stringify({ ...a, ...b });
+      // Existing namespaces win; the import only contributes new ones.
+      return JSON.stringify({ ...b, ...a });
     }
   } catch {
     // fall through

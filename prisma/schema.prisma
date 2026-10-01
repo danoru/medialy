@@ -34,6 +34,10 @@ model MediaItem {
   createdById String?
   createdBy   User?   @relation("MediaItemCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
+  /// When an admin acknowledged a user-added item in the review queue. A
+  /// non-admin `createdBy` with a null `reviewedAt` is "awaiting review".
+  reviewedAt DateTime?
+
   genres          MediaGenre[]
   tags            MediaTag[]
   credits         MediaCredit[]
@@ -52,6 +56,7 @@ model MediaItem {
   @@index([mediaType])
   @@index([computedConsensusScore])
   @@index([createdById])
+  @@index([reviewedAt])
 }
 
 /// Directed link between two *separate* `MediaItem`s — used when each side is
@@ -373,6 +378,7 @@ model User {
   comparisons   PairwiseComparison[]
   notes         Note[]
   customLists   CustomList[]
+  importJobs    ImportJob[]
   editSuggestions       MediaEditSuggestion[] @relation("EditSuggestionAuthor")
   reviewedSuggestions   MediaEditSuggestion[] @relation("EditSuggestionReviewer")
   createdMedia          MediaItem[]           @relation("MediaItemCreator")
@@ -484,6 +490,10 @@ model Note {
 
 model ImportJob {
   id            String           @id @default(cuid())
+  // Who ran the import. Nullable only for rows that predate the column; those
+  // are shown to nobody.
+  userId        String?
+  user          User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceType    ImportSourceType
   fileName      String?
   status        ImportStatus
@@ -491,6 +501,8 @@ model ImportJob {
   skippedCount  Int              @default(0)
   errorJson     String?
   createdAt     DateTime         @default(now())
+
+  @@index([userId, createdAt])
 }
 
 enum MediaType {

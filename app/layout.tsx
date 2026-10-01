@@ -4,6 +4,7 @@ import { AppRouterCacheProvider } from "@mui/material-nextjs/v15-appRouter";
 import { CssBaseline } from "@mui/material";
 import { AppShell } from "@/components/app-shell/AppShell";
 import { Providers } from "@/components/Providers";
+import { getAdminReviewCounts } from "@/lib/db/admin-review";
 import { getCurrentUser, userInitial } from "@/lib/user";
 import type { ThemeMode } from "@/lib/theme";
 
@@ -38,10 +39,10 @@ export const metadata: Metadata = {
     default: "Medialy",
     template: "%s | Medialy",
   },
-  description: "A local-first personal media recommendation dashboard.",
+  description: "Track, rate and rank what you watch, play and read, with recommendations built from your taste.",
   openGraph: {
     title: "Medialy",
-    description: "A local-first personal media recommendation dashboard.",
+    description: "Track, rate and rank what you watch, play and read, with recommendations built from your taste.",
     siteName: "Medialy",
     type: "website",
     url: "/",
@@ -57,7 +58,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Medialy",
-    description: "A local-first personal media recommendation dashboard.",
+    description: "Track, rate and rank what you watch, play and read, with recommendations built from your taste.",
     images: [ogImageUrl],
   },
 };
@@ -68,6 +69,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await getCurrentUser();
+  // Only admins pay for the alert query; everyone else gets no badge.
+  const adminAlertCount = user?.isAdmin
+    ? (await getAdminReviewCounts()).total
+    : 0;
   // Light mode is disabled until every panel honors theme tokens — see commit
   // d338cd1 for the first partial pass. Until then, pin everything to dark
   // so hardcoded dark backgrounds don't collide with light-mode text colors.
@@ -85,6 +90,7 @@ export default async function RootLayout({
           <Providers initialThemeMode={initialThemeMode}>
             <CssBaseline />
             <AppShell
+              adminAlertCount={adminAlertCount}
               isAdmin={Boolean(user?.isAdmin)}
               isAuthenticated={Boolean(user)}
               userInitial={user ? userInitial(user.displayName) : null}

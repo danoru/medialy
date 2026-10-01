@@ -8,7 +8,7 @@ import {
   previewMediaImport,
   suggestMediaImportMapping,
 } from "@/lib/import-export";
-import { prisma } from "@/lib/prisma";
+import { getCatalogItems } from "@/lib/db/catalog";
 import type {
   MediaImportMapping,
   MedialyExport,
@@ -87,9 +87,8 @@ export async function POST(request: Request) {
       const parsed = JSON.parse(await file.text()) as MedialyExport;
       assertExportVersion(parsed);
       const media = Array.isArray(parsed.media) ? parsed.media : [];
-      const existing = await prisma.mediaItem.findMany({
-        select: { title: true, mediaType: true },
-      });
+      // Counts only, so the cached catalog is fresh enough (see lib/cache).
+      const existing = await getCatalogItems();
       const existingKeys = new Set(
         existing.map((item) => normalizeKey(item.title, item.mediaType)),
       );

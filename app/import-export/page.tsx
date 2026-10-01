@@ -8,12 +8,15 @@ import {
 import { ImportExportPanel } from "@/components/import-export/ImportExportPanel";
 import { StatePanel } from "@/components/shared/StatePanel";
 import { prisma } from "@/lib/prisma";
+import { requireUserId } from "@/lib/user";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Import / Export" };
 
 export default async function ImportExportPage() {
+  const userId = await requireUserId("/import-export");
   const jobs = await prisma.importJob.findMany({
+    where: { userId },
     orderBy: { createdAt: "desc" },
     take: 10,
   });

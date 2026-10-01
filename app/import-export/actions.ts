@@ -18,7 +18,7 @@ import type { MediaImportMapping } from "@/lib/types";
 import { requireUser } from "@/lib/user";
 
 export async function importCsvFile(formData: FormData) {
-  await requireUser("/import-export");
+  const user = await requireUser("/import-export");
   const file = formData.get("file");
   if (!(file instanceof File)) return;
   const rows = mapTabularMediaRows(
@@ -29,6 +29,7 @@ export async function importCsvFile(formData: FormData) {
   if (!preview.valid) {
     await prisma.importJob.create({
       data: {
+        userId: user.id,
         sourceType: "CSV",
         fileName: file.name,
         status: "FAILED",
@@ -46,7 +47,7 @@ export async function importCsvFile(formData: FormData) {
 }
 
 export async function importXlsxFile(formData: FormData) {
-  await requireUser("/import-export");
+  const user = await requireUser("/import-export");
   const file = formData.get("file");
   if (!(file instanceof File)) return;
   const rows = mapTabularMediaRows(
@@ -57,6 +58,7 @@ export async function importXlsxFile(formData: FormData) {
   if (!preview.valid) {
     await prisma.importJob.create({
       data: {
+        userId: user.id,
         sourceType: "XLSX",
         fileName: file.name,
         status: "FAILED",
@@ -83,7 +85,7 @@ export async function importJsonFile(formData: FormData) {
 }
 
 export async function importLetterboxdBundleFiles(formData: FormData) {
-  await requireUser("/import-export");
+  const user = await requireUser("/import-export");
   const watchlist = formData.get("watchlist");
   const watched = formData.get("watched");
   const ratings = formData.get("ratings");
@@ -104,6 +106,7 @@ export async function importLetterboxdBundleFiles(formData: FormData) {
   if (!preview.valid) {
     await prisma.importJob.create({
       data: {
+        userId: user.id,
         sourceType: "CSV",
         fileName,
         status: "FAILED",

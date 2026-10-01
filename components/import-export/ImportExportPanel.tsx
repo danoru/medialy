@@ -587,7 +587,7 @@ function LetterboxdPreviewSummary({ preview }: { preview: Preview }) {
           />
           <Chip
             color="info"
-            label={`${preview.updates} updates`}
+            label={`${preview.updates} already in Medialy`}
             variant="outlined"
           />
           <Chip
@@ -726,7 +726,7 @@ function PreviewCard({
           />
           <Chip
             color="info"
-            label={`${preview.updates} updates`}
+            label={`${preview.updates} already in Medialy`}
             variant="outlined"
           />
           <Chip
@@ -756,8 +756,8 @@ function PreviewCard({
           </Stack>
         ) : (
           <Typography color="text.secondary" variant="body2">
-            Preview passed. Import will update existing matches and create
-            missing items.
+            Preview passed. Titles already in Medialy get your status and
+            rating; the rest are added to the catalog.
           </Typography>
         )}
         <Button

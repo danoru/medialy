@@ -25,6 +25,7 @@ import { useState } from "react";
 import {
   AppBar,
   Avatar,
+  Badge,
   Box,
   BottomNavigation,
   BottomNavigationAction,
@@ -180,12 +181,14 @@ export function AppShell({
   userInitial,
   isAuthenticated = false,
   isAdmin = false,
+  adminAlertCount = 0,
 }: {
   children: React.ReactNode;
   userName?: string | null;
   userInitial?: string | null;
   isAuthenticated?: boolean;
   isAdmin?: boolean;
+  adminAlertCount?: number;
 }) {
   const displayName = userName ?? "Guest";
   const displayInitial = userInitial ?? "G";
@@ -355,25 +358,33 @@ export function AppShell({
                   px: { xs: 0.25, sm: 0.75 },
                 }}
               >
-                <Avatar
-                  sx={(theme) => ({
-                    background: `radial-gradient(circle at 30% 30%, ${alpha(theme.palette.accent.primary, 0.32)} 0%, ${alpha(theme.palette.accent.primary, 0.14)} 100%)`,
-                    border: `1px solid ${alpha(theme.palette.accent.primary, 0.55)}`,
-                    boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.04)} inset, 0 0 14px ${alpha(theme.palette.accent.primary, 0.45)}`,
-                    color: "primary.main",
-                    fontSize: "0.875rem",
-                    fontWeight: 650,
-                    height: 28,
-                    transition: "box-shadow 180ms ease, transform 180ms ease",
-                    width: 28,
-                    "[aria-haspopup='true']:hover &": {
-                      boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.06)} inset, 0 0 22px ${alpha(theme.palette.accent.primary, 0.65)}`,
-                      transform: "scale(1.04)",
-                    },
-                  })}
+                <Badge
+                  aria-label={reviewAlertLabel(adminAlertCount)}
+                  color="primary"
+                  invisible={!isAdmin || adminAlertCount <= 0}
+                  overlap="circular"
+                  variant="dot"
                 >
-                  {displayInitial}
-                </Avatar>
+                  <Avatar
+                    sx={(theme) => ({
+                      background: `radial-gradient(circle at 30% 30%, ${alpha(theme.palette.accent.primary, 0.32)} 0%, ${alpha(theme.palette.accent.primary, 0.14)} 100%)`,
+                      border: `1px solid ${alpha(theme.palette.accent.primary, 0.55)}`,
+                      boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.04)} inset, 0 0 14px ${alpha(theme.palette.accent.primary, 0.45)}`,
+                      color: "primary.main",
+                      fontSize: "0.875rem",
+                      fontWeight: 650,
+                      height: 28,
+                      transition: "box-shadow 180ms ease, transform 180ms ease",
+                      width: 28,
+                      "[aria-haspopup='true']:hover &": {
+                        boxShadow: `0 0 0 1px ${alpha("#FFFFFF", 0.06)} inset, 0 0 22px ${alpha(theme.palette.accent.primary, 0.65)}`,
+                        transform: "scale(1.04)",
+                      },
+                    })}
+                  >
+                    {displayInitial}
+                  </Avatar>
+                </Badge>
                 <Typography
                   variant="labelMd"
                   component="span"
@@ -428,7 +439,18 @@ export function AppShell({
                     <ListItemIcon>
                       <AdminPanelSettingsIcon fontSize="small" />
                     </ListItemIcon>
-                    Admin
+                    <Box component="span" sx={{ flex: 1 }}>
+                      Admin
+                    </Box>
+                    {adminAlertCount > 0 ? (
+                      <Badge
+                        aria-label={reviewAlertLabel(adminAlertCount)}
+                        badgeContent={adminAlertCount}
+                        color="primary"
+                        max={99}
+                        sx={{ ml: 2, mr: 1.5 }}
+                      />
+                    ) : null}
                   </MenuItem>
                 ) : null}
                 <Divider />
@@ -715,6 +737,7 @@ export function AppShell({
                     }}
                     onClick={() => setMobileMoreOpen(false)}
                     selected={isSelectedPath(pathname, "/admin")}
+                    alertCount={adminAlertCount}
                   />
                 ) : null}
                 <form action={signOutAction}>
@@ -850,11 +873,17 @@ export function AppShell({
   );
 }
 
+function reviewAlertLabel(count: number) {
+  return `${count} ${count === 1 ? "item needs" : "items need"} review`;
+}
+
 function MobileDrawerItem({
+  alertCount = 0,
   item,
   onClick,
   selected,
 }: {
+  alertCount?: number;
   item: NavItem;
   onClick: () => void;
   selected: boolean;
@@ -903,6 +932,15 @@ function MobileDrawerItem({
           </Typography>
         }
       />
+      {alertCount > 0 ? (
+        <Badge
+          aria-label={reviewAlertLabel(alertCount)}
+          badgeContent={alertCount}
+          color="primary"
+          max={99}
+          sx={{ mr: 1.5 }}
+        />
+      ) : null}
     </ListItemButton>
   );
 }

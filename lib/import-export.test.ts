@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  blankFillsForImport,
   buildMediaImportTemplateCsv,
   buildMediaImportTemplateXlsx,
   mapTabularMediaRows,
@@ -136,5 +137,50 @@ describe("media csv import", () => {
 
     expect(parsed.rows).toEqual([]);
     expect(parsed.errors).toEqual([{ row: 2, message: "Name is required." }]);
+  });
+});
+
+describe("import matching an existing catalog item", () => {
+  const curated = {
+    originalTitle: null,
+    description: "Curated description.",
+    externalUrl: null,
+    releaseDate: new Date("2025-11-26T00:00:00.000Z"),
+    metadataJson: JSON.stringify({ tmdb: { id: 1 } }),
+  };
+  const incoming = mediaFormInputFromCsvRow({
+    title: "Wake Up Dead Man",
+    mediaType: "MOVIE",
+    status: "COMPLETED",
+    releaseDate: "2025-01-01",
+    description: "Imported description.",
+    externalUrl: "https://example.test/film",
+  });
+
+  it("never carries a title or media type, so a fuzzy match can't rename the item", () => {
+    const data = blankFillsForImport(incoming, curated);
+
+    expect(data).not.toHaveProperty("title");
+    expect(data).not.toHaveProperty("mediaType");
+  });
+
+  it("fills blanks and keeps every value that is already set", () => {
+    const data = blankFillsForImport(incoming, curated);
+
+    expect(data.description).toBe("Curated description.");
+    expect(data.releaseDate).toEqual(curated.releaseDate);
+    expect(data.externalUrl).toBe("https://example.test/film");
+  });
+
+  it("keeps an existing metadata namespace over the imported one", () => {
+    const data = blankFillsForImport(
+      { ...incoming, metadataJson: JSON.stringify({ tmdb: { id: 2 }, letterboxd: { uri: "x" } }) },
+      curated,
+    );
+
+    expect(JSON.parse(data.metadataJson ?? "{}")).toEqual({
+      tmdb: { id: 1 },
+      letterboxd: { uri: "x" },
+    });
   });
 });
