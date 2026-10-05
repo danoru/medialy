@@ -208,14 +208,6 @@ export type MediaTypeGenreInsights = {
   standoutTitles: InsightStandoutTitle[];
 };
 
-export type DataHealthReport = {
-  missingGenres: MediaItemDTO[];
-  missingDates: MediaItemDTO[];
-  missingPosters: MediaItemDTO[];
-  lowComparisonItems: MediaItemDTO[];
-  duplicateCandidates: Array<{ key: string; items: MediaItemDTO[] }>;
-};
-
 export type CsvMediaRow = {
   title: string;
   mediaType: string;

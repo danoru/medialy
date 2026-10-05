@@ -1,9 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { toMediaItemDTO } from "@/lib/media";
 import { VISIBLE_MEDIA_TYPES, visibleMediaTypeFilter } from "@/lib/media-types";
 import type {
-  DataHealthReport,
   FollowCompatibility,
   GenreInsight,
   InsightMomentumGenre,
@@ -11,8 +9,6 @@ import type {
 } from "@/lib/types";
 import { normalizeComparableTitle } from "@/lib/text-normalization";
 import { getCurrentUserId } from "@/lib/user";
-import { mergeUserMedia, userMediaSelect } from "@/lib/db/user-media";
-import { LEAN_MEDIA_WITH_TAXONOMY_SELECT } from "@/lib/db/media-select";
 import { getCatalogWithUser } from "@/lib/db/catalog";
 import { getFollowingIds, getUserProfiles } from "@/lib/social/follows";
 import { calculateRatingCompatibility } from "@/lib/scoring/compatibility";
@@ -371,54 +367,6 @@ function compareGenreInsights(first: GenreInsight, second: GenreInsight) {
   );
 }
 
-export async function getDataHealthReport(
-  userId?: string | null,
-): Promise<DataHealthReport> {
-  const resolvedUserId =
-    userId === undefined ? await getCurrentUserId() : userId;
-  const archivedFilter =
-    resolvedUserId == null
-      ? {}
-      : {
-          OR: [
-            { userMedia: { none: { userId: resolvedUserId } } },
-            { userMedia: { some: { userId: resolvedUserId, isArchived: false } } },
-          ],
-        };
-  const rawItems = await prisma.mediaItem.findMany({
-    where: {
-      mediaType: visibleMediaTypeFilter(),
-      ...archivedFilter,
-    },
-    select: {
-      ...LEAN_MEDIA_WITH_TAXONOMY_SELECT,
-      ...userMediaSelect(resolvedUserId),
-    },
-    orderBy: { title: "asc" },
-  });
-
-  const dtos = rawItems.map((item) => toMediaItemDTO(mergeUserMedia(item)));
-  const duplicateGroups = new Map<string, typeof dtos>();
-
-  for (const item of dtos) {
-    const year = item.releaseDate
-      ? new Date(item.releaseDate).getUTCFullYear()
-      : "unknown";
-    const key = `${normalizeComparableTitle(item.title)}::${item.mediaType}::${year}`;
-    duplicateGroups.set(key, [...(duplicateGroups.get(key) ?? []), item]);
-  }
-
-  return {
-    missingGenres: dtos.filter((item) => item.genres.length === 0),
-    missingDates: dtos.filter((item) => !item.releaseDate),
-    missingPosters: dtos.filter((item) => !item.posterUrl),
-    lowComparisonItems: dtos.filter((item) => item.comparisonCount < 3),
-    duplicateCandidates: [...duplicateGroups.entries()]
-      .filter(([, group]) => group.length > 1)
-      .map(([key, group]) => ({ key, items: group })),
-  };
-}
-
 export type DataHealthCounts = {
   missingGenres: number;
   missingDates: number;
@@ -431,9 +379,7 @@ export type DataHealthCounts = {
  * Just the five data-health tallies — for the dashboard and profile, which only
  * read `.length` of each list.
  *
- * `getDataHealthReport` hydrates the entire catalog with genres/tags/userMedia
- * joins to produce these counts; that full report is only needed by the
- * data-health page. Here we use `count` aggregates for four of the metrics and
+ * Here we use `count` aggregates for four of the metrics and
  * a thin title-only scan for the duplicate grouping (which needs JS title
  * normalization and so can't be a pure SQL count) — no relation joins.
  */
