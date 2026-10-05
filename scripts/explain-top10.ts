@@ -79,7 +79,7 @@ async function main() {
     `Priors: community=${globalCommunityMean.toFixed(2)}, consensus=${globalConsensusMean.toFixed(2)}`,
   );
   console.log(
-    `Shrinkage k: user=${TOP_RANKING.shrinkageK.user}, source=${TOP_RANKING.shrinkageK.source}\n`,
+    `Pooled votes: ${TOP_RANKING.pooled.criticVotesPerSource} per critic source, 1 per rating, ${TOP_RANKING.pooled.priorVotes} at the prior\n`,
   );
 
   const rows = items.flatMap((item) => {

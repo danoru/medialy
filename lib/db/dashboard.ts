@@ -13,7 +13,6 @@ import type { MediaItemDTO } from "@/lib/types";
 import { getCurrentUser } from "@/lib/user";
 import { startOfToday } from "@/lib/upcoming";
 import { getCatalogWithUser } from "@/lib/db/catalog";
-import { bayesianShrunkMean } from "@/lib/scoring/affinity";
 import { TOP_RANKING } from "@/lib/scoring/config";
 import { diversify, usualGenresFrom } from "@/lib/scoring/diversity";
 import { explicitRating } from "@/lib/scoring/recommendationV2";
@@ -83,16 +82,35 @@ export type OverallTopRankingContext = {
   globalConsensusMean: number;
 };
 
+/** How a Medialy score was reached — enough to show the working. */
+export type MedialyScore = {
+  /** 0–10. */
+  score: number;
+  /** Real votes behind the score (critic votes plus ratings, no prior). */
+  evidence: number;
+  critics: { score: number; sources: number; votes: number } | null;
+  /** Medialy users' Refined scores, the viewer's included. */
+  ratings: { average: number; count: number } | null;
+  /** The catalog-average starting point every title gets. */
+  prior: { score: number; votes: number };
+  /** True when `evidence` is below `TOP_RANKING.pooled.thinEvidenceVotes`. */
+  thinEvidence: boolean;
+};
+
 /**
- * The Overall Top 10 is intentionally objective: same ranking for every
- * viewer, signed-in or not. It blends external consensus with the average
- * `computedPersonalScore` (Refined) across users who gave the item an
- * explicit rating — no viewer-specific score, no archive state, no affinity.
- * Per-user signals belong on Tonight's Pick / Up Next.
+ * The Medialy score: the objective quality score behind the Overall Top 10,
+ * Canon and Discover, and the headline score on a title's page. It is the
+ * same for every viewer — external consensus plus the Refined scores of users
+ * who gave the item an explicit rating, the viewer's included as one vote
+ * like anyone else's. No archive state, no affinity; per-user signals belong
+ * on Tonight's Pick / Up Next.
  *
- * Both sub-scores are Bayesian-shrunk toward their global priors. An item
- * with one 10/10 rating and no critic sources gets pulled toward the mean;
- * an item with broad coverage holds its value. See `TOP_RANKING.shrinkageK`.
+ * Everything goes into one weighted average (see `TOP_RANKING.pooled`):
+ * critic sources and ratings are votes, and the catalog average holds a fixed
+ * number of votes as the starting point. This replaced averaging a shrunk
+ * critic score with a shrunk community score 50/50, which let two ratings
+ * weigh as much as all the critic data and capped any title with a couple of
+ * ratings below a critics-only one.
  */
 export function dashboardQualityScore(
   consensusScore: number | null | undefined,
@@ -100,38 +118,47 @@ export function dashboardQualityScore(
   consensus: ConsensusEvidence | null | undefined,
   globalCommunityMean: number,
   globalConsensusMean: number,
-): { score: number; evidence: number } | null {
-  const parts: number[] = [];
-  let totalEvidence = 0;
+): MedialyScore | null {
+  const { criticVotesPerSource, priorVotes, thinEvidenceVotes } =
+    TOP_RANKING.pooled;
 
-  if (community && community.voters > 0) {
-    parts.push(
-      bayesianShrunkMean(
-        community.average,
-        community.voters,
-        globalCommunityMean,
-        TOP_RANKING.shrinkageK.user,
-      ),
-    );
-    totalEvidence += community.voters;
-  }
-  if (typeof consensusScore === "number") {
-    // Defensive default: if the consensus score exists, *some* source produced
-    // it. Treat unknown counts as 1 so we don't silently substitute the prior.
-    const sources = Math.max(consensus?.sources ?? 0, 1);
-    parts.push(
-      bayesianShrunkMean(
-        consensusScore,
-        sources,
-        globalConsensusMean,
-        TOP_RANKING.shrinkageK.source,
-      ),
-    );
-    totalEvidence += sources;
-  }
-  if (parts.length === 0) return null;
-  const score = parts.reduce((total, value) => total + value, 0) / parts.length;
-  return { score, evidence: totalEvidence };
+  const ratings =
+    community && community.voters > 0
+      ? { average: community.average, count: community.voters }
+      : null;
+  // Defensive default: if the consensus score exists, *some* source produced
+  // it. Treat unknown counts as 1 so we don't silently drop it.
+  const critics =
+    typeof consensusScore === "number"
+      ? (() => {
+          const sources = Math.max(consensus?.sources ?? 0, 1);
+          return {
+            score: consensusScore,
+            sources,
+            votes: sources * criticVotesPerSource,
+          };
+        })()
+      : null;
+  if (!ratings && !critics) return null;
+
+  const prior = {
+    score: (globalCommunityMean + globalConsensusMean) / 2,
+    votes: priorVotes,
+  };
+  const evidence = (critics?.votes ?? 0) + (ratings?.count ?? 0);
+  const weighted =
+    (critics ? critics.score * critics.votes : 0) +
+    (ratings ? ratings.average * ratings.count : 0) +
+    prior.score * prior.votes;
+
+  return {
+    score: weighted / (evidence + prior.votes),
+    evidence,
+    critics,
+    ratings,
+    prior,
+    thinEvidence: evidence < thinEvidenceVotes,
+  };
 }
 
 /**

@@ -5,6 +5,7 @@ import { CATALOG_CACHE_TAG, CATALOG_REVALIDATE_SECONDS } from "@/lib/cache";
 import {
   buildOverallTopRankingContext,
   dashboardQualityScore,
+  type MedialyScore,
   type OverallTopRankingContext,
 } from "@/lib/db/dashboard";
 import { CREDIT_ROLES_BY_MEDIA_TYPE } from "@/lib/credits";
@@ -367,3 +368,40 @@ export const getCanonData = unstable_cache(
   ["canon-data"],
   { revalidate: CATALOG_REVALIDATE_SECONDS, tags: [CATALOG_CACHE_TAG] },
 );
+
+/** A title's Medialy score plus its place in the Canon, for its detail page. */
+export type MedialyScoreWithRank = MedialyScore & {
+  /** 1-based position in the Canon for its media type, or null past the top. */
+  rank: number | null;
+};
+
+/**
+ * The Medialy score for one title, built from the same cached ranking
+ * aggregates and Canon list as the Top 10, so the detail page and the lists
+ * always agree and the page adds no catalog scan. Both caches lag by up to
+ * `CATALOG_REVALIDATE_SECONDS`, so a rating made a moment ago may not be
+ * counted yet.
+ */
+export async function getMedialyScoreWithRank(item: {
+  id: string;
+  mediaType: MediaType;
+  computedConsensusScore: number | null;
+}): Promise<MedialyScoreWithRank | null> {
+  const [context, canon] = await Promise.all([
+    buildOverallTopRankingContext(),
+    getCanonData({ type: item.mediaType }),
+  ]);
+  const scored = dashboardQualityScore(
+    item.computedConsensusScore,
+    context.communityByMediaId.get(item.id),
+    context.consensusByMediaId.get(item.id),
+    context.globalCommunityMean,
+    context.globalConsensusMean,
+  );
+  if (!scored) return null;
+  const position =
+    canon.mode === "overall"
+      ? canon.overall.findIndex((entry) => entry.id === item.id)
+      : -1;
+  return { ...scored, rank: position >= 0 ? position + 1 : null };
+}

@@ -175,7 +175,7 @@ describe("dashboard overall top 10", () => {
   });
 
   it("dashboardQualityScore pulls a 1-vote 10/10 toward the prior", () => {
-    // With prior 7.5 and shrinkageK.user=3, 1 vote of 10 lands at ~8.13.
+    // One vote of 10 against 4 starting votes at 7.5: (10 + 30) / 5.
     const ranked = dashboardQualityScore(
       null,
       { average: 10, voters: 1 },
@@ -184,8 +184,65 @@ describe("dashboard overall top 10", () => {
       7.5,
     );
     expect(ranked).not.toBeNull();
-    expect(ranked!.score).toBeCloseTo(8.125, 5);
+    expect(ranked!.score).toBeCloseTo(8, 5);
     expect(ranked!.evidence).toBe(1);
+    expect(ranked!.thinEvidence).toBe(true);
+  });
+
+  // The cases that motivated pooling, on the live numbers from October 2026:
+  // a 50/50 blend of two shrunk scores left Citizen Kane at 8.16, below the
+  // critics-only Fanny and Alexander at 8.60.
+  describe("Medialy score pooling", () => {
+    const score = (
+      critics: number | null,
+      sources: number,
+      ratings: number[],
+    ) =>
+      dashboardQualityScore(
+        critics,
+        ratings.length
+          ? {
+              average: ratings.reduce((sum, value) => sum + value, 0) /
+                ratings.length,
+              voters: ratings.length,
+            }
+          : null,
+        { sources },
+        7.0,
+        7.2,
+      )!;
+
+    it("lets good ratings lift a well-reviewed title above a critics-only one", () => {
+      const kane = score(9.95, 2, [9.2, 8.5]);
+      const fanny = score(10, 2, []);
+      expect(kane.score).toBeGreaterThan(fanny.score);
+      expect(kane.score).toBeCloseTo(8.59, 2);
+      expect(fanny.score).toBeCloseTo(8.55, 2);
+    });
+
+    it("still values a title only critics have seen", () => {
+      const fanny = score(10, 2, []);
+      expect(fanny.score).toBeGreaterThan(8.5);
+      expect(fanny.thinEvidence).toBe(false);
+    });
+
+    it("lets low ratings pull a title down", () => {
+      expect(score(9.95, 2, [6, 6]).score).toBeLessThan(
+        score(9.95, 2, []).score,
+      );
+    });
+
+    it("counts each critic source as two votes and shows its working", () => {
+      const kane = score(9.95, 2, [9.2, 8.5]);
+      expect(kane.critics).toEqual({ score: 9.95, sources: 2, votes: 4 });
+      expect(kane.ratings).toEqual({ average: 8.85, count: 2 });
+      expect(kane.prior).toEqual({ score: 7.1, votes: 4 });
+      expect(kane.evidence).toBe(6);
+    });
+
+    it("flags a single critic source as thin evidence", () => {
+      expect(score(8, 1, []).thinEvidence).toBe(true);
+    });
   });
 
   it("filters out hidden media types but keeps visible groups", () => {

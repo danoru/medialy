@@ -221,9 +221,24 @@ export const MEDIALY_MATCH_WEIGHTS = {
  */
 export const TOP_RANKING = {
   shrinkageK: {
-    user: 3,
     source: 2,
     personal: 3,
+  },
+  /**
+   * The Medialy score (`dashboardQualityScore`): one weighted average over
+   * every piece of evidence a title has, in the spirit of IMDb's Top 250 and
+   * BoardGameGeek's Geek rating. Each critic source counts as
+   * `criticVotesPerSource` votes at its score (a source like IMDb already
+   * summarizes thousands of opinions), each Medialy rating as one vote, and
+   * every title starts with `priorVotes` votes at the catalog average. More
+   * evidence means the starting point matters less, so a title with critics
+   * and ratings is trusted more than one with either alone.
+   */
+  pooled: {
+    criticVotesPerSource: 2,
+    priorVotes: 4,
+    /** Below this many real votes the score is flagged as thin evidence. */
+    thinEvidenceVotes: 4,
   },
   /** Used only when the global pool is empty (fresh install). */
   fallbackPrior: 7.0,
