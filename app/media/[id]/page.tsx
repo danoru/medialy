@@ -8,6 +8,7 @@ import { calculateCommunityAverage } from "@/lib/scoring/communityAverage";
 import { calculateConsensusScore } from "@/lib/scoring/consensus";
 import { getMediaItemMatch } from "@/lib/scoring/itemMatch";
 import { getCreditStats } from "@/lib/db/people";
+import { getMedialyScoreWithRank } from "@/lib/db/canon";
 import {
   getFriendMediaActivity,
   type FriendMediaEntry,
@@ -122,6 +123,7 @@ export default async function MediaDetailPage({
     matchSummary,
     friendActivity,
     creditStats,
+    medialyScore,
   ] = await Promise.all([
     Promise.all([
       prisma.mediaRelation.findMany({
@@ -161,6 +163,7 @@ export default async function MediaDetailPage({
       rawItem.mediaType,
       rawItem.id,
     ),
+    getMedialyScoreWithRank(rawItem),
   ]);
   const relations: RelationView[] = [
     ...relationsFrom.map((relation) => ({
@@ -227,6 +230,7 @@ export default async function MediaDetailPage({
     ...merged,
     communityScore: community.score,
     communityRaterCount: community.raterCount,
+    medialyScore,
     consensusAgreement: consensus.agreementConfidence,
     consensusUsedSourceCount: consensus.usedSourceCount,
     matchSummary,

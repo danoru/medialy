@@ -1,6 +1,7 @@
 "use client";
 
 import { MATCH_MEANING } from "@/lib/score-display";
+import type { MedialyScoreWithRank } from "@/lib/db/canon";
 import ArchiveRoundedIcon from "@mui/icons-material/ArchiveRounded";
 import ArrowBackRoundedIcon from "@mui/icons-material/ArrowBackRounded";
 import CheckCircleRoundedIcon from "@mui/icons-material/CheckCircleRounded";
@@ -136,6 +137,8 @@ export type MediaDetailViewItem = UserMediaFields & {
   consensusUsedSourceCount: number;
   communityScore: number | null;
   communityRaterCount: number;
+  /** The objective score the Top 10 and Canon rank by; null with no evidence. */
+  medialyScore: MedialyScoreWithRank | null;
   matchSummary: MediaDetailMatchSummary | null;
   /** Streaming availability for movies/TV (US, free + subscription). */
   watchProviders?: WatchAvailability | null;
@@ -348,11 +351,7 @@ export function MediaDetailView({
 
             {item.matchSummary && userId ? (
               <Box sx={matchPanelSx}>
-                <Tooltip
-                  arrow
-                  placement="top"
-                  title={MATCH_MEANING}
-                >
+                <Tooltip arrow placement="top" title={MATCH_MEANING}>
                   <Stack spacing={0.5} sx={{ cursor: "help" }}>
                     <Typography sx={kickerSx}>Medialy Match</Typography>
                     <Typography sx={matchScoreSx}>
@@ -448,6 +447,12 @@ export function MediaDetailView({
         {/* SCORE BREAKDOWN ---------------------------------------------- */}
         <Box>
           <SectionTitle>Score breakdown</SectionTitle>
+          {item.medialyScore ? (
+            <MedialyScoreBlock
+              mediaType={item.mediaType}
+              score={item.medialyScore}
+            />
+          ) : null}
           <Box sx={scoreTileGridSx}>
             <ScoreTile
               color={detailTokens.accent.purple}
@@ -469,8 +474,8 @@ export function MediaDetailView({
               label="Community"
               sub={
                 item.communityRaterCount > 0
-                  ? `Averaged across ${item.communityRaterCount} Medialy ${item.communityRaterCount === 1 ? "user" : "users"}`
-                  : "Not yet rated by others"
+                  ? `${item.communityRaterCount} other ${item.communityRaterCount === 1 ? "rating" : "ratings"}`
+                  : "No other ratings yet"
               }
               value={formatOptionalScore(item.communityScore)}
             />
@@ -823,7 +828,11 @@ export function MediaDetailView({
                       key={`${credit.id}-${credit.role}`}
                       sx={creditCardSx}
                     >
-                      <PersonAvatar art={stat?.art} name={credit.name} size={36} />
+                      <PersonAvatar
+                        art={stat?.art}
+                        name={credit.name}
+                        size={36}
+                      />
                       <Box sx={{ minWidth: 0 }}>
                         <Typography className="credit-name" sx={creditNameSx}>
                           {credit.name}
@@ -1043,7 +1052,11 @@ function ActionRow({
       </Box>
 
       {selectedStatus === "COMPLETED" ? (
-        <Box action={completedAtAction} component="form" ref={completedAtFormRef}>
+        <Box
+          action={completedAtAction}
+          component="form"
+          ref={completedAtFormRef}
+        >
           <Stack
             direction="row"
             sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}
@@ -1244,6 +1257,152 @@ function ScoreTile({
       <Typography color="text.secondary" sx={scoreTileSubSx}>
         {sub}
       </Typography>
+    </Box>
+  );
+}
+
+function MedialyScoreBlock({
+  mediaType,
+  score,
+}: {
+  mediaType: MediaType;
+  score: MedialyScoreWithRank;
+}) {
+  const { critics, evidence, prior, ratings } = score;
+  const totalVotes = evidence + prior.votes;
+  const criticVotes = critics?.votes ?? 0;
+  const ratingCount = ratings?.count ?? 0;
+  const segments = [
+    {
+      color: detailTokens.accent.green,
+      label: "Critics",
+      votes: criticVotes,
+    },
+    {
+      color: detailTokens.accent.cyan,
+      label: "Medialy ratings",
+      votes: ratingCount,
+    },
+    {
+      color: "divider",
+      label: "Starting point",
+      votes: prior.votes,
+    },
+  ].filter((segment) => segment.votes > 0);
+
+  const summaryParts: string[] = [];
+  if (critics) {
+    summaryParts.push(
+      `${critics.sources} critic ${critics.sources === 1 ? "source" : "sources"}`,
+    );
+  }
+  if (ratings) {
+    summaryParts.push(
+      `${ratings.count} Medialy ${ratings.count === 1 ? "rating" : "ratings"}`,
+    );
+  }
+  const summaryFrom =
+    summaryParts.length > 0 ? `From ${summaryParts.join(" and ")}` : null;
+  const summaryRank =
+    score.rank != null
+      ? `#${score.rank} in ${mediaTypeNoun(mediaType, 2)}`
+      : null;
+  const summary = [summaryFrom, summaryRank].filter(Boolean).join(" · ");
+
+  const weightedTotal =
+    (critics ? critics.score * critics.votes : 0) +
+    (ratings ? ratings.average * ratings.count : 0) +
+    prior.score * prior.votes;
+
+  const working = (
+    <Stack sx={{ gap: 0.5 }}>
+      {critics ? (
+        <span>
+          {`Critics · ${formatScore(critics.score)} × ${critics.votes} votes = ${formatWorking(critics.score * critics.votes)}`}
+        </span>
+      ) : null}
+      {ratings ? (
+        <span>
+          {`Medialy ratings · ${formatScore(ratings.average)} avg × ${ratings.count} = ${formatWorking(ratings.average * ratings.count)}`}
+        </span>
+      ) : null}
+      <span>
+        {`Starting point · ${formatScore(prior.score)} × ${prior.votes} votes = ${formatWorking(prior.score * prior.votes)}`}
+      </span>
+      <span>
+        {`${formatWorking(weightedTotal)} ÷ ${totalVotes} votes = ${formatScore(score.score, 1)}`}
+      </span>
+      <span>
+        Every title starts from the catalog average. Each critic source counts
+        as 2 votes and each Medialy rating as 1, so the more evidence a title
+        has, the less the starting point matters.
+      </span>
+    </Stack>
+  );
+
+  return (
+    <Box sx={{ mb: 1.5 }}>
+      <Box sx={medialyScoreSx}>
+        <Stack direction="row" sx={{ alignItems: "center", gap: 0.45 }}>
+          <Typography sx={metricLabelSx}>Medialy score</Typography>
+          <Tooltip title={working}>
+            <InfoOutlinedIcon
+              aria-label="How the Medialy score is calculated"
+              sx={metricInfoIconSx}
+            />
+          </Tooltip>
+        </Stack>
+        <Stack
+          direction="row"
+          sx={{ alignItems: "center", flexWrap: "wrap", gap: 1.25 }}
+        >
+          <Typography sx={scoreValueSx}>
+            {formatScore(score.score, 1)}
+          </Typography>
+          {score.thinEvidence ? (
+            <Typography color="text.secondary" sx={thinEvidenceSx}>
+              Thin evidence
+            </Typography>
+          ) : null}
+        </Stack>
+        {summary ? (
+          <Typography color="text.secondary" sx={scoreTileSubSx}>
+            {summary}
+          </Typography>
+        ) : null}
+        <Box sx={evidenceBarSx}>
+          {segments.map((segment) => (
+            <Box
+              key={segment.label}
+              sx={{ bgcolor: segment.color, flex: segment.votes }}
+            />
+          ))}
+        </Box>
+        <Stack
+          direction="row"
+          sx={{ flexWrap: "wrap", columnGap: 2, rowGap: 0.5 }}
+        >
+          {segments.map((segment) => (
+            <Stack
+              direction="row"
+              key={segment.label}
+              sx={{ alignItems: "center", gap: 0.75 }}
+            >
+              <Box
+                sx={{
+                  bgcolor: segment.color,
+                  borderRadius: "50%",
+                  height: 8,
+                  width: 8,
+                }}
+              />
+              <Typography color="text.secondary" sx={{ fontSize: "0.8125rem" }}>
+                {`${segment.label} ${Math.round((segment.votes / totalVotes) * 100)}%`}
+              </Typography>
+            </Stack>
+          ))}
+        </Stack>
+      </Box>
     </Box>
   );
 }
@@ -1505,7 +1664,10 @@ function peopleForRole(
   return credits
     .filter((credit) => credit.role === role)
     .sort((first, second) => first.order - second.order)
-    .map((credit) => ({ id: credit.contributor.id, name: credit.contributor.name }));
+    .map((credit) => ({
+      id: credit.contributor.id,
+      name: credit.contributor.name,
+    }));
 }
 
 function formatExternalRating(score: number, scale: number) {
@@ -1518,6 +1680,16 @@ function formatNumber(value: number) {
 
 function formatOptionalScore(value: number | null) {
   return value == null ? "-" : formatNumber(value);
+}
+
+/** A score to at most `digits` decimals, trailing zeros dropped. */
+function formatScore(value: number, digits = 2) {
+  return String(Number(value.toFixed(digits)));
+}
+
+/** A vote product or total, to one decimal. */
+function formatWorking(value: number) {
+  return value.toFixed(1);
 }
 
 function refinedTooltip(
@@ -1537,10 +1709,10 @@ function refinedTooltip(
 
 function communityTooltip(score: number | null, raterCount: number) {
   if (score == null || raterCount === 0) {
-    return "Not yet rated by other Medialy users.";
+    return "Not yet rated by other Medialy users. Leaves out your own rating.";
   }
   const raterLabel = `${raterCount} other ${raterCount === 1 ? "Medialy user" : "Medialy users"}`;
-  return `Average of ${raterLabel}.`;
+  return `Average of ${raterLabel}. Leaves out your own rating.`;
 }
 
 function consensusTooltip(
@@ -1928,6 +2100,37 @@ const scoreTileGridSx: SxProps<Theme> = {
   display: "grid",
   gap: 1.5,
   gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" },
+};
+
+const medialyScoreSx: SxProps<Theme> = {
+  bgcolor: "background.paper",
+  border: "1px solid",
+  borderColor: "border.subtle",
+  borderRadius: 3,
+  boxShadow: (theme: Theme) => theme.shadows[1],
+  display: "flex",
+  flexDirection: "column",
+  gap: 0.75,
+  p: { xs: 2, md: 2.25 },
+};
+
+const thinEvidenceSx: SxProps<Theme> = {
+  border: "1px solid",
+  borderColor: "border.subtle",
+  borderRadius: 999,
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  px: 1,
+  py: 0.25,
+};
+
+const evidenceBarSx: SxProps<Theme> = {
+  borderRadius: 999,
+  display: "flex",
+  gap: "2px",
+  height: 6,
+  mt: 0.75,
+  overflow: "hidden",
 };
 
 function scoreTileSx(accent?: string): SxProps<Theme> {
