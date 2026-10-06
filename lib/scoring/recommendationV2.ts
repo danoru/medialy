@@ -13,18 +13,31 @@
  *    titles, weighted by how far above or below the viewer's usual rating
  *    they landed. Nearness is the facet similarity in `similarity.ts`:
  *    director, subgenre, genre, theme, era and place, leads.
- *  - genre / tag / contributor: signed per-medium feature profiles. Unknown
- *    features lower reliability instead of disappearing; breadth of agreement
- *    raises it.
+ *  - contributor / subgenre / genre / theme / era / cast: signed per-medium
+ *    feature profiles, one per kind of feature, in the order the owner ranks
+ *    what makes a title land (director first, actors last). Unknown features
+ *    lower reliability instead of disappearing; breadth of agreement raises it.
+ *  - eraMix: which eras the viewer actually watches, rated or not, against the
+ *    catalog's spread. Ratings alone can't show it: people who rarely watch
+ *    classics watch only the best ones, and rate them well.
  *  - friends: followers' opinions centered on each friend's own usual rating,
  *    weighted by overlap-shrunk compatibility.
- *  - consensus: critics, with their own confidence as reliability.
+ *  - consensus: critics, with their own confidence as reliability, judged
+ *    partly against the title's era: the catalog's classics are the canon
+ *    that survived, so a 9 is par for 1950 and exceptional for 2020.
  */
 import { calculatePersonalScore } from "./personalScore";
 import { clamp } from "./pairwise";
 import { calculateRatingCompatibility } from "./compatibility";
 import { RECOMMENDATION_V2 } from "./config";
 import { facetSimilarity, type FeatureRarity } from "./similarity";
+import {
+  eraLabel,
+  eraOf,
+  type EraContext,
+  type EraExposure,
+  type EraKey,
+} from "./era";
 
 export type V2Tag = {
   name: string;
@@ -70,8 +83,12 @@ export type TasteProfile = {
   baseline: number;
   ratedCount: number;
   genres: Map<string, Feature>;
-  tags: Map<string, Feature>;
+  subgenres: Map<string, Feature>;
+  /** Every approved tag that isn't a subgenre: themes, moods, mechanics, format, country. */
+  themes: Map<string, Feature>;
   contributors: Map<string, Feature>;
+  cast: Map<string, Feature>;
+  eras: Map<string, Feature>;
   examples: TasteExample[];
 };
 export type Signal = {
@@ -90,6 +107,8 @@ export type Signal = {
   };
   /** The strongest feature (a genre, tag or creator) behind a profile signal. */
   feature?: { label: string; direction: "above" | "below" | "around" };
+  /** The critic score behind the consensus signal, for the reason line. */
+  critic?: { score: number };
   /** The person who best explains a social signal. */
   person?: {
     userId: string;
@@ -114,9 +133,13 @@ export type V2Score = {
 
 export const SIGNAL_LABELS: Record<SignalKey, string> = {
   similarity: "Similar to titles you rated",
+  contributor: "Director and creator taste",
+  subgenre: "Subgenre taste",
   genre: "Genre taste",
-  tag: "Tag taste",
-  contributor: "Creator taste",
+  theme: "Theme and mood taste",
+  era: "Era taste",
+  cast: "Cast taste",
+  eraMix: "Eras you watch",
   friends: "Friends",
   twins: "People with similar taste",
   consensus: "Critic consensus",
@@ -125,9 +148,12 @@ export const SIGNAL_LABELS: Record<SignalKey, string> = {
 /** Signals that come from the viewer's own history. */
 export const PERSONAL_SIGNALS: readonly SignalKey[] = [
   "similarity",
-  "genre",
-  "tag",
   "contributor",
+  "subgenre",
+  "genre",
+  "theme",
+  "era",
+  "cast",
 ];
 
 const unknown = (detail: string): Signal => ({
@@ -148,6 +174,13 @@ function roleWeight(role: string): number {
 }
 function approvedTags(item: V2Item) {
   return item.tags.filter((entry) => entry.tag.status === "APPROVED");
+}
+/** Approved tags, once each by name. */
+function uniqueTags(tags: V2Item["tags"]) {
+  return [...new Map(tags.map((t) => [t.tag.name, t.tag])).values()];
+}
+function isSubgenre(entry: V2Item["tags"][number]) {
+  return entry.tag.category === "SUBGENRE";
 }
 
 /**
@@ -211,8 +244,11 @@ export function buildTasteProfiles(
       baseline,
       ratedCount: group.length,
       genres: new Map(),
-      tags: new Map(),
+      subgenres: new Map(),
+      themes: new Map(),
       contributors: new Map(),
+      cast: new Map(),
+      eras: new Map(),
       examples: [],
     };
     for (const { row, rating, weight } of group) {
@@ -235,17 +271,23 @@ export function buildTasteProfiles(
       };
       for (const genre of unique(row.media.genres.map((g) => g.genre.name)))
         add(profile.genres, genre, genre);
-      for (const tag of unique(approvedTags(row.media).map((t) => t.tag.name)))
-        add(profile.tags, tag, tag);
+      for (const tag of uniqueTags(approvedTags(row.media))) {
+        if (tag.category === "SUBGENRE") add(profile.subgenres, tag.name, tag.name);
+        else add(profile.themes, tag.name, tag.name);
+      }
       const credits = new Map(row.media.credits.map((c) => [creditKey(c), c]));
       for (const [key, credit] of credits) {
-        if (roleWeight(credit.role) > 0)
-          add(
-            profile.contributors,
-            key,
-            contributorPhrase(medium, credit.role, credit.contributor.name),
-          );
+        const phrase = contributorPhrase(
+          medium,
+          credit.role,
+          credit.contributor.name,
+        );
+        if (credit.role === "ACTOR") add(profile.cast, key, phrase);
+        else if (roleWeight(credit.role) > 0)
+          add(profile.contributors, key, phrase);
       }
+      const era = eraOf(row.media.releaseDate);
+      if (era) add(profile.eras, era, eraPhrase(medium, era));
       profile.examples.push({
         id: row.media.id,
         title: row.media.title,
@@ -595,7 +637,10 @@ export function contributorPhrase(mediaType: string, role: string, name: string)
  * the admin pages; this is what cards show.
  */
 export function humanReason(
-  explanation: Pick<V2Explanation, "signal" | "because" | "feature" | "person" | "value">,
+  explanation: Pick<
+    V2Explanation,
+    "signal" | "because" | "feature" | "person" | "value" | "critic"
+  >,
   names: NameLookup = new Map(),
 ): string | null {
   switch (explanation.signal) {
@@ -607,9 +652,12 @@ export function humanReason(
         ? `Because you rated ${because.title} ${rating}`
         : `Most like ${because.title}, which you rated ${rating}`;
     }
+    case "contributor":
+    case "subgenre":
     case "genre":
-    case "tag":
-    case "contributor": {
+    case "theme":
+    case "era":
+    case "cast": {
       const feature = explanation.feature;
       if (!feature) return null;
       if (feature.direction === "above") {
@@ -625,21 +673,23 @@ export function humanReason(
       const person = explanation.person;
       if (!person) return null;
       const name = names.get(person.userId) ?? "Someone you follow";
-      const match = `your tastes match ${person.compatibility}%`;
       if (person.rating != null) {
         return explanation.signal === "twins"
-          ? `${name}, whose ${match}, rated it ${formatTen(person.rating)}/10`
-          : `${name} rated it ${formatTen(person.rating)}/10, and ${match}`;
+          ? `${name}, whose taste matches yours ${person.compatibility}%, rated it ${formatTen(person.rating)}/10`
+          : `${name} rated it ${formatTen(person.rating)}/10, and your tastes match ${person.compatibility}%`;
       }
       return person.status === "WATCHLIST"
         ? `${name} has it on their watchlist`
         : `${name} has watched it`;
     }
+    case "eraMix": {
+      const feature = explanation.feature;
+      if (!feature || feature.direction !== "above") return null;
+      return `You watch a lot of ${feature.label}`;
+    }
     case "consensus": {
-      if (explanation.value == null) return null;
-      const score =
-        RECOMMENDATION_V2.consensusNeutral +
-        (explanation.value - 50) / RECOMMENDATION_V2.consensusPointScale;
+      const score = explanation.critic?.score;
+      if (score == null) return null;
       const shown = score.toFixed(1);
       if (score >= 8.5) return `Critics love it, ${shown}/10`;
       if (score >= 7.5) return `Critics rate it well, ${shown}/10`;
@@ -651,52 +701,137 @@ export function humanReason(
   }
 }
 
+/** "films from the 2010s", for reasons and feature labels. */
+function eraPhrase(medium: string, era: EraKey) {
+  return `${WORK_NOUN[medium] ?? "titles"} from ${eraLabel(era)}`;
+}
+
+/**
+ * The candidate's era against how much of the viewer's tracked library comes
+ * from it, relative to the catalog's own spread. A viewer whose library is
+ * half recent releases, in a catalog that is a fifth recent, reads recent
+ * titles as above neutral and the eras they skip as below it. The viewer's
+ * share is pulled toward the catalog's by `eraMix.prior` tracked titles, and
+ * reliability grows with library size, so a new account isn't pigeonholed.
+ */
+export function eraMixSignal(
+  item: V2Item,
+  eras: EraContext | undefined,
+  exposure: EraExposure | undefined,
+): Signal {
+  const era = eraOf(item.releaseDate);
+  if (!era) return unknown("No release date.");
+  const catalogShare = eras?.share.get(item.mediaType)?.get(era);
+  const viewer = exposure?.get(item.mediaType);
+  if (!catalogShare || !viewer || viewer.total === 0)
+    return unknown("No tracked titles in this medium yet.");
+  const { prior, pointScale, maxSwing, reliabilityPrior } =
+    RECOMMENDATION_V2.eraMix;
+  const tracked = viewer.counts.get(era) ?? 0;
+  const viewerShare =
+    (tracked + prior * catalogShare) / (viewer.total + prior);
+  const lift = Math.log(viewerShare / catalogShare);
+  const swing = clamp(lift * pointScale, -maxSwing, maxSwing);
+  const percent = (value: number) => `${Math.round(value * 100)}%`;
+  return {
+    value: 50 + swing,
+    reliability: viewer.total / (viewer.total + reliabilityPrior),
+    evidence: viewer.total,
+    feature: {
+      label: eraPhrase(item.mediaType, era),
+      direction: swing > 0.5 ? "above" : swing < -0.5 ? "below" : "around",
+    },
+    detail: `${tracked} of your ${viewer.total} tracked titles (${percent(tracked / viewer.total)}) are from ${eraLabel(era)}, against ${percent(catalogShare)} of the catalog.`,
+  };
+}
+
+/**
+ * Critics, centered on a neutral that blends the catalog-wide typical score
+ * with the typical score for the title's era (`eraRelativeCritics` of the
+ * way). Only the recommendation engine does this; the Medialy score that
+ * ranks the Top 10 and Canon uses critics as they are.
+ */
+export function consensusSignal(item: V2Item, eras?: EraContext): Signal {
+  const score = item.computedConsensusScore;
+  if (score == null) return unknown("No external ratings available.");
+  const era = eraOf(item.releaseDate);
+  const eraMean = era ? eras?.criticMean.get(item.mediaType)?.get(era) : undefined;
+  const base = RECOMMENDATION_V2.consensusNeutral;
+  const blend = RECOMMENDATION_V2.eraRelativeCritics;
+  const neutral = eraMean == null ? base : base * (1 - blend) + eraMean * blend;
+  return {
+    value: clamp(
+      50 + (score - neutral) * RECOMMENDATION_V2.consensusPointScale,
+      0,
+      100,
+    ),
+    reliability: clamp(item.consensusConfidence, 0, 1),
+    evidence: clamp(item.consensusConfidence, 0, 1),
+    critic: { score },
+    detail:
+      eraMean == null
+        ? `Critics: ${score}/10 against a typical ${base}; reliability comes from source count and agreement.`
+        : `Critics: ${score}/10 against ${neutral.toFixed(2)}, between the catalog's typical ${base} and ${era ? eraLabel(era) : "its era"}'s ${eraMean.toFixed(2)}; reliability comes from source count and agreement.`,
+  };
+}
+
 export function scoreV2(
   item: V2Item,
   profiles: Map<string, TasteProfile>,
   friends: Signal = unknown("No usable opinions from people you follow."),
-  options: { twins?: Signal; names?: NameLookup; rarity?: FeatureRarity } = {},
+  options: {
+    twins?: Signal;
+    names?: NameLookup;
+    rarity?: FeatureRarity;
+    /** Catalog spread and critic means per era; without it era-relative parts are skipped. */
+    eras?: EraContext;
+    /** Which eras the viewer tracks; without it the eraMix signal is unknown. */
+    exposure?: EraExposure;
+  } = {},
 ): V2Score {
   const profile = profiles.get(item.mediaType);
   const twins =
     options.twins ?? unknown("Nobody with a proven taste match has weighed in.");
   const signals: Record<SignalKey, Signal> = {
     similarity: similaritySignal(item, profiles, options.rarity),
+    contributor: featureSignal(
+      item.credits
+        .filter((c) => c.role !== "ACTOR")
+        .map((c) => ({ key: creditKey(c), strength: roleWeight(c.role) })),
+      profile?.contributors,
+    ),
+    subgenre: featureSignal(
+      approvedTags(item)
+        .filter(isSubgenre)
+        .map((t) => ({ key: t.tag.name, strength: 1 })),
+      profile?.subgenres,
+    ),
     genre: featureSignal(
       item.genres.map((g) => ({ key: g.genre.name, strength: 1 })),
       profile?.genres,
     ),
-    tag: featureSignal(
-      approvedTags(item).map((t) => ({ key: t.tag.name, strength: 1 })),
-      profile?.tags,
+    theme: featureSignal(
+      approvedTags(item)
+        .filter((t) => !isSubgenre(t))
+        .map((t) => ({ key: t.tag.name, strength: 1 })),
+      profile?.themes,
     ),
-    contributor: featureSignal(
-      item.credits.map((c) => ({
-        key: creditKey(c),
-        strength: roleWeight(c.role),
-      })),
-      profile?.contributors,
+    era: (() => {
+      const era = eraOf(item.releaseDate);
+      return era
+        ? featureSignal([{ key: era, strength: 1 }], profile?.eras)
+        : unknown("No release date.");
+    })(),
+    cast: featureSignal(
+      item.credits
+        .filter((c) => c.role === "ACTOR")
+        .map((c) => ({ key: creditKey(c), strength: 1 })),
+      profile?.cast,
     ),
+    eraMix: eraMixSignal(item, options.eras, options.exposure),
     friends,
     twins,
-    consensus:
-      item.computedConsensusScore == null
-        ? unknown("No external ratings available.")
-        : {
-            // Centered on the catalog's typical critic score, not on 5: a 6
-            // is below what most titles get and should read that way.
-            value: clamp(
-              50 +
-                (item.computedConsensusScore -
-                  RECOMMENDATION_V2.consensusNeutral) *
-                  RECOMMENDATION_V2.consensusPointScale,
-              0,
-              100,
-            ),
-            reliability: clamp(item.consensusConfidence, 0, 1),
-            evidence: clamp(item.consensusConfidence, 0, 1),
-            detail: `Critics: ${item.computedConsensusScore}/10 against a typical ${RECOMMENDATION_V2.consensusNeutral}; reliability comes from source count and agreement.`,
-          },
+    consensus: consensusSignal(item, options.eras),
   };
   // Tiering: the viewer's own history leads. Friends and taste twins step
   // back as it grows more reliable, and critics step back as any of the
@@ -744,10 +879,16 @@ export function scoreV2(
     (sum, e) => sum + e.contribution,
     RECOMMENDATION_V2.neutral,
   );
-  const confidence = explanations.reduce(
-    (sum, e) => sum + e.weight * e.reliability,
+  // Confidence: how much of the evidence the engine can weigh this title
+  // actually has, 0–1. Divided by the full weight budget so adding a signal
+  // never pushes it past 100%.
+  const weightBudget = Object.values(RECOMMENDATION_V2.weights).reduce(
+    (sum, weight) => sum + weight,
     0,
   );
+  const confidence =
+    explanations.reduce((sum, e) => sum + e.weight * e.reliability, 0) /
+    weightBudget;
   // The reason names the strongest positive signal, but a personal signal
   // (your own ratings, your friends) wins over critics whenever it carries
   // at least half as much weight: "closest to X, which you loved" is more

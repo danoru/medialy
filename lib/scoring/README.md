@@ -78,40 +78,50 @@ Every signal answers "how much will this viewer like the candidate?" as a 0–10
 
 ```
 score = 50 + Σ(weightᵢ × reliabilityᵢ × (valueᵢ − 50))
-confidence = Σ(weightᵢ × reliabilityᵢ)
+confidence = Σ(weightᵢ × reliabilityᵢ) / Σ(weightᵢ)
 ```
 
-### The seven signals (`RECOMMENDATION_V2.weights`)
+Confidence is divided by the full weight budget (`Σ RECOMMENDATION_V2.weights`, currently 1.14) so adding a signal can never push it past 100%.
+
+### The eleven signals (`RECOMMENDATION_V2.weights`)
 
 | Signal | Weight | What it measures |
 |---|---:|---|
-| Similarity | 0.25 | Nearest rated titles ("because you rated X"), cosine over genre/tag/credit/country vectors |
-| Genre | 0.05 | Signed per-medium genre profile |
-| Tag | 0.04 | Signed per-medium approved-tag profile |
+| Similarity | 0.25 | Nearest rated titles ("because you rated X"), by facet similarity (director, subgenre, genre, theme, era and place, actors) |
 | Contributor | 0.06 | Signed per-medium director/creator/developer/publisher profile |
+| Subgenre | 0.05 | Signed per-medium profile of `SUBGENRE` tags |
+| Genre | 0.04 | Signed per-medium genre profile |
+| Theme | 0.03 | Signed per-medium profile of the other approved tags (theme, mood, mechanic) |
+| Era | 0.03 | Signed per-medium profile of the viewer's *ratings* by release era |
+| Cast | 0.03 | Signed per-medium actor profile |
+| Eras you watch | 0.05 | Which eras the viewer *tracks*, rated or not, against the catalog's spread (see [Era](#era-erats)) |
 | Friends | 0.22 | Followers' ratings, centered on each friend's own baseline |
 | Twins | 0.10 | Non-followed users who share at least `twinMinOverlap` rated titles, scored like friends |
-| Consensus | 0.28 | External critics, centered on the catalog's typical 7 |
+| Consensus | 0.28 | External critics, centered on a neutral that moves halfway toward the title's era mean (see [Era](#era-erats)) |
 
-Weights were chosen by the holdout sweep of September 21, 2026, then re-swept September 22, 2026 to add tiering and taste twins (see below); critics still carry the most weight of any single signal, but tiering means the viewer's own history is what actually leads once it exists.
+The six feature-profile weights follow the owner's ranking of what makes a title land: director and creator first, then subgenre over plain genre, then theme and style, then era and place, then actors. Before October 6, 2026 these were three profiles (genre .05, tag .04, contributor .06) and actors contributed nothing to profiles; `roleWeights.ACTOR` stays 0 for the contributor profile because cast now has its own.
+
+The weights sum to 1.14, not 1.0; they are targets that tiering and reliability scale down, and `confidence` is normalized by the sum. Weights were chosen by the holdout sweep of September 21, 2026, re-swept September 22, 2026 to add tiering and taste twins, and extended October 6, 2026 for the split profiles and era signals (see below); critics still carry the most weight of any single signal, but tiering means the viewer's own history is what actually leads once it exists.
 
 ### Tiering — who leads (`RECOMMENDATION_V2.backoff`)
 
-The weights above are targets, not fixed shares. Each candidate's signals fire in tiers: the viewer's own history (similarity, genre, tag, contributor) leads; friends and taste twins fade out by `backoff.friendFade` (0.5) times the viewer's best personal-signal reliability; critics fade out by `backoff.consensusFade` (0.7) times the best reliability among personal, friends and twins combined. Each tier only speaks up when the ones above it are quiet.
+The weights above are targets, not fixed shares. Each candidate's signals fire in tiers: the viewer's own history (`PERSONAL_SIGNALS`: similarity, contributor, subgenre, genre, theme, era, cast) leads; friends and taste twins fade out by `backoff.friendFade` (0.5) times the viewer's best personal-signal reliability; critics fade out by `backoff.consensusFade` (0.7) times the best reliability among personal, friends and twins combined. "Eras you watch" is deliberately not in `PERSONAL_SIGNALS`: it is a population-level prior about what the viewer watches, so it must not fade critics the way real taste evidence does. Each tier only speaks up when the ones above it are quiet.
 
 This is deliberate cold-start behaviour: a brand-new account has no personal or social reliability, so both fades are zero and the candidate is ranked by critics alone. There is no separate "hero" gate for new accounts — tiering already produces a critics-led main page before any history exists, which is intentional; there must be something to show.
 
 **Similarity** (`similaritySignal`) — the candidate's `RECOMMENDATION_V2.similarity.neighbours` (40) nearest same-medium rated titles by facet similarity (`facetSimilarity`, see [Title similarity](#title-similarity-similarityts) below; `similarity ≥ minSimilarity` 0.10), weighted by squared similarity × example weight. The value is the weighted mean of those neighbours' residuals (rating minus the viewer's medium baseline, in points, clamped ±50). When same-medium reliability falls below `crossMediumBelow` (0.3), titles from other media are consulted too through the portable facets only (genre, theme, culture — no director/subgenre/actor), at `crossMediumFactor` (0.4) reliability. The reason line names the genuinely closest rated title: "Because you rated X N/10" when the viewer rated it above their average, "Most like X, which you rated N/10" when below.
 
-**Genre / tag / contributor** (`featureSignal`) — signed per-medium feature profiles built in `buildTasteProfiles`. Each rated title's residual is added to every genre/tag/contributor-role it carries. A candidate's value is the reliability-weighted mean of its *known* features' residuals; reliability grows both with how well-supported each known feature is (`featurePrior`) and with how many of the candidate's features are known at all (`featureBreadthPrior`) — so a title whose features you have never rated moves the score little, and three loved genres beat one. Unknown features lower reliability instead of disappearing.
+**Contributor / subgenre / genre / theme / era / cast** (`featureSignal`) — six signed per-medium feature profiles built in `buildTasteProfiles`. Each rated title's residual is added to every feature it carries: credited directors/creators/developers/publishers (`contributors`), actors (`cast`), `SUBGENRE` tags (`subgenres`), all other approved tags (`themes`), genres, and the title's release era (`eras`). A candidate's value is the reliability-weighted mean of its *known* features' residuals; reliability grows both with how well-supported each known feature is (`featurePrior`) and with how many of the candidate's features are known at all (`featureBreadthPrior`) — so a title whose features you have never rated moves the score little, and three loved genres beat one. Unknown features lower reliability instead of disappearing.
 
 **Friends** (`friendSignal`) — each followed user's opinion of the candidate, centered on *that friend's own* usual rating in the medium (`buildFriendBaselines`), not a flat neutral. Compatibility is shrunk toward neutral by shared-rating overlap (`overlapPrior`); completing or watchlisting without a rating counts only as weak interest (`statusOnlyInterest`), never stacked on top of a rating. **Twins** reuse the same `friendSignal` function against users the viewer does not follow, gated by `options.minOverlap` (`RECOMMENDATION_V2.twinMinOverlap`, 15): a twin only counts once you and they have rated at least that many of the same titles, so a passing one-title coincidence never qualifies someone as a taste twin.
 
-**Consensus** — critics, centered on `consensusNeutral` (7, the catalog's typical critic score, not 5) at `consensusPointScale` (20) points per critic point away from it; reliability is the consensus pipeline's own confidence.
+**Consensus** (`consensusSignal`) — critics, centered on a neutral that sits `eraRelativeCritics` (0.5) of the way from `consensusNeutral` (7, the catalog's typical critic score, not 5) toward the mean critic score of the title's era in its medium (`EraContext.criticMean`), at `consensusPointScale` (20) points per critic point away from it; reliability is the consensus pipeline's own confidence. With no era data it falls back to the flat 7. This era adjustment applies **only inside the recommendation engine**; the Medialy score behind the Top 10 and Canon uses critics as they are.
+
+**Eras you watch** (`eraMixSignal`) — see [Era](#era-erats).
 
 ### Reasons (`humanReason`)
 
-Each signal's technical `detail` string is for the admin pages only. `humanReason` turns the leading signal into one plain sentence for product surfaces: "Because you rated Cure 9/10" (similarity), "You usually rate Slow burn above your average" (genre/tag/contributor), "Anna rated it 9/10, and your tastes match 84%" (friends) or "Anna, whose your tastes match 77%, rated it 8.5/10" (twins — compatibility is named up front since the relationship itself is the news), and "Critics love it, 9.5/10" (consensus). `scoreV2` picks the reason: the strongest positive signal wins, but a personal or social signal is preferred over critics whenever it carries at least half the top contribution, since "because you loved X" is more useful than "critics like it" even when critics scored slightly higher.
+Each signal's technical `detail` string is for the admin pages only. `humanReason` turns the leading signal into one plain sentence for product surfaces: "Because you rated Cure 9/10" (similarity), "You usually rate Slow burn above your average" (any feature profile), "Anna rated it 9/10, and your tastes match 84%" (friends) or "Anna, whose taste matches yours 77%, rated it 8.5/10" (twins — compatibility is named up front since the relationship itself is the news), "You watch a lot of films from the 2010s" (eras you watch; only shown when the lift is positive), and "Critics love it, 9.5/10" (consensus). The era profile reads like the other feature profiles ("You usually rate films from 2020 on above your average"). `scoreV2` picks the reason: the strongest positive signal wins, but a personal or social signal is preferred over critics whenever it carries at least half the top contribution, since "because you loved X" is more useful than "critics like it" even when critics scored slightly higher.
 
 ### Calibration — what Match now means (`calibration.ts`, `MATCH_CALIBRATION`)
 
@@ -122,17 +132,26 @@ probability = sigmoid(MATCH_CALIBRATION.intercept + MATCH_CALIBRATION.slope × (
 match = round(probability × 100)
 ```
 
-Refit September 22, 2026 on 1,400 held-out ratings from three users, with tiering, taste twins and facet similarity on: intercept −0.2115, slope 0.3192, Brier 0.2122 (vs. 0.25 for a constant guess). A raw 50 shows as 45%, a raw 60 as 95%, a raw 40 as 3%.
+Refit October 6, 2026 on 1,459 held-out ratings from three users, with the split feature profiles, "eras you watch" and era-relative critics on: intercept −0.2767, slope 0.3289, Brier 0.2082 (vs. 0.25 for a constant guess; the previous fit scored 0.2084 against the new engine's raw scores, so the refit is a small gain). A raw 50 shows as 43%, a raw 60 as 95%, a raw 40 as 3%.
+
+### Match vs Confidence
+
+The two numbers on a recommendation answer different questions, and the in-app tooltips say so:
+
+- **Match** — the calibrated chance you rate the title above your own average (above). A prediction.
+- **Confidence** — how much of the evidence the engine can weigh this title actually has: `Σ(weight × reliability) / Σ(weight)`, 0–1. Coverage, not quality.
+
+A 95% match at 32% confidence means everything the engine knows points your way, but little is known. Confidence is also the tiebreaker between equal scores.
 
 ### Diversity — the dashboard picks (`diversity.ts`, `DIVERSITY`)
 
-Short recommendation rows (dashboard picks) run their ranked candidates through `diversify`: maximal marginal relevance picks each slot as the candidate with the best `score − λ × similarityToClosestPickSoFar`, so a row of five is not five entries from one franchise or one director. One slot (`adventurousSlots`) is reserved for the best candidate outside the viewer's `usualGenreCount` most-rated genres, provided it clears `adventurousFloor` (55 calibrated Match); if none does, the slot stays dependable.
+Short recommendation rows (dashboard picks) run their ranked candidates through `diversify`: maximal marginal relevance picks each slot as the candidate with the best `score − λ × similarityToClosestPickSoFar`, so a row of five is not five entries from one franchise or one director. One slot (`adventurousSlots`) is reserved for the best candidate that is outside the viewer's `usualGenreCount` (3) most-rated genres *or* outside their usual eras, provided it clears `adventurousFloor` (55 calibrated Match); if none does, the slot stays dependable. A viewer's usual eras (`usualErasFrom`) are the most-tracked eras that together hold at least `usualEraShare` (0.7) of their tracked titles, and are empty (no era constraint) until they track `usualEraMinTracked` (10) titles in the medium. This keeps "eras you watch" from sealing anyone into one period: a viewer who rarely watches classics still gets the occasional strong one.
 
 ### Holdout (`recommendationEvaluation.ts`, `RECOMMENDATION_EVALUATION`)
 
 `npm run recommendations:evaluate -- --all`, run September 22, 2026 with tiering, taste twins and facet similarity all enabled. A five-fold, per-medium, retrospective diagnostic: a held-out title is "liked" when rated `likedMargin` (1) above the viewer's own mean rating in that medium, "disliked" when `dislikedMargin` (1) below it; the reported accuracy is the fraction of liked/disliked pairs each ranker orders correctly (0.5 = chance).
 
-Pooled pair accuracy: **v2 ≈ 86.9%**, v1 ~60–76%, critics-alone ~75–93%.
+Pooled pair accuracy as of September 22, 2026: **v2 ≈ 86.9%**, v1 ~60–76%, critics-alone ~75–93%.
 
 | Cell | Pairs | V2 | V1 | Critics alone |
 |---|---:|---:|---:|---:|
@@ -142,9 +161,35 @@ Pooled pair accuracy: **v2 ≈ 86.9%**, v1 ~60–76%, critics-alone ~75–93%.
 
 Pooled accuracy is up from 83.9% with the old cosine similarity and tiering — replacing cosine over raw genre/tag/credit/country vectors with the rarity-weighted facet score (director, subgenre, genre, theme, culture, actor; see [Title similarity](#title-similarity-similarityts)) found genuinely closer neighbours, which more than made up the roughly 2-point cost tiering took from leaning on critics. Critics alone still edge out v2 on the two largest histories, where personal taste and critical consensus mostly agree; v2's margin over v1 is largest where a user's taste diverges most from critics.
 
+### Holdout, October 6, 2026 (split profiles and era signals)
+
+Liked-vs-disliked pair accuracy before → after: the owner's movies 91.2% → 90.6%; the other large rater 85.2% → 86.0%; the third user 87.0% → 87.0%; the owner's TV 80.5% → 80.5%. Brier moved 0.2087 → 0.2084 at the previous calibration. These changes were never expected to move holdout accuracy: the holdout scores ratings that already happened and so cannot see the choice-driven effect. A top-picks comparison was run instead, counting pre-1970 films in each user's top 10 movie recommendations before → after: owner 7 → 4 (top 25: 14 → 8); a heavy classics watcher 7 → 6 (kept, correctly); two mostly-modern viewers 3 → 0 and 6 → 1.
+
 Stored ratings of 0 are read as no rating by the engine (`explicitRating`, `minExplicitRating: 0.5`) — of the 164 zero-valued rows found, 163 belong to the main account's unplayed games and are placeholders, not real opinions. The database rows themselves still need a manual cleanup (set `personalRating` to `NULL` where it is 0, then `npm run ratings:recompute`), because a stored 0 still counts as a vote in community averages even though the engine ignores it.
 
 **Data gap (found September 22, 2026, facet similarity):** 506 of 1,618 movies have no genres, 788 no credits, and 801 no tags — titles this thin are invisible to `similaritySignal`, `featureSignal` and the comparison picker alike, since every facet they'd need is unknown rather than negative. On the main account specifically, 201 of its rated films have no genres and 207 no credits (Letterboxd imports were never enriched with TMDB metadata). `npm run metadata:backfill` fills blank genres/tags/credits from TMDB without overwriting anything already set (see the "never overwrite curated metadata" rule); until it's run, those titles keep contributing zero coverage to every facet-based score above.
+
+### Era (`era.ts`)
+
+Taste covers more than genre, and year is part of it. Two problems, two mechanisms.
+
+**Buckets.** `ERAS`: before 1970, 1970–89, 1990–2009, 2010–19, 2020+ (`eraOf(date)`, `null` without a release date). The same five serve every medium.
+
+**Survivorship in critic scores.** Only the canon of old eras is in the catalog, so critics average far higher on old films: catalog mean critic score for movies is 8.86 before 1970 (117 films), 7.00 for 1970–89, 6.29 for 1990–2009, 7.24 for the 2010s and 6.97 for 2020+. Critics are the heaviest signal and neutral at 7, so every classic arrived with a head start. `consensusSignal` therefore moves its neutral `eraRelativeCritics` (0.5) of the way toward the era's own mean (`EraContext.criticMean`, built per medium by `buildEraContext`). A 9 is par for 1950 and exceptional for 2020. Engine only; the Medialy score is unchanged.
+
+**Eras you watch** (`eraMixSignal`, weight `.05`). Ratings alone cannot show era preference: people who rarely watch classics watch only the best ones and rate them well (one user has 91 films from 2020 on against 11 before 1970, and rates those 11 at 8.7). So the signal reads *exposure*: `buildEraExposure` counts every non-archived title the viewer tracks on any status except untracked and not-interested, rated or not, per medium. Against the catalog's share of each era (`EraContext.share`):
+
+```
+viewerShare = (tracked_in_era + prior × catalogShare) / (total_tracked + prior)     // prior = eraMix.prior (10)
+value       = 50 + clamp(pointScale × ln(viewerShare / catalogShare), ±maxSwing)    // 20 points per unit, cap ±30
+reliability = total_tracked / (total_tracked + reliabilityPrior)                    // reliabilityPrior = 20
+```
+
+The signal is unknown (not neutral) when the title has no release date or nothing is tracked in the medium. It is not in `PERSONAL_SIGNALS`, so it does not fade critics. The evaluation script (`recommendationEvaluation.ts`) builds exposure from the training split's rated rows only.
+
+**Variety.** `diversify` accepts `usualEras` and lets the adventurous slot go to a strong pick outside them, as well as outside the usual genres (see Diversity above).
+
+**Wiring.** `lib/recommendations-v2.ts` builds `eras` (`buildEraContext(catalog)`) and `exposure` (`buildEraExposure(observations)`) per request and passes them to `scoreV2`.
 
 ---
 
@@ -401,6 +446,7 @@ Run `pnpm tsx scripts/explain-recommendations.ts [userId] [limit]` to print the 
 | Change | File |
 |---|---|
 | Tune v2 signal weights, priors, similarity | `config.ts:RECOMMENDATION_V2` |
+| Tune era handling (era-relative critics, "eras you watch") | `config.ts:RECOMMENDATION_V2.eraRelativeCritics`, `.eraMix`; era buckets in `era.ts` |
 | Tune Match calibration (what the % means) | `config.ts:MATCH_CALIBRATION`, `calibration.ts` |
 | Tune dashboard pick variety | `config.ts:DIVERSITY`, `diversity.ts` |
 | Tune the holdout's liked/disliked margins | `config.ts:RECOMMENDATION_EVALUATION` |

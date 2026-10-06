@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { diversify, pickSimilarity, usualGenresFrom } from "./diversity";
+import { diversify, pickSimilarity, usualErasFrom, usualGenresFrom } from "./diversity";
 import { brierScore, calibratedMatch, fitLogistic } from "./calibration";
 
 const item = (
@@ -104,5 +104,70 @@ describe("calibration", () => {
     expect(calibratedMatch(50)).toBeLessThan(55);
     expect(calibratedMatch(70)).toBeGreaterThan(85);
     expect(calibratedMatch(30)).toBeLessThan(10);
+  });
+});
+
+describe("diversify by era", () => {
+  const dated = (id: string, score: number, genre: string, era: string | null) => ({
+    ...item(id, score, [genre]),
+    era,
+  });
+
+  it("reserves the adventurous slot for a good pick from outside the usual eras", () => {
+    const ranked = [
+      dated("a", 90, "Drama", "1990-2009"),
+      dated("b", 88, "Thriller", "1990-2009"),
+      dated("c", 86, "Comedy", "1990-2009"),
+      dated("d", 84, "Horror", "1990-2009"),
+      dated("wild", 62, "Western", "pre-1970"),
+      dated("dud", 40, "Musical", "2020+"),
+    ];
+    const picks = diversify(ranked, {
+      limit: 4,
+      usualEras: new Set(["1990-2009"]),
+    }).map((p) => p.id);
+    expect(picks).toHaveLength(4);
+    expect(picks).toContain("wild");
+    expect(picks).not.toContain("dud");
+    expect(picks).not.toContain("d");
+  });
+
+  it("stays dependable when no outside-era pick clears the floor or has an era", () => {
+    const ranked = [
+      dated("a", 90, "Drama", "1990-2009"),
+      dated("b", 88, "Thriller", "1990-2009"),
+      dated("dud", 40, "Musical", "pre-1970"),
+      dated("undated", 70, "Comedy", null),
+    ];
+    const picks = diversify(ranked, {
+      limit: 3,
+      usualEras: new Set(["1990-2009"]),
+    }).map((p) => p.id);
+    expect(picks).toEqual(["a", "b", "undated"]);
+  });
+});
+
+describe("usualErasFrom", () => {
+  it("is empty below the minimum number of tracked titles", () => {
+    expect(usualErasFrom(new Map([["2010-2019", 9]]))).toEqual(new Set());
+    expect(usualErasFrom(new Map())).toEqual(new Set());
+  });
+
+  it("takes the smallest set of most-tracked eras covering the share", () => {
+    expect(
+      usualErasFrom(
+        new Map([["1990-2009", 5], ["2010-2019", 3], ["pre-1970", 2]]),
+      ),
+    ).toEqual(new Set(["1990-2009", "2010-2019"]));
+    expect(
+      usualErasFrom(new Map([["2010-2019", 8], ["pre-1970", 2]])),
+    ).toEqual(new Set(["2010-2019"]));
+    expect(usualErasFrom(new Map([["a", 3], ["b", 3], ["c", 3], ["d", 3]]))).toEqual(
+      new Set(["a", "b", "c"]),
+    );
+  });
+
+  it("honours an explicit minimum", () => {
+    expect(usualErasFrom(new Map([["2010-2019", 4]]), 4)).toEqual(new Set(["2010-2019"]));
   });
 });

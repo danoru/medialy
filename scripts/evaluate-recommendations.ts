@@ -25,6 +25,7 @@ import {
   type CalibrationSample,
 } from "@/lib/scoring/calibration";
 import { MATCH_CALIBRATION } from "@/lib/scoring/config";
+import { buildEraContext, type EraContext } from "@/lib/scoring/era";
 
 const MIN_RATINGS_FOR_ALL = 20;
 
@@ -110,6 +111,13 @@ async function main() {
         .map((row) => row.userId)
     : [arg];
 
+  // Era spread and critic means across the whole catalog: three narrow
+  // columns, read once.
+  const eras: EraContext = buildEraContext(
+    await prisma.mediaItem.findMany({
+      select: { mediaType: true, releaseDate: true, computedConsensusScore: true },
+    }),
+  );
   const pooled: CalibrationSample[] = [];
   const report: Record<string, unknown>[] = [];
   for (const userId of userIds) {
@@ -120,7 +128,13 @@ async function main() {
     if (!user) throw new Error(`User ${userId} not found.`);
     const { observations, friends, others } = await loadUser(userId);
     for (const medium of VISIBLE_MEDIA_TYPES) {
-      const result = evaluateRecommendations(observations, friends, medium, others);
+      const result = evaluateRecommendations(
+        observations,
+        friends,
+        medium,
+        others,
+        eras,
+      );
       if (result.ratedTitles === 0) continue;
       pooled.push(...result.samples);
       report.push({ user: userId.slice(0, 8), medium, ...summarize(result) });

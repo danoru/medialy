@@ -14,7 +14,12 @@ import { getCurrentUser } from "@/lib/user";
 import { startOfToday } from "@/lib/upcoming";
 import { getCatalogWithUser } from "@/lib/db/catalog";
 import { TOP_RANKING } from "@/lib/scoring/config";
-import { diversify, usualGenresFrom } from "@/lib/scoring/diversity";
+import {
+  diversify,
+  usualErasFrom,
+  usualGenresFrom,
+} from "@/lib/scoring/diversity";
+import { buildEraExposure, eraOf } from "@/lib/scoring/era";
 import { explicitRating } from "@/lib/scoring/recommendationV2";
 
 export function getDashboardUpcomingWhere(
@@ -276,7 +281,7 @@ export function getDashboardOverallTopItemsByMediaType(
  * Tonight's picks: five per media type, chosen for variety rather than as
  * the raw top five. Near-duplicates (same franchise, creator or genre mix)
  * are pushed down and one slot goes to a strong pick outside the viewer's
- * usual genres. See `lib/scoring/diversity.ts`.
+ * usual genres or eras. See `lib/scoring/diversity.ts`.
  *
  * Variety decides which five make the row; the row itself reads best-first by
  * Match, since that's the number each card shows. The featured pick is the top
@@ -285,6 +290,7 @@ export function getDashboardOverallTopItemsByMediaType(
 export function getDashboardTonightPicksByMediaType(
   recommendations: DashboardRecommendationEntry[],
   usualGenresByType: Map<string, ReadonlySet<string>> = new Map(),
+  usualErasByType: Map<string, ReadonlySet<string>> = new Map(),
 ) {
   return VISIBLE_MEDIA_TYPES.map((mediaType) => {
     const pool = recommendations
@@ -300,8 +306,13 @@ export function getDashboardTonightPicksByMediaType(
         creators: (entry.media.credits ?? [])
           .filter((credit) => credit.role !== "ACTOR")
           .map((credit) => `${credit.role}:${credit.name}`),
+        era: eraOf(entry.media.releaseDate),
       })),
-      { limit: 5, usualGenres: usualGenresByType.get(mediaType) },
+      {
+        limit: 5,
+        usualGenres: usualGenresByType.get(mediaType),
+        usualEras: usualErasByType.get(mediaType),
+      },
     );
     return {
       mediaType,
@@ -393,9 +404,24 @@ export async function getDashboardData() {
       ),
     ]),
   );
+  // And the eras they usually watch, from everything they track.
+  const exposure = buildEraExposure(
+    mergedOverallTopItems.map((item) => ({
+      media: item,
+      status: item.status,
+      isArchived: item.isArchived,
+    })),
+  );
+  const usualErasByType = new Map(
+    VISIBLE_MEDIA_TYPES.map((mediaType) => [
+      mediaType,
+      usualErasFrom(exposure.get(mediaType)?.counts ?? new Map()),
+    ]),
+  );
   const tonightPicksByMediaType = getDashboardTonightPicksByMediaType(
     recommendations,
     usualGenresByType,
+    usualErasByType,
   );
 
   return {

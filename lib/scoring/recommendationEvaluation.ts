@@ -16,6 +16,7 @@ import {
 import { calculateMedialyMatch } from "./medialyMatch";
 import { RECOMMENDATION_EVALUATION, RECOMMENDATION_V2 } from "./config";
 import { buildFeatureRarity } from "./similarity";
+import { buildEraExposure, type EraContext } from "./era";
 import type { CalibrationSample } from "./calibration";
 
 // Stable folds do not depend on scores, database order or random state.
@@ -62,6 +63,8 @@ export function evaluateRecommendations(
   medium: string,
   /** Rows from users the viewer does not follow; taste twins come from here. */
   others: FriendRating[] = [],
+  /** Catalog-wide era spread and critic means; era-relative parts are skipped without it. */
+  eras?: EraContext,
 ): EvaluationResult {
   const rated = observations.filter(
     (row) =>
@@ -113,6 +116,10 @@ export function evaluateRecommendations(
       continue;
     }
     const profiles = buildTasteProfiles(training);
+    // Only rated rows are loaded here, so "eras you watch" is read from the
+    // training ratings — an approximation of the live signal, which also
+    // counts unrated tracked titles.
+    const exposure = buildEraExposure(training);
     const viewerRatings = training.map((row) => ({
       mediaId: row.media.id,
       rating: row.personalRating!,
@@ -138,6 +145,8 @@ export function evaluateRecommendations(
             { minOverlap: RECOMMENDATION_V2.twinMinOverlap, noun: "taste-twin" },
           ),
           rarity,
+          eras,
+          exposure,
         },
       ).score;
       const v1 = calculateMedialyMatch({

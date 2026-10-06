@@ -7,8 +7,10 @@ import { DIVERSITY } from "@/lib/scoring/config";
  * `score − λ × (similarity to the closest pick so far)`, so a row of five
  * does not become five entries in the same franchise or five films by one
  * director. Then one "adventurous" slot goes to the best candidate outside
- * the viewer's usual genres, provided it clears a relevance floor; if none
- * does, the slot stays dependable.
+ * the viewer's usual genres or usual eras, provided it clears a relevance
+ * floor; if none does, the slot stays dependable. The era half keeps the
+ * "eras you watch" signal from sealing anyone into one period: a viewer who
+ * rarely watches classics still gets the occasional strong one.
  */
 
 export type DiversifiableItem = {
@@ -21,6 +23,8 @@ export type DiversifiableItem = {
   creators: string[];
   /** Franchise / collection key when known. */
   franchise?: string | null;
+  /** Release era (`lib/scoring/era.ts`), when the date is known. */
+  era?: string | null;
 };
 
 /** 0–1 overlap on the facets that make two picks feel like the same pick. */
@@ -45,6 +49,8 @@ export function diversify<T extends DiversifiableItem>(
     limit: number;
     /** Genres the viewer usually reaches for; the adventurous pick avoids them. */
     usualGenres?: ReadonlySet<string>;
+    /** Eras the viewer usually watches; the adventurous pick may avoid these instead. */
+    usualEras?: ReadonlySet<string>;
     /** Minimum score for the adventurous pick. */
     floor?: number;
   },
@@ -55,10 +61,17 @@ export function diversify<T extends DiversifiableItem>(
   const picks: T[] = [];
   const remaining = new Set(candidates.map((c) => c.id));
 
-  const dependableSlots =
-    options.usualGenres && options.usualGenres.size > 0
-      ? Math.max(1, limit - DIVERSITY.adventurousSlots)
-      : limit;
+  const usualGenres = options.usualGenres ?? new Set<string>();
+  const usualEras = options.usualEras ?? new Set<string>();
+  const wantsAdventure = usualGenres.size > 0 || usualEras.size > 0;
+  const isAdventurous = (candidate: T) =>
+    (usualGenres.size > 0 &&
+      candidate.genres.length > 0 &&
+      candidate.genres.every((genre) => !usualGenres.has(genre))) ||
+    (usualEras.size > 0 && candidate.era != null && !usualEras.has(candidate.era));
+  const dependableSlots = wantsAdventure
+    ? Math.max(1, limit - DIVERSITY.adventurousSlots)
+    : limit;
 
   while (picks.length < dependableSlots && remaining.size > 0) {
     let best: T | null = null;
@@ -80,14 +93,13 @@ export function diversify<T extends DiversifiableItem>(
     remaining.delete(best.id);
   }
 
-  if (picks.length < limit && options.usualGenres && options.usualGenres.size > 0) {
+  if (picks.length < limit && wantsAdventure) {
     const floor = options.floor ?? DIVERSITY.adventurousFloor;
     const adventurous = candidates.find(
       (candidate) =>
         remaining.has(candidate.id) &&
         candidate.score >= floor &&
-        candidate.genres.length > 0 &&
-        candidate.genres.every((genre) => !options.usualGenres!.has(genre)),
+        isAdventurous(candidate),
     );
     if (adventurous) {
       picks.push(adventurous);
@@ -103,6 +115,29 @@ export function diversify<T extends DiversifiableItem>(
     remaining.delete(candidate.id);
   }
   return picks;
+}
+
+/**
+ * The viewer's usual eras: the most-tracked ones that together hold at least
+ * `DIVERSITY.usualEraShare` of their tracked titles. Empty when they track
+ * too few titles to say.
+ */
+export function usualErasFrom(
+  counts: ReadonlyMap<string, number>,
+  minTracked: number = DIVERSITY.usualEraMinTracked,
+): Set<string> {
+  const total = [...counts.values()].reduce((sum, count) => sum + count, 0);
+  if (total < minTracked) return new Set();
+  const usual = new Set<string>();
+  let covered = 0;
+  for (const [era, count] of [...counts.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+  )) {
+    if (covered / total >= DIVERSITY.usualEraShare) break;
+    usual.add(era);
+    covered += count;
+  }
+  return usual;
 }
 
 /** The viewer's usual genres: the ones carrying most of their rated titles. */

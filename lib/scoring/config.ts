@@ -302,12 +302,36 @@ export const RECOMMENDATION_V2 = {
    */
   weights: {
     similarity: 0.25,
-    genre: 0.05,
-    tag: 0.04,
+    // The feature profiles follow the owner's ranking of what makes a title
+    // land: director and creator, then subgenre, genre, theme, era, cast.
     contributor: 0.06,
+    subgenre: 0.05,
+    genre: 0.04,
+    theme: 0.03,
+    era: 0.03,
+    cast: 0.03,
+    eraMix: 0.05,
     friends: 0.22,
     twins: 0.1,
     consensus: 0.28,
+  },
+  /**
+   * How far the critics' neutral moves from `consensusNeutral` toward the mean
+   * critic score of the title's era. The catalog's pre-1970 films average
+   * about 8.9 against 6.3–7.2 for later eras — the canon that survived — so
+   * without this every classic arrives with a large head start.
+   */
+  eraRelativeCritics: 0.5,
+  /** The "eras you watch" signal (`eraMixSignal`). */
+  eraMix: {
+    /** Pseudo-titles at the catalog's spread, so a small library isn't extreme. */
+    prior: 10,
+    /** Signal points per unit of log lift (viewer share over catalog share). */
+    pointScale: 20,
+    /** Cap on the swing either way, in signal points. */
+    maxSwing: 30,
+    /** Tracked titles at which the signal is half reliable. */
+    reliabilityPrior: 20,
   },
   /** Shared ratings a non-followed user needs before counting as a taste twin. */
   twinMinOverlap: 15,
@@ -366,6 +390,10 @@ export const DIVERSITY = {
   adventurousFloor: 55,
   /** How many of the viewer's most-rated genres count as "usual". */
   usualGenreCount: 3,
+  /** The most-tracked eras that together cover this share are "usual". */
+  usualEraShare: 0.7,
+  /** Tracked titles needed in a medium before any era counts as usual. */
+  usualEraMinTracked: 10,
 } as const;
 
 /** Holdout thresholds, relative to the viewer's mean rating in the medium. */
@@ -381,13 +409,14 @@ export const RECOMMENDATION_EVALUATION = {
  * your own average"). Fitted by `npm run recommendations:evaluate -- --all`
  * on held-out ratings; paste the printed values here after a refit.
  *
- * Fitted September 22, 2026 on 1,400 held-out ratings from three users with
- * tiering, taste twins and facet similarity on (Brier 0.2122 against 0.25 for
- * a constant guess). A raw 50 shows as 45%, a raw 60 as 95%, a raw 40 as 3%.
+ * Fitted October 6, 2026 on 1,459 held-out ratings from three users, with
+ * the split feature profiles (subgenre, theme, cast, era), "eras you watch"
+ * and era-relative critics on (Brier 0.2082 against 0.25 for a constant
+ * guess). A raw 50 shows as 43%, a raw 60 as 95%, a raw 40 as 3%.
  */
 export const MATCH_CALIBRATION = {
-  intercept: -0.2115,
-  slope: 0.3192,
+  intercept: -0.2767,
+  slope: 0.3289,
 } as const;
 
 // -----------------------------------------------------------------------------

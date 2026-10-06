@@ -20,6 +20,7 @@ import {
 } from "@/lib/scoring/recommendationV2";
 import { RECOMMENDATION_V2 } from "@/lib/scoring/config";
 import { buildFeatureRarity } from "@/lib/scoring/similarity";
+import { buildEraContext, buildEraExposure } from "@/lib/scoring/era";
 import { calibratedMatch } from "@/lib/scoring/calibration";
 import { toMediaItemDTO } from "@/lib/media";
 import type { Recommendation } from "@/lib/types";
@@ -106,6 +107,8 @@ export const getRecommendationV2Context = cache(async (userId: string) => {
     otherRatingsByMedia: byMedia(others),
     profiles: buildTasteProfiles(observations),
     rarity: buildFeatureRarity(catalog),
+    eras: buildEraContext(catalog),
+    exposure: buildEraExposure(observations),
     trust: buildFriendTrust(viewerRatings, friends),
     twinTrust: buildFriendTrust(viewerRatings, others),
     baselines: buildFriendBaselines(social),
@@ -158,6 +161,8 @@ export function scoreCatalogItem(
         ),
         names: context.names,
         rarity: context.rarity,
+        eras: context.eras,
+        exposure: context.exposure,
       },
     ),
   };

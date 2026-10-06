@@ -3,7 +3,9 @@ import {
   buildFriendBaselines,
   buildFriendTrust,
   buildTasteProfiles,
+  consensusSignal,
   contributorPhrase,
+  eraMixSignal,
   friendKey,
   friendSignal,
   humanReason,
@@ -17,6 +19,8 @@ import {
   evaluateRecommendations,
   evaluationFold,
 } from "./recommendationEvaluation";
+import { buildEraContext, type EraContext, type EraExposure, type EraKey } from "./era";
+import { RECOMMENDATION_V2 } from "./config";
 
 function item(id: string, overrides: Partial<V2Item> = {}): V2Item {
   return {
@@ -101,7 +105,7 @@ describe("v2 taste evidence", () => {
     const tv = scoreV2(item("tv", { mediaType: "TV_SHOW" }), profiles);
     expect(tv.confidence).toBeGreaterThan(0);
     expect(tv.confidence).toBeLessThan(movie.confidence);
-    for (const signal of ["genre", "tag", "contributor"] as const) {
+    for (const signal of ["contributor", "subgenre", "genre", "theme", "era", "cast"] as const) {
       expect(tv.explanations.find((e) => e.signal === signal)?.value).toBeNull();
     }
   });
@@ -491,7 +495,7 @@ describe("v2 tiering, twins and reasons", () => {
       humanReason({ signal: "similarity", value: 80, because: { id: "x", title: "Cure", rating: 9, direction: "above", similarity: 0.6 } }, names),
     ).toBe("Because you rated Cure 9/10");
     expect(
-      humanReason({ signal: "tag", value: 70, feature: { label: "Slow burn", direction: "above" } }, names),
+      humanReason({ signal: "theme", value: 70, feature: { label: "Slow burn", direction: "above" } }, names),
     ).toBe("You usually rate Slow burn above your average");
     expect(
       humanReason(
@@ -504,8 +508,8 @@ describe("v2 tiering, twins and reasons", () => {
         { signal: "twins", value: 80, person: { userId: "anna", rating: 8.5, status: "COMPLETED", compatibility: 77 } },
         names,
       ),
-    ).toBe("Anna, whose your tastes match 77%, rated it 8.5/10");
-    expect(humanReason({ signal: "consensus", value: 100 }, names)).toBe("Critics love it, 9.5/10");
+    ).toBe("Anna, whose taste matches yours 77%, rated it 8.5/10");
+    expect(humanReason({ signal: "consensus", value: 100, critic: { score: 9.5 } }, names)).toBe("Critics love it, 9.5/10");
     expect(humanReason({ signal: "consensus", value: null }, names)).toBeNull();
   });
 
@@ -593,5 +597,239 @@ describe("contributor phrasing", () => {
         feature: { label: "films directed by Tony Scott", direction: "above" },
       }),
     ).toBe("You usually rate films directed by Tony Scott above your average");
+  });
+});
+
+describe("v2 split feature profiles", () => {
+  const tag = (name: string, category: string) => ({
+    tag: { name, status: "APPROVED", category },
+  });
+  const learn = (media: V2Item) =>
+    buildTasteProfiles([observation(media.id, 10, { media })]).get("MOVIE")!;
+  const signalOf = (candidate: V2Item, profile: ReturnType<typeof learn>, key: string) =>
+    scoreV2(candidate, new Map([["MOVIE", profile]])).explanations.find(
+      (e) => e.signal === key,
+    )!;
+
+  it("feeds a SUBGENRE tag to the subgenre signal and not to theme", () => {
+    const media = item("a", { genres: [], tags: [tag("Slasher", "SUBGENRE")] });
+    const profile = learn(media);
+    expect(profile.subgenres.has("Slasher")).toBe(true);
+    expect(profile.themes.has("Slasher")).toBe(false);
+    expect(signalOf(media, profile, "subgenre").value).not.toBeNull();
+    expect(signalOf(media, profile, "theme").value).toBeNull();
+  });
+
+  it("feeds any other approved tag to the theme signal", () => {
+    const media = item("a", { genres: [], tags: [tag("Slow burn", "THEME")] });
+    const profile = learn(media);
+    expect(profile.themes.has("Slow burn")).toBe(true);
+    expect(profile.subgenres.has("Slow burn")).toBe(false);
+    expect(signalOf(media, profile, "theme").value).not.toBeNull();
+    expect(signalOf(media, profile, "subgenre").value).toBeNull();
+  });
+
+  it("feeds an ACTOR credit to cast and not to contributor", () => {
+    const actor = { role: "ACTOR", contributor: { id: "p1", name: "Star" } };
+    const media = item("a", { genres: [], credits: [actor] });
+    const profile = learn(media);
+    expect(profile.cast.size).toBe(1);
+    expect(profile.contributors.size).toBe(0);
+    expect(signalOf(media, profile, "cast").value).not.toBeNull();
+    expect(signalOf(media, profile, "contributor").value).toBeNull();
+  });
+
+  it("feeds a DIRECTOR credit to contributor and not to cast", () => {
+    const director = { role: "DIRECTOR", contributor: { id: "p1", name: "Auteur" } };
+    const media = item("a", { genres: [], credits: [director] });
+    const profile = learn(media);
+    expect(profile.contributors.size).toBe(1);
+    expect(profile.cast.size).toBe(0);
+    expect(signalOf(media, profile, "contributor").value).not.toBeNull();
+    expect(signalOf(media, profile, "cast").value).toBeNull();
+  });
+
+  it("feeds the release era to the era signal", () => {
+    const media = item("a", { genres: [], releaseDate: "2015-06-01" });
+    const profile = learn(media);
+    expect(profile.eras.has("2010-2019")).toBe(true);
+    expect(signalOf(media, profile, "era").value).toBeGreaterThan(50);
+    const other = item("b", { genres: [], releaseDate: "1955-06-01" });
+    expect(signalOf(other, profile, "era").value).toBeNull();
+    expect(signalOf(item("c", { genres: [] }), profile, "era").value).toBeNull();
+  });
+});
+
+describe("v2 eraMix", () => {
+  const dated = (id: string, releaseDate: string | null) => item(id, { releaseDate });
+  // A catalog that is 20% 2010s and 80% 1990-2009.
+  const catalog: EraContext = buildEraContext([
+    ...Array.from({ length: 8 }, (_, i) => ({
+      mediaType: "MOVIE",
+      releaseDate: `199${i}-01-01`,
+      computedConsensusScore: null,
+    })),
+    ...Array.from({ length: 2 }, (_, i) => ({
+      mediaType: "MOVIE",
+      releaseDate: `201${i}-01-01`,
+      computedConsensusScore: null,
+    })),
+  ]);
+  const exposure = (counts: Array<[EraKey, number]>): EraExposure =>
+    new Map([
+      [
+        "MOVIE",
+        {
+          counts: new Map(counts),
+          total: counts.reduce((sum, [, n]) => sum + n, 0),
+        },
+      ],
+    ]);
+  const recentHeavy = exposure([["2010-2019", 18], ["1990-2009", 2]]);
+
+  it("is unknown without a date, an era context or exposure", () => {
+    expect(eraMixSignal(dated("x", null), catalog, recentHeavy).value).toBeNull();
+    expect(eraMixSignal(dated("x", "2015-01-01"), undefined, recentHeavy).value).toBeNull();
+    expect(eraMixSignal(dated("x", "2015-01-01"), catalog, undefined).value).toBeNull();
+    expect(eraMixSignal(dated("x", "2015-01-01"), catalog, new Map()).value).toBeNull();
+    // An era the catalog has nothing in has no yardstick.
+    expect(eraMixSignal(dated("x", "1950-01-01"), catalog, recentHeavy).value).toBeNull();
+  });
+
+  it("rises above 50 for over-represented eras and falls below it for under-represented ones", () => {
+    const over = eraMixSignal(dated("x", "2015-01-01"), catalog, recentHeavy);
+    const under = eraMixSignal(dated("y", "1995-01-01"), catalog, recentHeavy);
+    expect(over.value).toBeGreaterThan(50);
+    expect(under.value).toBeLessThan(50);
+    expect(over.feature?.direction).toBe("above");
+    expect(under.feature?.direction).toBe("below");
+  });
+
+  it("is neutral when the viewer's mix matches the catalog", () => {
+    const matching = exposure([["2010-2019", 4], ["1990-2009", 16]]);
+    const signal = eraMixSignal(dated("x", "2015-01-01"), catalog, matching);
+    expect(signal.value).toBeCloseTo(50, 5);
+    expect(signal.feature?.direction).toBe("around");
+  });
+
+  it("never swings further than maxSwing", () => {
+    const { maxSwing } = RECOMMENDATION_V2.eraMix;
+    const rare: EraContext = buildEraContext([
+      ...Array.from({ length: 99 }, () => ({
+        mediaType: "MOVIE",
+        releaseDate: "1995-01-01",
+        computedConsensusScore: null,
+      })),
+      { mediaType: "MOVIE", releaseDate: "2015-01-01", computedConsensusScore: null },
+    ]);
+    const extremeUp = eraMixSignal(dated("x", "2015-01-01"), rare, exposure([["2010-2019", 1000]]));
+    const extremeDown = eraMixSignal(dated("y", "1995-01-01"), rare, exposure([["2010-2019", 1000]]));
+    expect(extremeUp.value).toBeCloseTo(50 + maxSwing, 10);
+    expect(extremeDown.value).toBeCloseTo(50 - maxSwing, 10);
+  });
+
+  it("grows more reliable with library size", () => {
+    const reliability = (n: number) =>
+      eraMixSignal(dated("x", "2015-01-01"), catalog, exposure([["2010-2019", n]])).reliability;
+    expect(reliability(2)).toBeLessThan(reliability(20));
+    expect(reliability(20)).toBeLessThan(reliability(200));
+    expect(reliability(200)).toBeLessThan(1);
+  });
+
+  it("explains itself only when the era is over-represented", () => {
+    const over = eraMixSignal(dated("x", "2015-01-01"), catalog, recentHeavy);
+    const under = eraMixSignal(dated("y", "1995-01-01"), catalog, recentHeavy);
+    expect(humanReason({ signal: "eraMix", ...over })).toBe(
+      "You watch a lot of films from the 2010s",
+    );
+    expect(humanReason({ signal: "eraMix", ...under })).toBeNull();
+    expect(humanReason({ signal: "eraMix", value: null })).toBeNull();
+  });
+});
+
+describe("v2 consensus", () => {
+  const critic = (score: number | null, releaseDate: string | null = null) =>
+    item("c", {
+      computedConsensusScore: score,
+      consensusConfidence: 0.8,
+      releaseDate,
+    });
+  const eras = buildEraContext([
+    { mediaType: "MOVIE", releaseDate: "1950-01-01", computedConsensusScore: 8.9 },
+    { mediaType: "MOVIE", releaseDate: "2015-01-01", computedConsensusScore: 6.5 },
+  ]);
+
+  it("uses the catalog neutral when there is no era context", () => {
+    const { consensusNeutral, consensusPointScale } = RECOMMENDATION_V2;
+    expect(consensusSignal(critic(consensusNeutral)).value).toBe(50);
+    expect(consensusSignal(critic(consensusNeutral), eras).value).toBe(50); // undated
+    expect(consensusSignal(critic(9)).value).toBe(50 + (9 - consensusNeutral) * consensusPointScale);
+    expect(consensusSignal(critic(9, "1950-01-01")).value).toBe(
+      consensusSignal(critic(9)).value,
+    );
+    expect(consensusSignal(critic(null)).value).toBeNull();
+  });
+
+  it("judges a critic score against the era's mean", () => {
+    const classic = consensusSignal(critic(9.0, "1950-01-01"), eras).value!;
+    const recent = consensusSignal(critic(9.0, "2015-01-01"), eras).value!;
+    expect(classic).toBeLessThan(recent);
+    expect(classic).toBeLessThan(consensusSignal(critic(9.0)).value!);
+    expect(recent).toBeGreaterThan(consensusSignal(critic(9.0)).value!);
+  });
+
+  it("exposes the critic score and reasons from it", () => {
+    const signal = consensusSignal(critic(9.0, "1950-01-01"), eras);
+    expect(signal.critic?.score).toBe(9);
+    expect(signal.reliability).toBe(0.8);
+    expect(humanReason({ signal: "consensus", ...signal })).toBe("Critics love it, 9.0/10");
+    // The reason follows the raw score, not the era-adjusted value.
+    expect(
+      humanReason({ signal: "consensus", value: 10, critic: { score: 6.5 } }),
+    ).toBe("Critics are lukewarm, 6.5/10");
+  });
+});
+
+describe("v2 confidence bound", () => {
+  it("stays within 0-1 even with strong evidence on every signal", () => {
+    const tag = (name: string, category: string) => ({
+      tag: { name, status: "APPROVED", category },
+    });
+    const features = {
+      genres: genre("Horror"),
+      tags: [tag("Slasher", "SUBGENRE"), tag("Dread", "MOOD")],
+      credits: [
+        { role: "DIRECTOR", contributor: { id: "d", name: "Auteur" } },
+        { role: "ACTOR", contributor: { id: "a", name: "Star" } },
+      ],
+      releaseDate: "2015-01-01",
+      computedConsensusScore: 9,
+      consensusConfidence: 1,
+    };
+    const profiles = buildTasteProfiles(
+      Array.from({ length: 200 }, (_, i) =>
+        observation(`r${i}`, 10, { media: item(`r${i}`, features) }),
+      ),
+    );
+    const eras = buildEraContext(
+      Array.from({ length: 50 }, (_, i) => ({
+        mediaType: "MOVIE",
+        releaseDate: i % 2 ? "2015-01-01" : "1995-01-01",
+        computedConsensusScore: 7,
+      })),
+    );
+    const exposure: EraExposure = new Map([
+      ["MOVIE", { counts: new Map<EraKey, number>([["2010-2019", 100000]]), total: 100000 }],
+    ]);
+    const full = { value: 100, reliability: 1, evidence: 10, detail: "" };
+    const result = scoreV2(item("candidate", features), profiles, full, {
+      twins: full,
+      eras,
+      exposure,
+    });
+    for (const e of result.explanations) expect(e.value).not.toBeNull();
+    expect(result.confidence).toBeLessThanOrEqual(1);
+    expect(result.confidence).toBeGreaterThan(0.5);
+    expect(result.score).toBeLessThanOrEqual(100);
   });
 });
