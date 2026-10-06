@@ -4,7 +4,7 @@ import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import { useMemo, useState } from "react";
-import { Box, Button, Stack, Typography } from "@mui/material";
+import { Box, Button, Stack, Tooltip, Typography } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { alpha } from "@mui/material/styles";
 import type { MediaType } from "@prisma/client";
@@ -22,6 +22,7 @@ import { RankedPosterTile } from "@/components/media/RankedPosterTile";
 import { formatMediaType } from "@/lib/format";
 import type { MediaItemDTO } from "@/lib/types";
 import { releaseYearLabel } from "@/lib/date-labels";
+import { CONFIDENCE_TOOLTIP, MATCH_MEANING } from "@/lib/score-display";
 import { mediaAccent, posterFallback } from "@/lib/media-ui-helpers";
 import CollectionsBookmarkIcon from "@mui/icons-material/CollectionsBookmark";
 import type { CollectionSummary } from "@/lib/db/collections";
@@ -430,7 +431,21 @@ function DiagonalPickStrip({
               <OnDarkChip key={entry}>{entry}</OnDarkChip>
             ))}
             {showMatch ? (
-              <OnDarkChip>{`${Math.round(confidence * 100)}% confidence`}</OnDarkChip>
+              <Tooltip
+                arrow
+                enterTouchDelay={0}
+                placement="top"
+                slotProps={{ tooltip: { sx: { whiteSpace: "pre-line" } } }}
+                title={CONFIDENCE_TOOLTIP}
+              >
+                <Box
+                  aria-label={`${Math.round(confidence * 100)}% confidence. ${CONFIDENCE_TOOLTIP}`}
+                  sx={{ cursor: "help" }}
+                  tabIndex={0}
+                >
+                  <OnDarkChip>{`${Math.round(confidence * 100)}% confidence`}</OnDarkChip>
+                </Box>
+              </Tooltip>
             ) : null}
           </Stack>
           <Typography
@@ -616,38 +631,44 @@ function ScoreBadge({
   value: string;
 }) {
   return (
-    <Box
-      data-dashboard="match-badge"
-      sx={{
-        alignItems: "center",
-        bgcolor: "rgba(8,8,11,0.55)",
-        backdropFilter: "blur(8px)",
-        border: "1px solid rgba(255,255,255,0.16)",
-        borderRadius: 2,
-        color: "#FFFFFF",
-        display: "flex",
-        flexDirection: "column",
-        height: { xs: 52, sm: 56 },
-        justifyContent: "center",
-        width: { xs: 52, sm: 56 },
-        ...sx,
-      }}
-    >
-      <Typography sx={{ fontSize: "1.05rem", fontWeight: 700, lineHeight: 1 }}>
-        {value}
-      </Typography>
-      <Typography
+    <Tooltip arrow enterTouchDelay={0} placement="top" title={MATCH_MEANING}>
+      <Box
+        aria-label={`${value} ${label}. ${MATCH_MEANING}`}
+        data-dashboard="match-badge"
+        tabIndex={0}
         sx={{
-          color: "rgba(255,255,255,0.7)",
-          fontSize: "0.875rem",
-          fontWeight: 550,
-          lineHeight: 1,
-          mt: 0.25,
+          alignItems: "center",
+          bgcolor: "rgba(8,8,11,0.55)",
+          backdropFilter: "blur(8px)",
+          border: "1px solid rgba(255,255,255,0.16)",
+          borderRadius: 2,
+          color: "#FFFFFF",
+          display: "flex",
+          flexDirection: "column",
+          height: { xs: 52, sm: 56 },
+          justifyContent: "center",
+          width: { xs: 52, sm: 56 },
+          ...sx,
         }}
       >
-        {label}
-      </Typography>
-    </Box>
+        <Typography
+          sx={{ fontSize: "1.05rem", fontWeight: 700, lineHeight: 1 }}
+        >
+          {value}
+        </Typography>
+        <Typography
+          sx={{
+            color: "rgba(255,255,255,0.7)",
+            fontSize: "0.875rem",
+            fontWeight: 550,
+            lineHeight: 1,
+            mt: 0.25,
+          }}
+        >
+          {label}
+        </Typography>
+      </Box>
+    </Tooltip>
   );
 }
 

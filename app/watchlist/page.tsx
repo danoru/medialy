@@ -16,6 +16,7 @@ import {
   Stack,
   Tab,
   Tabs,
+  Tooltip,
   Typography,
 } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
@@ -28,7 +29,13 @@ import { statusLabel } from "@/lib/status-labels";
 import { isVisibleMediaType, VISIBLE_MEDIA_TYPES } from "@/lib/media-types";
 import type { Recommendation } from "@/lib/types";
 import { requireUserId } from "@/lib/user";
-import { formatReasonValue, matchLabel, matchTone } from "@/lib/score-display";
+import {
+  CONFIDENCE_TOOLTIP,
+  MATCH_MEANING,
+  formatReasonValue,
+  matchLabel,
+  matchTone,
+} from "@/lib/score-display";
 import { releaseYearLabel, compactDateLabel } from "@/lib/date-labels";
 import {
   mediaAccent,
@@ -487,7 +494,20 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
             minWidth: 0,
           }}
         >
-          <ScoreRing score={entry.score} size={46} />
+          <Tooltip
+            arrow
+            enterTouchDelay={0}
+            placement="top"
+            title={MATCH_MEANING}
+          >
+            <Box
+              aria-label={`${Math.round(entry.score)}% match. ${MATCH_MEANING}`}
+              sx={{ alignSelf: "start", cursor: "help", justifySelf: "start" }}
+              tabIndex={0}
+            >
+              <ScoreRing score={entry.score} size={46} />
+            </Box>
+          </Tooltip>
           <Box sx={{ alignSelf: "center" }}>
             <Typography
               sx={{
@@ -499,12 +519,21 @@ function QueueRow({ entry, rank }: { entry: Recommendation; rank: number }) {
             >
               {matchLabel(entry.score)}
             </Typography>
-            <Typography
-              color="text.secondary"
-              sx={{ fontSize: "0.875rem", mt: 0.2 }}
+            <Tooltip
+              arrow
+              enterTouchDelay={0}
+              placement="top"
+              slotProps={{ tooltip: { sx: { whiteSpace: "pre-line" } } }}
+              title={CONFIDENCE_TOOLTIP}
             >
-              {Math.round(entry.confidence * 100)}% conf.
-            </Typography>
+              <Typography
+                color="text.secondary"
+                sx={{ cursor: "help", fontSize: "0.875rem", mt: 0.2 }}
+                tabIndex={0}
+              >
+                {Math.round(entry.confidence * 100)}% confidence
+              </Typography>
+            </Tooltip>
           </Box>
           <Stack
             direction="row"

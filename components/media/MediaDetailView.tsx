@@ -351,8 +351,13 @@ export function MediaDetailView({
 
             {item.matchSummary && userId ? (
               <Box sx={matchPanelSx}>
-                <Tooltip arrow placement="top" title={MATCH_MEANING}>
-                  <Stack spacing={0.5} sx={{ cursor: "help" }}>
+                <Tooltip arrow enterTouchDelay={0} placement="top" title={MATCH_MEANING}>
+                  <Stack
+                    aria-label={`Medialy Match ${item.matchSummary.score}%. ${MATCH_MEANING}`}
+                    spacing={0.5}
+                    sx={{ cursor: "help" }}
+                    tabIndex={0}
+                  >
                     <Typography sx={kickerSx}>Medialy Match</Typography>
                     <Typography sx={matchScoreSx}>
                       {item.matchSummary.score}
